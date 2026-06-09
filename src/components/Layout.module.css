@@ -1,0 +1,102 @@
+.shell {
+  display: flex;
+  min-height: 100dvh;
+}
+
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  overflow-y: auto;
+}
+
+.logo {
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  margin-bottom: 24px;
+  padding-left: 10px;
+}
+.gig { color: var(--gig); }
+.io  { color: var(--io); }
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.link, .linkActive {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text2);
+  transition: background 0.12s, color 0.12s;
+}
+.link:hover { background: var(--bg2); }
+.linkActive {
+  background: #FFF0F2;
+  color: var(--gig);
+}
+
+.icon {
+  font-size: 15px;
+  width: 18px;
+  text-align: center;
+}
+
+.bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.signOut {
+  background: none;
+  border: none;
+  padding: 9px 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text3);
+  text-align: left;
+  transition: background 0.12s;
+}
+.signOut:hover { background: var(--bg2); color: var(--gig); }
+
+/* Mobile: sidebar becomes bottom nav */
+@media (max-width: 640px) {
+  .shell { flex-direction: column; }
+  .sidebar {
+    width: 100%;
+    height: auto;
+    position: fixed;
+    bottom: 0;
+    top: auto;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    flex-direction: row;
+    padding: 8px 12px;
+    align-items: center;
+    background: white;
+    z-index: 100;
+  }
+  .logo { display: none; }
+  .nav { flex-direction: row; flex: 1; justify-content: space-around; }
+  .bottom { flex-direction: row; }
+  .link, .linkActive { flex-direction: column; gap: 2px; font-size: 10px; padding: 6px 10px; }
+  .icon { width: auto; font-size: 18px; }
+  .signOut { display: none; }
+  .main { padding-bottom: 70px; }
+}
