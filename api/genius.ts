@@ -32,11 +32,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const page = await fetch(url, {
         headers: {
           'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9,pt;q=0.8',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Referer': 'https://genius.com/',
+          'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'same-origin',
+          'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
         },
       })
       const html = await page.text()
       const lyrics = extractLyrics(html)
+      if (req.query.debug) {
+        return res.json({
+          lyrics,
+          _debug: {
+            url,
+            pageStatus: page.status,
+            htmlLen: html.length,
+            containers: (html.match(/data-lyrics-container="true"/g) ?? []).length,
+            snippet: html.slice(0, 300),
+          },
+        })
+      }
       return res.json({ lyrics })
     }
 

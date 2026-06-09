@@ -10,6 +10,7 @@ export interface Band {
   name: string
   owner_id: string
   invite_code: string
+  invite_expires_at?: string
   created_at: string
 }
 
@@ -17,6 +18,7 @@ export interface BandMember {
   band_id: string
   user_id: string
   role: 'owner' | 'member'
+  instrument?: string
   display_name?: string
 }
 
@@ -28,7 +30,7 @@ export interface Song {
   chords?: string
   bpm?: number
   duration_sec?: number
-  source: 'lrclib' | 'genius' | 'manual'
+  source: 'lrclib' | 'genius' | 'text' | 'manual'
   source_url?: string
   has_sync: boolean
   owner_id: string
