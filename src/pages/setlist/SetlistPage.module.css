@@ -17,8 +17,12 @@
 .listTitle { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; }
 .addBtn { padding: 7px 14px; border: none; border-radius: 8px; background: var(--gig); color: white; font-size: 12px; font-weight: 700; }
 
-.songRow { display: flex; align-items: center; gap: 8px; padding: 9px 6px; border-radius: 8px; cursor: pointer; }
+.songRow { display: flex; align-items: center; gap: 8px; padding: 9px 6px; border-radius: 8px; cursor: pointer; background: var(--bg2); }
 .songRow:hover { background: var(--bg3); }
+.dragging { box-shadow: 0 6px 16px rgba(0,0,0,0.15); z-index: 10; position: relative; }
+.dragHandle { cursor: grab; color: var(--text3); background: none; border: none; font-size: 15px; padding: 2px 3px; line-height: 0.7; letter-spacing: -3px; touch-action: none; flex-shrink: 0; }
+.dragHandle:active { cursor: grabbing; color: var(--gig); }
+.dragHandle:hover { color: var(--gig); }
 .songNum { font-size: 10px; color: var(--text3); width: 16px; text-align: center; flex-shrink: 0; }
 .songInfo { flex: 1; min-width: 0; }
 .songTitle { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

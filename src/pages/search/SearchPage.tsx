@@ -217,7 +217,7 @@ export default function SearchPage() {
           {loading && (
             <div className={styles.loadingBox}>
               <div className={styles.spinner} />
-              <span>A pesquisar em LRClib e Genius...</span>
+              <span>A pesquisar...</span>
             </div>
           )}
 

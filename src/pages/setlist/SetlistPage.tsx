@@ -1,22 +1,65 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import type { Setlist, SetlistSong, Song } from '../../types'
 import styles from './SetlistPage.module.css'
 
+type Row = SetlistSong & { song: Song }
+
+function SortableSongRow({ ss, index, onSelect, onRemove }: {
+  ss: Row; index: number; onSelect: (s: Song) => void; onRemove: (id: string) => void
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: ss.id })
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+  return (
+    <div ref={setNodeRef} style={style} className={`${styles.songRow} ${isDragging ? styles.dragging : ''}`} onClick={() => onSelect(ss.song)}>
+      <button
+        ref={setActivatorNodeRef}
+        className={styles.dragHandle}
+        {...attributes}
+        {...listeners}
+        onClick={e => e.stopPropagation()}
+        title="Arrastar para reordenar"
+      >⋮⋮</button>
+      <div className={styles.songNum}>{index + 1}</div>
+      <div className={styles.songInfo}>
+        <div className={styles.songTitle}>{ss.song?.title}</div>
+        <div className={styles.songArtist}>
+          {ss.song?.artist}
+          {ss.song?.has_sync && <span className={styles.syncBadge}>sync ✓</span>}
+        </div>
+      </div>
+      <div className={styles.songDur}>
+        {ss.song?.duration_sec ? `${Math.floor(ss.song.duration_sec / 60)}:${String(ss.song.duration_sec % 60).padStart(2, '0')}` : ''}
+      </div>
+      <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onRemove(ss.id) }}>✕</button>
+    </div>
+  )
+}
+
 export default function SetlistPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const navigate = useNavigate()
   const [setlist, setSetlist] = useState<Setlist | null>(null)
-  const [songs, setSongs] = useState<(SetlistSong & { song: Song })[]>([])
+  const [songs, setSongs] = useState<Row[]>([])
   const [library, setLibrary] = useState<Song[]>([])
   const [showLibrary, setShowLibrary] = useState(false)
   const [selected, setSelected] = useState<Song | null>(null)
   const [editingName, setEditingName] = useState(false)
   const [name, setName] = useState('')
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   useEffect(() => {
     if (!id || !user) return
@@ -52,17 +95,25 @@ export default function SetlistPage() {
 
   async function removeSong(ssId: string) {
     await supabase.from('setlist_songs').delete().eq('id', ssId)
-    loadSongs()
+    setSongs(prev => prev.filter(s => s.id !== ssId))
   }
 
-  async function moveUp(index: number) {
-    if (index === 0) return
-    const a = songs[index], b = songs[index - 1]
-    await Promise.all([
-      supabase.from('setlist_songs').update({ position: b.position }).eq('id', a.id),
-      supabase.from('setlist_songs').update({ position: a.position }).eq('id', b.id),
-    ])
-    loadSongs()
+  async function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const oldIndex = songs.findIndex(s => s.id === active.id)
+    const newIndex = songs.findIndex(s => s.id === over.id)
+    const reordered = arrayMove(songs, oldIndex, newIndex)
+    setSongs(reordered) // otimista
+    await persistOrder(reordered)
+  }
+
+  // Duas fases para não colidir com a constraint unique(setlist_id, position)
+  async function persistOrder(order: Row[]) {
+    await Promise.all(order.map((ss, i) =>
+      supabase.from('setlist_songs').update({ position: 10000 + i }).eq('id', ss.id)))
+    await Promise.all(order.map((ss, i) =>
+      supabase.from('setlist_songs').update({ position: i }).eq('id', ss.id)))
   }
 
   async function saveName() {
@@ -108,7 +159,7 @@ export default function SetlistPage() {
         <div className={styles.layout}>
           <div className={styles.songList}>
             <div className={styles.listHeader}>
-              <span className={styles.listTitle}>Músicas</span>
+              <span className={styles.listTitle}>Ordem das músicas</span>
               <button className={styles.addBtn} onClick={loadLibrary}>+ Adicionar</button>
             </div>
 
@@ -118,25 +169,13 @@ export default function SetlistPage() {
                 <button className={styles.addBtn} onClick={loadLibrary}>+ Adicionar música</button>
               </div>
             ) : (
-              songs.map((ss, i) => (
-                <div key={ss.id} className={styles.songRow} onClick={() => setSelected(ss.song)}>
-                  <div className={styles.songNum}>{i + 1}</div>
-                  <div className={styles.songInfo}>
-                    <div className={styles.songTitle}>{ss.song?.title}</div>
-                    <div className={styles.songArtist}>
-                      {ss.song?.artist}
-                      {ss.song?.has_sync && <span className={styles.syncBadge}>sync ✓</span>}
-                    </div>
-                  </div>
-                  <div className={styles.songDur}>
-                    {ss.song?.duration_sec ? `${Math.floor(ss.song.duration_sec / 60)}:${String(ss.song.duration_sec % 60).padStart(2, '0')}` : ''}
-                  </div>
-                  <div className={styles.songActions}>
-                    <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); moveUp(i) }} disabled={i === 0}>↑</button>
-                    <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); removeSong(ss.id) }}>✕</button>
-                  </div>
-                </div>
-              ))
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={songs.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                  {songs.map((ss, i) => (
+                    <SortableSongRow key={ss.id} ss={ss} index={i} onSelect={setSelected} onRemove={removeSong} />
+                  ))}
+                </SortableContext>
+              </DndContext>
             )}
           </div>
 
@@ -146,7 +185,7 @@ export default function SetlistPage() {
             </div>
             <div className={styles.lyrics}>
               {selected?.lyrics ? selected.lyrics.split('\n').map((line, i) => (
-                <div key={i} className={line === '' ? styles.lyricBreak : styles.lyricLine}>{line || ' '}</div>
+                <div key={i} className={line === '' ? styles.lyricBreak : styles.lyricLine}>{line || ' '}</div>
               )) : <span className={styles.lyricHint}>A letra aparece aqui</span>}
             </div>
           </div>
