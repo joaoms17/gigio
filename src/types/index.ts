@@ -56,6 +56,7 @@ export interface Setlist {
 }
 
 export interface SetlistSong {
+  id: string
   setlist_id: string
   song_id: string
   position: number

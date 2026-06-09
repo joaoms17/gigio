@@ -1,0 +1,69 @@
+.page { padding: 32px 28px; max-width: 800px; }
+.title { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
+.sub { font-size: 13px; color: var(--text3); margin-top: 4px; margin-bottom: 24px; }
+
+.searchForm { display: flex; gap: 8px; margin-bottom: 16px; }
+.searchInput {
+  flex: 1; padding: 12px 14px; border: 1.5px solid var(--border);
+  border-radius: var(--radius); font-size: 14px; outline: none;
+  transition: border-color 0.15s;
+}
+.searchInput:focus { border-color: var(--gig); }
+.searchBtn {
+  padding: 12px 20px; border: none; border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--gig), var(--io));
+  color: white; font-size: 13px; font-weight: 700;
+}
+.searchBtn:disabled { opacity: 0.6; }
+
+.filters { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.filter, .filterActive {
+  padding: 6px 14px; border-radius: 20px; font-size: 12px;
+  font-weight: 600; border: none; transition: all 0.12s; cursor: pointer;
+}
+.filter { background: var(--bg3); color: var(--text2); }
+.filterActive { background: var(--io); color: white; }
+
+.results { display: flex; flex-direction: column; gap: 4px; }
+
+.resultRow {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 10px; border-radius: var(--radius);
+  transition: background 0.1s; cursor: default;
+}
+.resultRow:hover { background: var(--bg2); }
+
+.thumb {
+  width: 44px; height: 44px; border-radius: 8px; flex-shrink: 0;
+}
+.lrclib { background: linear-gradient(135deg, #7C3AED, #6366f1); }
+.genius { background: linear-gradient(135deg, #f59e0b, #ef4444); }
+
+.info { flex: 1; min-width: 0; }
+.resultTitle {
+  font-size: 13px; font-weight: 700; display: flex;
+  align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.resultArtist { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+.badge {
+  font-size: 9px; font-weight: 700; padding: 2px 5px;
+  border-radius: 4px;
+}
+.badge.lrclib { background: #7C3AED20; color: #5b21b6; }
+.badge.genius { background: #f59e0b20; color: #92400e; }
+
+.syncBadge {
+  font-size: 9px; font-weight: 700; padding: 2px 6px;
+  border-radius: 4px; background: #10b98120; color: #065f46;
+}
+
+.addBtn, .savedBtn {
+  padding: 7px 14px; border-radius: 8px; font-size: 12px;
+  font-weight: 700; border: none; white-space: nowrap; flex-shrink: 0;
+}
+.addBtn { background: var(--gig); color: white; }
+.addBtn:disabled { opacity: 0.5; }
+.savedBtn { background: var(--bg3); color: var(--text3); cursor: default; }
+
+.empty { font-size: 13px; color: var(--text3); padding: 20px 0; }

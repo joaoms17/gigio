@@ -1,6 +1,16 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { signIn, signUp } from '../../lib/auth'
 import styles from './AuthPage.module.css'
+
+function friendlyError(msg: string) {
+  if (msg.includes('Invalid login')) return 'Email ou password incorretos'
+  if (msg.includes('already registered')) return 'Este email já tem conta — faz login'
+  if (msg.includes('Password should')) return 'A password precisa de pelo menos 6 caracteres'
+  if (msg.includes('valid email')) return 'Introduz um email válido'
+  if (msg.includes('confirm')) return 'Confirma o teu email antes de entrar'
+  return msg
+}
 
 export default function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login')
@@ -9,6 +19,7 @@ export default function AuthPage() {
   const [name, setName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -16,14 +27,21 @@ export default function AuthPage() {
     setLoading(true)
     try {
       if (mode === 'login') {
-        const { error } = await signIn(email, password)
+        const { error, data } = await signIn(email, password)
         if (error) throw error
+        if (data.session) navigate('/', { replace: true })
       } else {
-        const { error } = await signUp(email, password, name)
+        const { error, data } = await signUp(email, password, name)
         if (error) throw error
+        // se confirmação desativada, session já existe
+        if (data.session) {
+          navigate('/', { replace: true })
+        } else {
+          setError('Conta criada! Confirma o teu email para entrar.')
+        }
       }
     } catch (err: any) {
-      setError(err.message ?? 'Erro desconhecido')
+      setError(friendlyError(err.message ?? 'Erro desconhecido'))
     } finally {
       setLoading(false)
     }
@@ -70,7 +88,11 @@ export default function AuthPage() {
             required
             minLength={6}
           />
-          {error && <p className={styles.error}>{error}</p>}
+          {error && (
+            <p className={error.startsWith('Conta criada') ? styles.success : styles.error}>
+              {error}
+            </p>
+          )}
           <button className={styles.btn} type="submit" disabled={loading}>
             {loading ? '...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
           </button>

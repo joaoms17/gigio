@@ -1,0 +1,41 @@
+.page { padding: 32px 28px; max-width: 680px; }
+.title { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; margin-bottom: 28px; }
+
+.section { margin-bottom: 32px; }
+.sectionTitle { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 10px; }
+
+.card { background: var(--bg2); border-radius: var(--radius); overflow: hidden; margin-bottom: 12px; }
+.row { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); gap: 16px; flex-wrap: wrap; }
+.row:last-child { border-bottom: none; }
+.rowLabel { flex: 1; min-width: 120px; }
+.label { font-size: 13px; font-weight: 600; }
+.hint { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2.5px solid transparent; cursor: pointer;
+  transition: transform 0.12s;
+}
+.swatch:hover { transform: scale(1.15); }
+.swatchSel { border-color: var(--text); box-shadow: 0 0 0 2px white inset; }
+
+.sliderRow { display: flex; align-items: center; gap: 8px; color: var(--text3); }
+.slider { width: 100px; accent-color: var(--gig); }
+.sliderVal { font-size: 11px; color: var(--text3); min-width: 32px; }
+
+.preview {
+  border-radius: var(--radius); padding: 20px 24px;
+  margin-bottom: 12px; position: relative; overflow: hidden;
+}
+.previewPast { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.previewActive { font-weight: 800; margin-bottom: 6px; transition: font-size 0.15s; }
+.previewFuture { font-size: 17px; font-weight: 600; }
+.previewBar { height: 2px; border-radius: 1px; width: 40%; margin-top: 16px; }
+
+.saveBtn {
+  padding: 11px 22px; border: none; border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--gig), var(--io));
+  color: white; font-size: 13px; font-weight: 700;
+  transition: background 0.3s;
+}
