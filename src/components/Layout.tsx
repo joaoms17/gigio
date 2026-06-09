@@ -23,8 +23,11 @@ export default function Layout({ children }: Props) {
           <NavLink to="/" end className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
             <span className={styles.icon}>🏠</span> Home
           </NavLink>
+          <NavLink to="/library" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
+            <span className={styles.icon}>📚</span> Biblioteca
+          </NavLink>
           <NavLink to="/search" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
-            <span className={styles.icon}>🎵</span> Buscar Letras
+            <span className={styles.icon}>🔍</span> Buscar Letras
           </NavLink>
           <NavLink to="/bands" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
             <span className={styles.icon}>🎸</span> Bandas

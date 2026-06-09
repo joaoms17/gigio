@@ -7,6 +7,7 @@ import SetlistPage from './pages/setlist/SetlistPage'
 import SearchPage from './pages/search/SearchPage'
 import ConcertPage from './pages/concert/ConcertPage'
 import BandPage from './pages/band/BandPage'
+import LibraryPage from './pages/library/LibraryPage'
 import SettingsPage from './pages/settings/SettingsPage'
 import './index.css'
 
@@ -25,6 +26,7 @@ function AppRoutes() {
       <Route path="/setlist/:id" element={<AuthGuard><SetlistPage /></AuthGuard>} />
       <Route path="/setlist/:id/concert" element={<AuthGuard><ConcertPage /></AuthGuard>} />
       <Route path="/search" element={<AuthGuard><SearchPage /></AuthGuard>} />
+      <Route path="/library" element={<AuthGuard><LibraryPage /></AuthGuard>} />
       <Route path="/band/:id" element={<AuthGuard><BandPage /></AuthGuard>} />
       <Route path="/bands" element={<AuthGuard><BandPage /></AuthGuard>} />
       <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />

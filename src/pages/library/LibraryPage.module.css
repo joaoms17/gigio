@@ -1,0 +1,268 @@
+.page {
+  padding: 24px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text1);
+  margin: 0;
+}
+
+.count {
+  font-size: 13px;
+  color: var(--text3);
+  margin-right: auto;
+}
+
+.searchBtn {
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text1);
+  font-size: 14px;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 16px;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+@media (max-width: 700px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .preview {
+    display: none;
+  }
+}
+
+.list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.1s;
+}
+
+.row:hover {
+  background: var(--surface2);
+}
+
+.rowActive {
+  background: var(--surface2);
+  border-color: var(--accent);
+}
+
+.rowInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.rowTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowArtist {
+  font-size: 12px;
+  color: var(--text3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.syncBadge {
+  background: #22c55e20;
+  color: #22c55e;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.sourceBadge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.sourceBadge.lrclib {
+  background: #7C3AED20;
+  color: #7C3AED;
+}
+
+.sourceBadge.genius {
+  background: #FF4D6D20;
+  color: #FF4D6D;
+}
+
+.sourceBadge.manual {
+  background: var(--border);
+  color: var(--text3);
+}
+
+.deleteBtn {
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.row:hover .deleteBtn {
+  opacity: 1;
+}
+
+.deleteBtn:hover {
+  color: #ef4444;
+}
+
+.empty {
+  color: var(--text3);
+  font-size: 14px;
+  padding: 16px;
+}
+
+.emptyState {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--text2);
+}
+
+.emptyIcon {
+  font-size: 40px;
+  margin-bottom: 8px;
+}
+
+.goSearch {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 14px;
+  cursor: pointer;
+  margin-top: 8px;
+  text-decoration: underline;
+}
+
+/* Preview */
+.preview {
+  background: var(--surface2);
+  border-radius: 12px;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.previewMeta {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.previewTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text1);
+}
+
+.previewArtist {
+  font-size: 14px;
+  color: var(--text3);
+  margin-top: 4px;
+}
+
+.previewDur {
+  font-size: 12px;
+  color: var(--text3);
+  margin-top: 4px;
+}
+
+.lyrics {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text2);
+}
+
+.lyricLine {
+  padding: 0;
+}
+
+.lyricBreak {
+  height: 12px;
+}
+
+.noLyrics {
+  color: var(--text3);
+  font-style: italic;
+}
+
+.previewEmpty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text3);
+  font-size: 14px;
+  gap: 8px;
+}
+
+.previewEmptyIcon {
+  font-size: 36px;
+}

@@ -1,10 +1,9 @@
 import type { SearchResult } from '../types'
 
-// Genius API calls go through a Supabase Edge Function to hide the token
 const PROXY = '/api/genius'
 
 export async function searchGenius(query: string): Promise<SearchResult[]> {
-  const res = await fetch(`${PROXY}/search?q=${encodeURIComponent(query)}`)
+  const res = await fetch(`${PROXY}?path=search&q=${encodeURIComponent(query)}`)
   if (!res.ok) return []
   const data = await res.json()
   return (data.response?.hits ?? []).slice(0, 10).map((hit: any) => ({
@@ -17,7 +16,7 @@ export async function searchGenius(query: string): Promise<SearchResult[]> {
 }
 
 export async function getGeniusLyrics(id: string): Promise<string> {
-  const res = await fetch(`${PROXY}/lyrics/${id}`)
+  const res = await fetch(`${PROXY}?path=lyrics&id=${id}`)
   if (!res.ok) throw new Error('Not found')
   const data = await res.json()
   return data.lyrics ?? ''
