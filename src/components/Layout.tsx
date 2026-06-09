@@ -1,11 +1,32 @@
+import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { signOut } from '../lib/auth'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../hooks/useAuth'
 import styles from './Layout.module.css'
 
 interface Props { children: React.ReactNode }
 
+const DOT_PALETTE = ['#FF4D6D', '#7C3AED', '#2563EB', '#059669', '#D97706', '#DB2777', '#0891B2']
+function colorFor(s: string) {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return DOT_PALETTE[h % DOT_PALETTE.length]
+}
+
 export default function Layout({ children }: Props) {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const [bands, setBands] = useState<{ id: string; name: string }[]>([])
+
+  useEffect(() => {
+    if (!user) return
+    supabase
+      .from('band_members')
+      .select('bands(id, name)')
+      .eq('user_id', user.id)
+      .then(({ data }) => setBands((data ?? []).map((r: any) => r.bands).filter(Boolean)))
+  }, [user])
 
   async function handleSignOut() {
     await signOut()
@@ -24,20 +45,37 @@ export default function Layout({ children }: Props) {
             <span className={styles.icon}>🏠</span> Home
           </NavLink>
           <NavLink to="/library" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
-            <span className={styles.icon}>📚</span> Biblioteca
+            <span className={styles.icon}>🎵</span> Músicas
+          </NavLink>
+          <NavLink to="/setlists" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
+            <span className={styles.icon}>📋</span> Setlists
           </NavLink>
           <NavLink to="/search" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
-            <span className={styles.icon}>🔍</span> Buscar Letras
+            <span className={styles.icon}>🔍</span> Buscar
           </NavLink>
-          <NavLink to="/bands" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
-            <span className={styles.icon}>🎸</span> Bandas
-          </NavLink>
-          <NavLink to="/settings" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
-            <span className={styles.icon}>⚙️</span> Definições
-          </NavLink>
+
+          <div className={styles.bandsSection}>
+            <div className={styles.bandsLabel}>BANDAS</div>
+            {bands.map(b => (
+              <NavLink
+                key={b.id}
+                to={`/band/${b.id}`}
+                className={({ isActive }) => isActive ? styles.bandLinkActive : styles.bandLink}
+              >
+                <span className={styles.dot} style={{ background: colorFor(b.id) }} />
+                <span className={styles.bandName}>{b.name}</span>
+              </NavLink>
+            ))}
+            <button className={styles.newBand} onClick={() => navigate('/bands')}>
+              <span className={styles.plus}>+</span> Nova banda
+            </button>
+          </div>
         </nav>
 
         <div className={styles.bottom}>
+          <NavLink to="/settings" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
+            <span className={styles.icon}>⚙️</span> Perfil
+          </NavLink>
           <button className={styles.signOut} onClick={handleSignOut}>↪ Sair</button>
         </div>
       </aside>

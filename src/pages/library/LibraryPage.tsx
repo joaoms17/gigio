@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../../components/Layout'
+import LyricsView from '../../components/LyricsView'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import type { Song } from '../../types'
@@ -46,7 +47,7 @@ export default function LibraryPage() {
     <Layout>
       <div className={styles.page}>
         <div className={styles.header}>
-          <h1 className={styles.title}>Biblioteca</h1>
+          <h1 className={styles.title}>Músicas</h1>
           <span className={styles.count}>{songs.length} música{songs.length !== 1 ? 's' : ''}</span>
           <button className={styles.searchBtn} onClick={() => navigate('/search')}>+ Buscar letras</button>
         </div>
@@ -110,11 +111,7 @@ export default function LibraryPage() {
                 </div>
                 <div className={styles.lyrics}>
                   {selected.lyrics
-                    ? selected.lyrics.split('\n').map((line, i) => (
-                        <div key={i} className={line.trim() === '' ? styles.lyricBreak : styles.lyricLine}>
-                          {line || ' '}
-                        </div>
-                      ))
+                    ? <LyricsView lyrics={selected.lyrics} />
                     : <span className={styles.noLyrics}>Sem letra guardada</span>
                   }
                 </div>

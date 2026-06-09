@@ -9,6 +9,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import Layout from '../../components/Layout'
+import LyricsView from '../../components/LyricsView'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import type { Setlist, SetlistSong, Song } from '../../types'
@@ -184,9 +185,7 @@ export default function SetlistPage() {
               {selected ? `${selected.title} — ${selected.artist}` : 'Seleciona uma música'}
             </div>
             <div className={styles.lyrics}>
-              {selected?.lyrics ? selected.lyrics.split('\n').map((line, i) => (
-                <div key={i} className={line === '' ? styles.lyricBreak : styles.lyricLine}>{line || ' '}</div>
-              )) : <span className={styles.lyricHint}>A letra aparece aqui</span>}
+              {selected ? <LyricsView lyrics={selected.lyrics} /> : <span className={styles.lyricHint}>A letra aparece aqui</span>}
             </div>
           </div>
         </div>

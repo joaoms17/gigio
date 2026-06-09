@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
@@ -50,6 +50,7 @@ function daysLeft(iso: string) {
 export default function BandPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { id: bandIdParam } = useParams<{ id: string }>()
   const [bands, setBands] = useState<Band[]>([])
   const [loading, setLoading] = useState(true)
   const [newName, setNewName] = useState('')
@@ -68,6 +69,14 @@ export default function BandPage() {
   const [renameInput, setRenameInput] = useState('')
 
   useEffect(() => { if (user) loadBands() }, [user])
+
+  // Abrir banda específica quando vem por /band/:id (links da sidebar)
+  useEffect(() => {
+    if (!bandIdParam) { setActiveBand(null); return }
+    if (activeBand?.id === bandIdParam) return
+    const b = bands.find(x => x.id === bandIdParam)
+    if (b) openBand(b)
+  }, [bandIdParam, bands])
 
   async function loadBands() {
     if (!user) return
@@ -182,7 +191,7 @@ export default function BandPage() {
       <Layout>
         <div className={styles.detailPage}>
           <div className={styles.detailHeader}>
-            <button className={styles.back} onClick={() => { setActiveBand(null); setMembers([]); setSetlists([]) }}>← Bandas</button>
+            <button className={styles.back} onClick={() => { setActiveBand(null); setMembers([]); setSetlists([]); navigate('/bands') }}>← Bandas</button>
             <div className={styles.detailTitleRow}>
               <div>
                 <h1 className={styles.bandName}>{activeBand.name}</h1>
