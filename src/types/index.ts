@@ -76,7 +76,7 @@ export interface ConcertTheme {
 export interface SearchResult {
   title: string
   artist: string
-  source: 'lrclib' | 'genius'
+  source: 'lrclib' | 'text'
   has_sync: boolean
   duration_sec?: number
   external_id: string
