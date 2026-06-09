@@ -1,1 +1,1 @@
-﻿export default function BandPage() { return <div>BandPage</div> }
+export default function BandPage() { return <div>BandPage</div> }
