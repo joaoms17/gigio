@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+﻿import { NavLink, useNavigate } from 'react-router-dom'
 import { signOut } from '../lib/auth'
 import styles from './Layout.module.css'
 
@@ -21,18 +21,18 @@ export default function Layout({ children }: Props) {
 
         <nav className={styles.nav}>
           <NavLink to="/" end className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
-            <span className={styles.icon}>◉</span> Home
+            <span className={styles.icon}>🏠</span> Home
           </NavLink>
           <NavLink to="/search" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
-            <span className={styles.icon}>♪</span> Músicas
+            <span className={styles.icon}>🎵</span> Buscar Letras
+          </NavLink>
+          <NavLink to="/settings" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
+            <span className={styles.icon}>⚙️</span> Definições
           </NavLink>
         </nav>
 
         <div className={styles.bottom}>
-          <NavLink to="/settings" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
-            <span className={styles.icon}>⚙</span> Definições
-          </NavLink>
-          <button className={styles.signOut} onClick={handleSignOut}>Sair</button>
+          <button className={styles.signOut} onClick={handleSignOut}>↪ Sair</button>
         </div>
       </aside>
 
