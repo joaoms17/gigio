@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from './context/AuthContext'
 import { useAuth } from './hooks/useAuth'
 import AuthPage from './pages/auth/AuthPage'
 import HomePage from './pages/home/HomePage'
@@ -16,19 +17,28 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/auth" element={<AuthPage />} />
+      <Route path="/" element={<AuthGuard><HomePage /></AuthGuard>} />
+      <Route path="/setlist/:id" element={<AuthGuard><SetlistPage /></AuthGuard>} />
+      <Route path="/setlist/:id/concert" element={<AuthGuard><ConcertPage /></AuthGuard>} />
+      <Route path="/search" element={<AuthGuard><SearchPage /></AuthGuard>} />
+      <Route path="/band/:id" element={<AuthGuard><BandPage /></AuthGuard>} />
+      <Route path="/bands" element={<AuthGuard><BandPage /></AuthGuard>} />
+      <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/auth" element={<AuthPage />} />
-        <Route path="/" element={<AuthGuard><HomePage /></AuthGuard>} />
-        <Route path="/setlist/:id" element={<AuthGuard><SetlistPage /></AuthGuard>} />
-        <Route path="/setlist/:id/concert" element={<AuthGuard><ConcertPage /></AuthGuard>} />
-        <Route path="/search" element={<AuthGuard><SearchPage /></AuthGuard>} />
-        <Route path="/band/:id" element={<AuthGuard><BandPage /></AuthGuard>} />
-        <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </BrowserRouter>
   )
 }

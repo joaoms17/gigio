@@ -26,6 +26,9 @@ export default function Layout({ children }: Props) {
           <NavLink to="/search" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
             <span className={styles.icon}>🎵</span> Buscar Letras
           </NavLink>
+          <NavLink to="/bands" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
+            <span className={styles.icon}>🎸</span> Bandas
+          </NavLink>
           <NavLink to="/settings" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
             <span className={styles.icon}>⚙️</span> Definições
           </NavLink>
