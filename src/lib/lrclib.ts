@@ -2,11 +2,15 @@ import type { SearchResult, LyricLine } from '../types'
 
 const BASE = 'https://lrclib.net/api'
 
-export async function searchLrclib(query: string): Promise<SearchResult[]> {
-  const res = await fetch(`${BASE}/search?q=${encodeURIComponent(query)}`)
+export async function searchLrclib(query: string, artist?: string): Promise<SearchResult[]> {
+  // Busca estruturada (mais precisa) quando há artista; senão busca livre.
+  const url = artist?.trim()
+    ? `${BASE}/search?track_name=${encodeURIComponent(query)}&artist_name=${encodeURIComponent(artist)}`
+    : `${BASE}/search?q=${encodeURIComponent(query)}`
+  const res = await fetch(url)
   if (!res.ok) return []
   const data = await res.json()
-  return data.slice(0, 10).map((item: any) => ({
+  return data.slice(0, 12).map((item: any) => ({
     title: item.trackName,
     artist: item.artistName,
     source: 'lrclib' as const,

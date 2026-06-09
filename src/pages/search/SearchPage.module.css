@@ -2,13 +2,15 @@
 .title { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; }
 .sub { font-size: 13px; color: var(--text3); margin-top: 4px; margin-bottom: 24px; }
 
-.searchForm { display: flex; gap: 8px; margin-bottom: 16px; }
-.searchInput {
-  flex: 1; padding: 12px 14px; border: 1.5px solid var(--border);
+.searchForm { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.searchInput, .artistInput {
+  padding: 12px 14px; border: 1.5px solid var(--border);
   border-radius: var(--radius); font-size: 14px; outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s; background: var(--bg2); color: var(--text1);
 }
-.searchInput:focus { border-color: var(--gig); }
+.searchInput { flex: 2; min-width: 160px; }
+.artistInput { flex: 1; min-width: 120px; }
+.searchInput:focus, .artistInput:focus { border-color: var(--gig); }
 .searchBtn {
   padding: 12px 20px; border: none; border-radius: var(--radius);
   background: linear-gradient(135deg, var(--gig), var(--io));
@@ -129,3 +131,40 @@
   outline: none; resize: vertical; background: var(--bg2); color: var(--text1);
 }
 .manualTextarea:focus { border-color: var(--gig); }
+
+/* loading */
+.loadingBox {
+  display: flex; align-items: center; gap: 12px; padding: 28px 10px;
+  color: var(--text3); font-size: 14px;
+}
+.spinner {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2.5px solid var(--border); border-top-color: var(--gig);
+  animation: spin 0.7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* picker de destino */
+.pickerModal {
+  background: var(--bg1, #fff); border-radius: 16px; padding: 22px;
+  width: 100%; max-width: 440px; border: 1px solid var(--border);
+}
+.targetRow {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg2); color: var(--text1); font-size: 14px; font-weight: 600;
+  cursor: pointer; margin-bottom: 8px; transition: border-color 0.12s;
+}
+.targetRow:hover { border-color: var(--gig); }
+.targetIcon { font-size: 18px; flex-shrink: 0; }
+.targetDivider {
+  font-size: 11px; font-weight: 700; color: var(--text3); letter-spacing: 0.05em;
+  text-transform: uppercase; margin: 14px 0 10px;
+}
+.targetList { display: flex; flex-direction: column; max-height: 260px; overflow-y: auto; }
+.newSetlistRow {
+  width: 100%; padding: 11px; border-radius: 10px; border: 1.5px dashed var(--border);
+  background: none; color: var(--gig); font-size: 13px; font-weight: 700;
+  cursor: pointer; margin-top: 6px;
+}
+.newSetlistRow:hover { border-color: var(--gig); }
