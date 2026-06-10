@@ -1,47 +1,54 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './CalendarPage.module.css'
 
-interface UpcomingSetlist {
+interface Setlist {
   id: string
   name: string
   date: string
   venue: string | null
   status: string | null
   band: { name: string; color: string } | null
-  setlist_songs: { count: number }[]
 }
 
-function parseLocalDate(dateStr: string) {
+const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
+const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+
+function toYMD(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function parseLocal(dateStr: string) {
   const [y, m, d] = dateStr.split('-').map(Number)
   return new Date(y, m - 1, d)
 }
 
-function formatDate(dateStr: string) {
-  const d = parseLocalDate(dateStr)
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1)
-  if (d.getTime() === today.getTime()) return 'Hoje'
-  if (d.getTime() === tomorrow.getTime()) return 'Amanhã'
-  return d.toLocaleDateString('pt-PT', { weekday: 'short', day: 'numeric', month: 'short' })
-}
+function buildCalendarDays(year: number, month: number) {
+  const firstDay = new Date(year, month, 1)
+  const lastDay = new Date(year, month + 1, 0)
+  // Monday-first: Mon=0 … Sun=6
+  const startOffset = (firstDay.getDay() + 6) % 7
+  const total = Math.ceil((startOffset + lastDay.getDate()) / 7) * 7
 
-function daysUntil(dateStr: string) {
-  const d = parseLocalDate(dateStr)
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  const diff = Math.round((d.getTime() - today.getTime()) / 86400000)
-  if (diff === 0) return 'Hoje'
-  if (diff === 1) return 'Amanhã'
-  return `em ${diff} dias`
+  const days: Date[] = []
+  for (let i = 0; i < total; i++) {
+    days.push(new Date(year, month, 1 - startOffset + i))
+  }
+  return days
 }
 
 export default function CalendarPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [events, setEvents] = useState<UpcomingSetlist[]>([])
+  const todayStr = toYMD(new Date())
+
+  const [year, setYear] = useState(() => new Date().getFullYear())
+  const [month, setMonth] = useState(() => new Date().getMonth())
+  const [selected, setSelected] = useState<string | null>(todayStr)
+  const [events, setEvents] = useState<Setlist[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -52,9 +59,6 @@ export default function CalendarPage() {
   async function loadEvents() {
     if (!user) return
     setLoading(true)
-
-    const today = new Date().toISOString().split('T')[0]
-
     const { data: memberships } = await supabase
       .from('band_members')
       .select('band_id')
@@ -64,8 +68,8 @@ export default function CalendarPage() {
 
     let query = supabase
       .from('setlists')
-      .select('id, name, date, venue, status, band:bands(name, color), setlist_songs(count)')
-      .gte('date', today)
+      .select('id, name, date, venue, status, band:bands(name, color)')
+      .not('date', 'is', null)
       .order('date', { ascending: true })
 
     if (bandIds.length > 0) {
@@ -75,89 +79,152 @@ export default function CalendarPage() {
     }
 
     const { data } = await query
-    setEvents((data ?? []) as unknown as UpcomingSetlist[])
+    setEvents((data ?? []) as unknown as Setlist[])
     setLoading(false)
+  }
+
+  const calDays = useMemo(() => buildCalendarDays(year, month), [year, month])
+
+  const eventsByDate = useMemo(() => {
+    const map: Record<string, Setlist[]> = {}
+    for (const ev of events) {
+      if (!map[ev.date]) map[ev.date] = []
+      map[ev.date].push(ev)
+    }
+    return map
+  }, [events])
+
+  const selectedEvents = selected ? (eventsByDate[selected] ?? []) : []
+
+  function prevMonth() {
+    if (month === 0) { setYear(y => y - 1); setMonth(11) }
+    else setMonth(m => m - 1)
+  }
+  function nextMonth() {
+    if (month === 11) { setYear(y => y + 1); setMonth(0) }
+    else setMonth(m => m + 1)
   }
 
   return (
     <Layout>
       <div className={styles.page}>
-        <div className={styles.header}>
-          <h1 className={styles.title}>Próximos eventos</h1>
-          {!loading && (
-            <p className={styles.sub}>
-              {events.length === 0
-                ? 'Nenhum evento agendado'
-                : `${events.length} evento${events.length !== 1 ? 's' : ''} agendado${events.length !== 1 ? 's' : ''}`}
-            </p>
-          )}
+
+        {/* Month header */}
+        <div className={styles.monthNav}>
+          <button className={styles.navBtn} onClick={prevMonth}>‹</button>
+          <h1 className={styles.monthTitle}>{MONTHS[month]} {year}</h1>
+          <button className={styles.navBtn} onClick={nextMonth}>›</button>
         </div>
 
-        {loading ? (
-          <div className={styles.list}>
-            {[0, 1, 2].map(i => (
-              <div key={i} className={styles.card} style={{ pointerEvents: 'none' }}>
-                <div className="skeleton" style={{ width: 58, height: 58, borderRadius: 14, flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <div className="skeleton" style={{ height: 17, width: '55%', marginBottom: 9 }} />
-                  <div className="skeleton" style={{ height: 12, width: '38%', marginBottom: 7 }} />
-                  <div className="skeleton" style={{ height: 11, width: '25%' }} />
-                </div>
+        {/* Weekday labels */}
+        <div className={styles.weekRow}>
+          {WEEKDAYS.map(d => <div key={d} className={styles.weekDay}>{d}</div>)}
+        </div>
+
+        {/* Calendar grid */}
+        <div className={styles.grid}>
+          {calDays.map(date => {
+            const dateStr = toYMD(date)
+            const isCurrentMonth = date.getMonth() === month
+            const isToday = dateStr === todayStr
+            const isSelected = dateStr === selected
+            const dayEvents = eventsByDate[dateStr] ?? []
+            const hasEvent = dayEvents.length > 0
+
+            return (
+              <div
+                key={dateStr}
+                className={[
+                  styles.cell,
+                  !isCurrentMonth && styles.cellOtherMonth,
+                  isToday && styles.cellToday,
+                  isSelected && styles.cellSelected,
+                  hasEvent && styles.cellHasEvent,
+                ].filter(Boolean).join(' ')}
+                onClick={() => setSelected(isSelected ? null : dateStr)}
+              >
+                <span className={styles.cellNum}>{date.getDate()}</span>
+                {hasEvent && (
+                  <div className={styles.dots}>
+                    {dayEvents.slice(0, 3).map(ev => (
+                      <span
+                        key={ev.id}
+                        className={styles.dot}
+                        style={{ background: ev.band?.color ?? '#7C3AED' }}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        ) : events.length === 0 ? (
-          <div className={styles.empty}>
-            <div className={styles.emptyIcon}>📅</div>
-            <p className={styles.emptyTitle}>Sem eventos próximos</p>
-            <p className={styles.emptySub}>Adiciona uma data a uma setlist para aparecer aqui.</p>
-          </div>
-        ) : (
-          <div className={styles.list}>
-            {events.map(ev => {
-              const accent = ev.band?.color ?? '#7C3AED'
-              const d = parseLocalDate(ev.date)
-              const until = daysUntil(ev.date)
-              const isToday = until === 'Hoje'
-              return (
-                <div
-                  key={ev.id}
-                  className={`${styles.card} ${isToday ? styles.cardToday : ''}`}
-                  onClick={() => navigate(`/setlist/${ev.id}`)}
-                >
-                  <div className={styles.dateBadge} style={{ background: accent + '22', color: accent }}>
-                    <span className={styles.dateDay}>{d.getDate()}</span>
-                    <span className={styles.dateMonth}>
-                      {d.toLocaleDateString('pt-PT', { month: 'short' }).replace('.', '')}
-                    </span>
-                  </div>
+            )
+          })}
+        </div>
 
-                  <div className={styles.info}>
-                    <div className={styles.name}>{ev.name}</div>
-                    <div className={styles.meta}>
-                      {ev.band?.name && (
-                        <span className={styles.project} style={{ color: accent }}>
-                          {ev.band.name}
-                        </span>
-                      )}
-                      {ev.venue && (
-                        <>
-                          {ev.band?.name && <span className={styles.dot}>·</span>}
-                          <span className={styles.venue}>{ev.venue}</span>
-                        </>
-                      )}
+        {/* Selected day events */}
+        {selected && (
+          <div className={styles.dayEvents}>
+            <div className={styles.dayTitle}>
+              {selected === todayStr ? 'Hoje' : parseLocal(selected).toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </div>
+            {selectedEvents.length === 0 ? (
+              <p className={styles.noEvents}>Sem eventos neste dia.</p>
+            ) : (
+              <div className={styles.eventList}>
+                {selectedEvents.map(ev => {
+                  const accent = ev.band?.color ?? '#7C3AED'
+                  return (
+                    <div
+                      key={ev.id}
+                      className={styles.eventRow}
+                      onClick={() => navigate(`/setlist/${ev.id}`)}
+                      style={{ borderLeftColor: accent }}
+                    >
+                      <div className={styles.eventName}>{ev.name}</div>
+                      <div className={styles.eventMeta}>
+                        {ev.band?.name && <span style={{ color: accent }}>{ev.band.name}</span>}
+                        {ev.venue && <span className={styles.eventVenue}> · {ev.venue}</span>}
+                      </div>
                     </div>
-                    <div className={styles.countdown} data-today={isToday}>
-                      {isToday ? '🎤 ' : ''}{formatDate(ev.date)}
-                    </div>
-                  </div>
-
-                  <span className={styles.chevron}>›</span>
-                </div>
-              )
-            })}
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
+
+        {/* This month's events list */}
+        {!loading && (() => {
+          const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`
+          const monthEvents = events.filter(ev => ev.date.startsWith(monthStr))
+          if (monthEvents.length === 0) return null
+          return (
+            <div className={styles.monthList}>
+              <div className={styles.monthListTitle}>Eventos em {MONTHS[month]}</div>
+              {monthEvents.map(ev => {
+                const accent = ev.band?.color ?? '#7C3AED'
+                const d = parseLocal(ev.date)
+                return (
+                  <div
+                    key={ev.id}
+                    className={styles.monthEventRow}
+                    onClick={() => navigate(`/setlist/${ev.id}`)}
+                  >
+                    <div className={styles.mDateBadge} style={{ background: accent + '22', color: accent }}>
+                      <span className={styles.mDay}>{d.getDate()}</span>
+                      <span className={styles.mMon}>{d.toLocaleDateString('pt-PT', { month: 'short' }).replace('.', '')}</span>
+                    </div>
+                    <div className={styles.mInfo}>
+                      <div className={styles.mName}>{ev.name}</div>
+                      {ev.band?.name && <div className={styles.mProject} style={{ color: accent }}>{ev.band.name}</div>}
+                    </div>
+                    <span className={styles.mChevron}>›</span>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
+
       </div>
     </Layout>
   )

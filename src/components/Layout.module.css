@@ -140,6 +140,22 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+}
+
+.eventDate {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text3);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.noEvents {
+  font-size: 12px;
+  color: var(--text3);
+  padding: 6px 10px;
+  font-style: italic;
 }
 
 /* Sidebar bottom — user */

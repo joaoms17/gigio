@@ -18,12 +18,22 @@ function initials(name: string) {
   return ((p[0]?.[0] ?? '') + (p[1]?.[0] ?? '')).toUpperCase() || '?'
 }
 
-interface Project { id: string; name: string; color?: string }
+function shortDate(dateStr: string) {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const diff = Math.round((date.getTime() - today.getTime()) / 86400000)
+  if (diff === 0) return 'hoje'
+  if (diff === 1) return 'amanhã'
+  return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' }).replace('.', '')
+}
+
+interface UpcomingEvent { id: string; name: string; date: string; band: { name: string; color: string } | null }
 
 export default function Layout({ children }: Props) {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [projects, setProjects] = useState<Project[]>([])
+  const [upcoming, setUpcoming] = useState<UpcomingEvent[]>([])
   const [offline, setOffline] = useState(!navigator.onLine)
 
   useEffect(() => {
@@ -37,11 +47,27 @@ export default function Layout({ children }: Props) {
 
   useEffect(() => {
     if (!user) return
+    const today = new Date().toISOString().split('T')[0]
     supabase
       .from('band_members')
-      .select('bands(id, name, color)')
+      .select('band_id')
       .eq('user_id', user.id)
-      .then(({ data }) => setProjects((data ?? []).map((r: any) => r.bands).filter(Boolean)))
+      .then(async ({ data: memberships }) => {
+        const bandIds = (memberships ?? []).map((m: any) => m.band_id)
+        let query = supabase
+          .from('setlists')
+          .select('id, name, date, band:bands(name, color)')
+          .gte('date', today)
+          .order('date', { ascending: true })
+          .limit(6)
+        if (bandIds.length > 0) {
+          query = query.or(`owner_id.eq.${user.id},band_id.in.(${bandIds.join(',')})`)
+        } else {
+          query = query.eq('owner_id', user.id)
+        }
+        const { data } = await query
+        setUpcoming((data ?? []) as unknown as UpcomingEvent[])
+      })
   }, [user])
 
   async function handleSignOut() {
@@ -87,23 +113,24 @@ export default function Layout({ children }: Props) {
             ))}
           </nav>
 
-          {projects.length > 0 && (
-            <div className={styles.projects}>
-              <div className={styles.projectsLabel}>Projetos</div>
-              <div className={styles.projectList}>
-                {projects.map(p => (
-                  <NavLink
-                    key={p.id}
-                    to={`/projects/${p.id}`}
-                    className={({ isActive }) => `${styles.projectItem} ${isActive ? styles.projectActive : ''}`}
-                  >
-                    <span className={styles.projectDot} style={{ background: p.color ?? colorFor(p.id) }} />
-                    <span className={styles.projectName}>{p.name}</span>
-                  </NavLink>
-                ))}
-              </div>
+          <div className={styles.projects}>
+            <div className={styles.projectsLabel}>Próximos eventos</div>
+            <div className={styles.projectList}>
+              {upcoming.length === 0 ? (
+                <span className={styles.noEvents}>Sem eventos agendados</span>
+              ) : upcoming.map(ev => (
+                <NavLink
+                  key={ev.id}
+                  to={`/setlist/${ev.id}`}
+                  className={({ isActive }) => `${styles.projectItem} ${isActive ? styles.projectActive : ''}`}
+                >
+                  <span className={styles.projectDot} style={{ background: ev.band?.color ?? colorFor(ev.id) }} />
+                  <span className={styles.projectName}>{ev.name}</span>
+                  <span className={styles.eventDate}>{shortDate(ev.date)}</span>
+                </NavLink>
+              ))}
             </div>
-          )}
+          </div>
 
           <div className={styles.sidebarBottom}>
             <NavLink
