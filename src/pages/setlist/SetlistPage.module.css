@@ -4,11 +4,13 @@
 .headerLeft { flex: 1; }
 .back { background: none; border: none; font-size: 13px; color: var(--text3); margin-bottom: 6px; display: block; padding: 0; }
 .back:hover { color: var(--gig); }
-.title { font-size: 22px; font-weight: 800; letter-spacing: -0.3px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.title { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
 .editHint { font-size: 14px; color: var(--text3); font-weight: 400; }
 .nameInput { font-size: 22px; font-weight: 800; border: none; border-bottom: 2px solid var(--gig); outline: none; background: transparent; width: 300px; max-width: 100%; }
 .meta { font-size: 12px; color: var(--text3); margin-top: 4px; }
 .metaRow { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.dateVenueGroup { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: nowrap; }
+.dateVenueGroup .metaField { flex: 1; min-width: 0; }
 
 .songsChip {
   display: inline-flex; align-items: center;
@@ -26,7 +28,7 @@
 .metaField:focus-within { border-color: var(--gig); }
 .metaIcon { font-size: 17px; line-height: 1; flex-shrink: 0; }
 
-.venueInput { border: none; background: none; color: var(--text); font-size: 15px; font-weight: 600; min-width: 150px; font-family: inherit; outline: none; }
+.venueInput { flex: 1; width: 100%; min-width: 0; border: none; background: none; color: var(--text); font-size: 15px; font-weight: 600; font-family: inherit; outline: none; }
 .venueInput::placeholder { color: var(--text3); font-weight: 500; }
 .dateInput { border: none; background: none; color: var(--text); font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; outline: none; }
 
@@ -49,17 +51,18 @@
 }
 .librarySearch { width: 100%; padding: 10px 12px; border-radius: 9px; border: 1.5px solid var(--border); background: var(--bg2); color: var(--text); font-size: 14px; margin-bottom: 12px; font-family: inherit; transition: border-color 0.15s; box-sizing: border-box; }
 .librarySearch:focus { outline: none; border-color: var(--gig); }
-.headerActions { display: flex; gap: 8px; flex-shrink: 0; }
-.deleteBtn { padding: 9px 14px; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--text3); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.headerActions { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; min-width: 220px; }
+.secondaryActions { display: flex; gap: 8px; }
+.deleteBtn { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: var(--text3); font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; text-align: center; }
 .deleteBtn:hover { border-color: #ef4444; color: #ef4444; }
-.dupBtn { padding: 9px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--text2); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.dupBtn { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--text2); font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; text-align: center; }
 .dupBtn:hover { border-color: var(--gig); color: var(--gig); }
-.concertBtn { padding: 9px 16px; border: none; border-radius: var(--radius); background: linear-gradient(135deg, var(--gig), var(--io)); color: white; font-size: 13px; font-weight: 700; white-space: nowrap; flex-shrink: 0; cursor: pointer; }
+.concertBtn { width: 100%; padding: 14px 18px; border: none; border-radius: var(--radius); background: linear-gradient(135deg, var(--gig), var(--io)); color: white; font-size: 16px; font-weight: 800; white-space: nowrap; cursor: pointer; box-shadow: 0 4px 16px rgba(255,77,109,0.25); transition: opacity 0.15s; }
+.concertBtn:hover { opacity: 0.9; }
 
 @media (max-width: 640px) {
-  .header { flex-direction: column; align-items: flex-start; }
-  .headerActions { width: 100%; }
-  .deleteBtn, .dupBtn, .concertBtn { flex: 1; text-align: center; }
+  .header { flex-direction: column; align-items: stretch; }
+  .headerActions { width: 100%; min-width: 0; }
 }
 
 .songList { background: var(--bg2); border-radius: var(--radius); padding: 16px; }
