@@ -5,6 +5,7 @@ import AuthPage from './pages/auth/AuthPage'
 import ProjectsPage from './pages/projects/ProjectsPage'
 import ProjectDashboardPage from './pages/projects/ProjectDashboardPage'
 import SetlistPage from './pages/setlist/SetlistPage'
+import SongPage from './pages/song/SongPage'
 import SearchPage from './pages/search/SearchPage'
 import ConcertPage from './pages/concert/ConcertPage'
 import LibraryPage from './pages/library/LibraryPage'
@@ -35,6 +36,7 @@ function AppRoutes() {
 
       {/* Biblioteca pessoal */}
       <Route path="/library" element={<AuthGuard><LibraryPage /></AuthGuard>} />
+      <Route path="/songs/:id" element={<AuthGuard><SongPage /></AuthGuard>} />
       <Route path="/search" element={<AuthGuard><SearchPage /></AuthGuard>} />
 
       {/* Definições */}

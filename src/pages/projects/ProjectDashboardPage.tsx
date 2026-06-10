@@ -34,6 +34,9 @@ interface SongCard {
   tags: string[] | null
   performance_key: string | null
   bpm: number | null
+  has_sync: boolean
+  is_user_edited: boolean
+  source_provider: string | null
   updated_at: string | null
 }
 
@@ -70,6 +73,8 @@ export default function ProjectDashboardPage() {
   const [invites, setInvites] = useState<ProjectInvite[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [songSearch, setSongSearch] = useState('')
+  const [deletingSong, setDeletingSong] = useState<string | null>(null)
 
   // Settings form
   const [settingsName, setSettingsName] = useState('')
@@ -133,10 +138,10 @@ export default function ProjectDashboardPage() {
         .order('date', { ascending: true }),
       supabase
         .from('songs')
-        .select('id, title, artist, tags, performance_key, bpm, updated_at')
+        .select('id, title, artist, tags, performance_key, bpm, has_sync, is_user_edited, source_provider, updated_at')
         .eq('project_id', projectId)
         .order('updated_at', { ascending: false })
-        .limit(50),
+        .limit(200),
       canManage
         ? supabase
             .from('project_invites')
@@ -240,6 +245,14 @@ export default function ProjectDashboardPage() {
     await supabase.from('band_members').update({ instrument: instrumentInput.trim() || null }).eq('band_id', project.id).eq('user_id', user.id)
     setMembers(prev => prev.map(m => m.user_id === user.id ? { ...m, instrument: instrumentInput.trim() || undefined } : m))
     setEditingInstrument(false)
+  }
+
+  async function deleteSong(songId: string, title: string) {
+    if (!confirm(`Remover "${title}" do repertório?`)) return
+    setDeletingSong(songId)
+    await supabase.from('songs').delete().eq('id', songId)
+    setSongs(prev => prev.filter(s => s.id !== songId))
+    setDeletingSong(null)
   }
 
   async function createSetlist() {
@@ -442,8 +455,8 @@ export default function ProjectDashboardPage() {
                     <button className={styles.addBtn} onClick={() => navigate(`/search?project=${project.id}`)}>
                       + Pesquisar letra
                     </button>
-                    <button className={styles.addBtnSecondary} onClick={() => navigate(`/library?project=${project.id}`)}>
-                      + Adicionar manual
+                    <button className={styles.addBtnSecondary} onClick={() => navigate(`/search?project=${project.id}&manual=1`)}>
+                      + Manual
                     </button>
                   </div>
                 )}
@@ -465,23 +478,53 @@ export default function ProjectDashboardPage() {
                   )}
                 </div>
               ) : (
-                <div className={styles.songList}>
-                  {songs.map(s => (
-                    <div key={s.id} className={styles.songRow} onClick={() => navigate(`/library?song=${s.id}`)}>
-                      <div className={styles.songInfo}>
-                        <div className={styles.songTitle}>{s.title}</div>
-                        <div className={styles.songArtist}>{s.artist}</div>
-                      </div>
-                      <div className={styles.songMeta}>
-                        {s.performance_key && <span className={styles.keyBadge}>{s.performance_key}</span>}
-                        {s.bpm && <span className={styles.bpmBadge}>{s.bpm} bpm</span>}
-                        {(s.tags ?? []).slice(0, 2).map(tag => (
-                          <span key={tag} className={styles.tagBadge}>{tag}</span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <input
+                    className={styles.songSearchInput}
+                    placeholder="Filtrar por título ou artista..."
+                    value={songSearch}
+                    onChange={e => setSongSearch(e.target.value)}
+                  />
+                  <div className={styles.songList}>
+                    {songs
+                      .filter(s => !songSearch || `${s.title} ${s.artist}`.toLowerCase().includes(songSearch.toLowerCase()))
+                      .map(s => (
+                        <div
+                          key={s.id}
+                          className={styles.songRow}
+                          onClick={() => navigate(`/songs/${s.id}?project=${project.id}`)}
+                        >
+                          <div className={styles.songInfo}>
+                            <div className={styles.songTitle}>{s.title}</div>
+                            <div className={styles.songArtist}>{s.artist}</div>
+                          </div>
+                          <div className={styles.songMeta}>
+                            {s.performance_key && <span className={styles.keyBadge}>{s.performance_key}</span>}
+                            {s.bpm && <span className={styles.bpmBadge}>{s.bpm} bpm</span>}
+                            {s.has_sync && <span className={styles.syncBadge2}>sync</span>}
+                            {s.is_user_edited && <span className={styles.editedBadge}>editada</span>}
+                            {(s.tags ?? []).slice(0, 2).map(tag => (
+                              <span key={tag} className={styles.tagBadge}>{tag}</span>
+                            ))}
+                          </div>
+                          {canEdit && (
+                            <button
+                              className={styles.songDeleteBtn}
+                              onClick={e => { e.stopPropagation(); deleteSong(s.id, s.title) }}
+                              disabled={deletingSong === s.id}
+                              title="Remover do repertório"
+                            >
+                              {deletingSong === s.id ? '...' : '✕'}
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    }
+                    {songs.filter(s => !songSearch || `${s.title} ${s.artist}`.toLowerCase().includes(songSearch.toLowerCase())).length === 0 && (
+                      <p className={styles.noSongsFilter}>Nenhuma música corresponde a "{songSearch}"</p>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           )}

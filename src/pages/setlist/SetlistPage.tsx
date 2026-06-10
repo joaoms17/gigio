@@ -56,10 +56,13 @@ export default function SetlistPage() {
   const [setlist, setSetlist] = useState<Setlist | null>(null)
   const [songs, setSongs] = useState<Row[]>([])
   const [library, setLibrary] = useState<Song[]>([])
+  const [librarySearch, setLibrarySearch] = useState('')
   const [showLibrary, setShowLibrary] = useState(false)
   const [selected, setSelected] = useState<Song | null>(null)
   const [editingName, setEditingName] = useState(false)
   const [name, setName] = useState('')
+  const [venue, setVenue] = useState('')
+  const [status, setStatus] = useState('draft')
   const [duplicating, setDuplicating] = useState(false)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
@@ -67,7 +70,14 @@ export default function SetlistPage() {
   useEffect(() => {
     if (!id || !user) return
     supabase.from('setlists').select('*').eq('id', id).single()
-      .then(({ data }) => { if (data) { setSetlist(data); setName(data.name) } })
+      .then(({ data }) => {
+        if (data) {
+          setSetlist(data)
+          setName(data.name)
+          setVenue(data.venue ?? '')
+          setStatus(data.status ?? 'draft')
+        }
+      })
     loadSongs()
   }, [id, user])
 
@@ -83,9 +93,30 @@ export default function SetlistPage() {
 
   async function loadLibrary() {
     if (!user) return
-    const { data } = await supabase.from('songs').select('*').eq('owner_id', user.id).order('title')
-    setLibrary(data ?? [])
+    const existingIds = songs.map(s => s.song_id)
+    const [ownRes, projRes] = await Promise.all([
+      supabase.from('songs').select('*').eq('owner_id', user.id).order('title'),
+      setlist?.band_id
+        ? supabase.from('songs').select('*').eq('project_id', setlist.band_id).order('title')
+        : Promise.resolve({ data: [] }),
+    ])
+    const all: Song[] = [...(ownRes.data ?? []), ...(projRes.data ?? [])]
+    const seen = new Set<string>()
+    const unique = all.filter(s => { if (seen.has(s.id)) return false; seen.add(s.id); return true })
+    setLibrary(unique.filter(s => !existingIds.includes(s.id)))
     setShowLibrary(true)
+  }
+
+  async function saveVenue(val: string) {
+    if (!id) return
+    setVenue(val)
+    await supabase.from('setlists').update({ venue: val || null }).eq('id', id)
+  }
+
+  async function saveStatus(val: string) {
+    if (!id) return
+    setStatus(val)
+    await supabase.from('setlists').update({ status: val }).eq('id', id)
   }
 
   async function addSong(song: Song) {
@@ -151,7 +182,9 @@ export default function SetlistPage() {
       <div className={styles.page}>
         <div className={styles.header}>
           <div className={styles.headerLeft}>
-            <button className={styles.back} onClick={() => navigate('/')}>← Home</button>
+            <button className={styles.back} onClick={() => setlist?.band_id ? navigate(`/projects/${setlist.band_id}?tab=setlists`) : navigate('/')}>
+              ← {setlist?.band_id ? 'Projeto' : 'Início'}
+            </button>
             {editingName ? (
               <input
                 className={styles.nameInput}
@@ -166,10 +199,29 @@ export default function SetlistPage() {
                 {setlist?.name ?? '...'} <span className={styles.editHint}>✎</span>
               </h1>
             )}
-            <p className={styles.meta}>
-              {songs.length} música{songs.length !== 1 ? 's' : ''}
-              {totalMin > 0 ? ` · ~${totalMin} min` : ''}
-            </p>
+            <div className={styles.metaRow}>
+              <span className={styles.meta}>
+                {songs.length} música{songs.length !== 1 ? 's' : ''}
+                {totalMin > 0 ? ` · ~${totalMin} min` : ''}
+              </span>
+              <input
+                className={styles.venueInput}
+                value={venue}
+                onChange={e => setVenue(e.target.value)}
+                onBlur={e => saveVenue(e.target.value)}
+                placeholder="Local / evento..."
+              />
+              <select
+                className={styles.statusSelect}
+                value={status}
+                onChange={e => saveStatus(e.target.value)}
+              >
+                <option value="draft">Rascunho</option>
+                <option value="preparing">A preparar</option>
+                <option value="final">Final</option>
+                <option value="archived">Arquivada</option>
+              </select>
+            </div>
           </div>
           <div className={styles.headerActions}>
             <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>⧉ Duplicar</button>
@@ -228,23 +280,32 @@ export default function SetlistPage() {
               <span className={styles.modalTitle}>Biblioteca</span>
               <button className={styles.closeBtn} onClick={() => setShowLibrary(false)}>✕</button>
             </div>
+            <input
+              className={styles.librarySearch}
+              placeholder="Filtrar músicas..."
+              value={librarySearch}
+              onChange={e => setLibrarySearch(e.target.value)}
+              autoFocus
+            />
             {library.length === 0 ? (
               <div className={styles.modalEmpty}>
-                <p>Sem músicas na biblioteca</p>
-                <button className={styles.addBtn} onClick={() => { setShowLibrary(false); navigate('/search') }}>
+                <p>Sem músicas disponíveis</p>
+                <button className={styles.addBtn} onClick={() => { setShowLibrary(false); navigate(setlist?.band_id ? `/search?project=${setlist.band_id}` : '/search') }}>
                   Ir buscar letras →
                 </button>
               </div>
             ) : (
-              library.map(song => (
-                <div key={song.id} className={styles.libraryRow} onClick={() => addSong(song)}>
-                  <div className={styles.songInfo}>
-                    <div className={styles.songTitle}>{song.title}</div>
-                    <div className={styles.songArtist}>{song.artist} {song.has_sync && <span className={styles.syncBadge}>sync ✓</span>}</div>
+              library
+                .filter(s => !librarySearch || `${s.title} ${s.artist}`.toLowerCase().includes(librarySearch.toLowerCase()))
+                .map(song => (
+                  <div key={song.id} className={styles.libraryRow} onClick={() => addSong(song)}>
+                    <div className={styles.songInfo}>
+                      <div className={styles.songTitle}>{song.title}</div>
+                      <div className={styles.songArtist}>{song.artist} {song.has_sync && <span className={styles.syncBadge}>sync ✓</span>}</div>
+                    </div>
+                    <span className={styles.addIcon}>+</span>
                   </div>
-                  <span className={styles.addIcon}>+</span>
-                </div>
-              ))
+                ))
             )}
           </div>
         </div>

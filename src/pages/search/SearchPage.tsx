@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import Layout from '../../components/Layout'
 import { searchLrclib, getLrclibLyrics } from '../../lib/lrclib'
 import { searchGenius } from '../../lib/genius'
@@ -24,6 +25,11 @@ interface ManualState {
 
 export default function SearchPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const projectId = searchParams.get('project')
+
+  const [projectName, setProjectName] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [artistQuery, setArtistQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
@@ -39,20 +45,19 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (!user) return
-    supabase
-      .from('setlists')
-      .select('*')
-      .eq('owner_id', user.id)
+    supabase.from('setlists').select('*').eq('owner_id', user.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => setSetlists(data ?? []))
-  }, [user])
+    if (projectId) {
+      supabase.from('bands').select('name').eq('id', projectId).single()
+        .then(({ data }) => setProjectName(data?.name ?? null))
+    }
+  }, [user, projectId])
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault()
     if (!query.trim()) return
-    setLoading(true)
-    setSearched(true)
-    setResults([])
+    setLoading(true); setSearched(true); setResults([])
     const geniusQuery = artistQuery.trim() ? `${query} ${artistQuery}` : query
     const [lrc, genius] = await Promise.allSettled([
       searchLrclib(query, artistQuery),
@@ -63,22 +68,19 @@ export default function SearchPage() {
       ...(genius.status === 'fulfilled' ? genius.value : []),
     ]
     combined.sort((a, b) => (b.has_sync ? 1 : 0) - (a.has_sync ? 1 : 0))
-    setResults(combined)
-    setLoading(false)
+    setResults(combined); setLoading(false)
   }
 
-  async function fetchLyrics(r: SearchResult): Promise<{ lyrics: string; lines: LyricLine[] | null }> {
+  async function fetchLyrics(r: SearchResult) {
     if (r.source === 'lrclib') {
       const d = await getLrclibLyrics(r.external_id)
-      return { lyrics: d.lyrics, lines: d.lines }
+      return { lyrics: d.lyrics, lines: d.lines, provider: 'lrclib' }
     }
     const lyrics = await getLyricsOvh(r.artist, r.title)
-    return { lyrics, lines: null }
+    return { lyrics, lines: null as LyricLine[] | null, provider: 'lyricsovh' }
   }
 
-  function keyOf(r: SearchResult) {
-    return `${r.source}-${r.external_id}`
-  }
+  function keyOf(r: SearchResult) { return `${r.source}-${r.external_id}` }
 
   async function openPreview(r: SearchResult) {
     setPreview({ result: r, lyrics: '', lines: null, loading: true })
@@ -87,67 +89,60 @@ export default function SearchPage() {
   }
 
   async function insertSong(opts: {
-    title: string
-    artist: string
-    lyrics: string
+    title: string; artist: string; lyrics: string
     source: SearchResult['source'] | 'manual'
-    has_sync: boolean
-    duration_sec?: number
-    lines: LyricLine[] | null
+    has_sync: boolean; duration_sec?: number; lines: LyricLine[] | null
+    provider?: string
   }): Promise<string | null> {
     if (!user) return null
-    const { data: song, error } = await supabase
-      .from('songs')
-      .insert({
-        owner_id: user.id,
-        title: opts.title,
-        artist: opts.artist,
-        lyrics: opts.lyrics,
-        source: opts.source,
-        has_sync: opts.has_sync,
-        duration_sec: opts.duration_sec,
-      })
-      .select()
-      .single()
+    const { data: song, error } = await supabase.from('songs').insert({
+      owner_id: user.id,
+      title: opts.title,
+      artist: opts.artist,
+      lyrics: opts.lyrics,
+      original_lyrics: opts.lyrics,
+      edited_lyrics: opts.lyrics,
+      source: opts.source,
+      source_provider: opts.provider ?? opts.source ?? 'manual',
+      has_sync: opts.has_sync,
+      duration_sec: opts.duration_sec,
+      project_id: projectId ?? null,
+      is_user_edited: false,
+    }).select().single()
     if (error) throw error
-    if (song && opts.lines && opts.lines.length) {
+    if (song && opts.lines?.length) {
       await supabase.from('lyric_syncs').insert({ song_id: song.id, lines: opts.lines })
     }
     return song?.id ?? null
   }
 
   async function addToSetlist(setlistId: string, songId: string) {
-    const { count } = await supabase
-      .from('setlist_songs')
-      .select('*', { count: 'exact', head: true })
-      .eq('setlist_id', setlistId)
+    const { count } = await supabase.from('setlist_songs')
+      .select('*', { count: 'exact', head: true }).eq('setlist_id', setlistId)
     await supabase.from('setlist_songs').insert({ setlist_id: setlistId, song_id: songId, position: count ?? 0 })
   }
 
-  // Adicionar com destino escolhido (null = só biblioteca)
-  async function doAdd(r: SearchResult, setlistId: string | null) {
+  async function doAdd(r: SearchResult, setlistId: string | null, toProject = false) {
     if (!user || saving) return
     setPicker(null)
     setSaving(keyOf(r))
     try {
-      const { lyrics, lines } = await fetchLyrics(r)
+      const { lyrics, lines, provider } = await fetchLyrics(r)
       if (!lyrics.trim()) {
-        // sem letra → abrir modal manual, guardando o destino
         setSaving(null)
         setManual({ title: r.title, artist: r.artist, lyrics: '', setlistId })
         return
       }
       const songId = await insertSong({
-        title: r.title,
-        artist: r.artist,
-        lyrics,
-        source: r.source,
-        has_sync: r.has_sync && !!lines,
-        duration_sec: r.duration_sec,
-        lines,
+        title: r.title, artist: r.artist, lyrics,
+        source: r.source, has_sync: r.has_sync && !!lines,
+        duration_sec: r.duration_sec, lines, provider,
       })
       if (songId && setlistId) await addToSetlist(setlistId, songId)
       setSaved(prev => [...prev, keyOf(r)])
+      if (songId && (toProject || projectId)) {
+        navigate(`/songs/${songId}?project=${projectId ?? ''}`)
+      }
     } catch (err: any) {
       alert('Erro ao guardar: ' + (err?.message ?? err))
     } finally {
@@ -160,15 +155,12 @@ export default function SearchPage() {
     setSavingManual(true)
     try {
       const songId = await insertSong({
-        title: manual.title.trim(),
-        artist: manual.artist.trim(),
-        lyrics: manual.lyrics,
-        source: 'manual',
-        has_sync: false,
-        lines: null,
+        title: manual.title.trim(), artist: manual.artist.trim(),
+        lyrics: manual.lyrics, source: 'manual', has_sync: false, lines: null, provider: 'manual',
       })
       if (songId && manual.setlistId) await addToSetlist(manual.setlistId, songId)
       setManual(null)
+      if (songId && projectId) navigate(`/songs/${songId}?project=${projectId}`)
     } catch (err: any) {
       alert('Erro ao guardar: ' + (err?.message ?? err))
     } finally {
@@ -179,15 +171,30 @@ export default function SearchPage() {
   return (
     <Layout>
       <div className={styles.page}>
-        <h1 className={styles.title}>Buscar Letras</h1>
-        <p className={styles.sub}>LRClib (com sincronização) e lyrics.ovh. Guarda na biblioteca ou numa setlist.</p>
+        <div className={styles.pageHeader}>
+          {projectId && (
+            <button className={styles.backBtn} onClick={() => navigate(`/projects/${projectId}?tab=repertoire`)}>
+              ← {projectName ?? 'Projeto'}
+            </button>
+          )}
+          <h1 className={styles.title}>
+            {projectId ? `Adicionar ao repertório` : 'Buscar Letras'}
+          </h1>
+          {projectId && projectName && (
+            <p className={styles.projectCtx}>Projeto: <strong>{projectName}</strong></p>
+          )}
+          {!projectId && (
+            <p className={styles.sub}>LRClib (com sincronização) e lyrics.ovh</p>
+          )}
+        </div>
 
         <form onSubmit={handleSearch} className={styles.searchForm}>
           <input
             className={styles.searchInput}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Música ou título..."
+            placeholder="Título da música..."
+            autoFocus
           />
           <input
             className={styles.artistInput}
@@ -204,7 +211,7 @@ export default function SearchPage() {
           {loading && (
             <div className={styles.loadingBox}>
               <div className={styles.spinner} />
-              <span>A pesquisar...</span>
+              <span>A pesquisar em LRClib e lyrics.ovh...</span>
             </div>
           )}
 
@@ -214,62 +221,64 @@ export default function SearchPage() {
             const isSaving = saving === k
             return (
               <div key={k} className={styles.resultRow}>
-                <div className={`${styles.thumb} ${styles[r.source]}`} />
                 <div className={styles.info}>
                   <div className={styles.resultTitle}>
                     {r.title}
-                    {r.source === 'lrclib' ? (
-                      <span className={`${styles.badge} ${styles.lrclib}`}>LRClib</span>
-                    ) : (
-                      <span className={`${styles.badge} ${styles.text}`}>Texto</span>
-                    )}
+                    <span className={`${styles.badge} ${r.source === 'lrclib' ? styles.lrclib : styles.textBadge}`}>
+                      {r.source === 'lrclib' ? 'LRClib' : 'Texto'}
+                    </span>
                     {r.has_sync && <span className={styles.syncBadge}>sync ✓</span>}
                   </div>
                   <div className={styles.resultArtist}>
                     {r.artist}
-                    {r.duration_sec
-                      ? ` · ${Math.floor(r.duration_sec / 60)}:${String(r.duration_sec % 60).padStart(2, '0')}`
-                      : ''}
+                    {r.duration_sec ? ` · ${Math.floor(r.duration_sec / 60)}:${String(r.duration_sec % 60).padStart(2, '0')}` : ''}
                   </div>
                 </div>
-                <button className={styles.previewBtn} onClick={() => openPreview(r)} disabled={isSaving}>
-                  Pré-ver
-                </button>
-                <button
-                  className={isSaved ? styles.savedBtn : styles.addBtn}
-                  onClick={() => setPicker(r)}
-                  disabled={isSaved || !!saving}
-                >
-                  {isSaving ? '...' : isSaved ? '✓ Guardado' : '+ Adicionar'}
-                </button>
+                <div className={styles.rowActions}>
+                  <button className={styles.previewBtn} onClick={() => openPreview(r)} disabled={isSaving}>
+                    Pré-ver
+                  </button>
+                  <button
+                    className={isSaved ? styles.savedBtn : styles.addBtn}
+                    onClick={() => projectId ? doAdd(r, null, true) : setPicker(r)}
+                    disabled={isSaved || !!saving}
+                  >
+                    {isSaving ? '...' : isSaved ? '✓ Guardado' : projectId ? '+ Adicionar' : '+ Adicionar'}
+                  </button>
+                </div>
               </div>
             )
           })}
 
           {!loading && searched && results.length === 0 && (
-            <p className={styles.empty}>Sem resultados para "{query}".</p>
+            <div className={styles.noResults}>
+              <p>Não encontrei letra para "{query}".</p>
+              <p className={styles.noResultsSub}>Tenta outro título/artista ou adiciona manualmente.</p>
+              <button className={styles.manualBtn} onClick={() => setManual({ title: query, artist: artistQuery, lyrics: '', setlistId: null })}>
+                Adicionar manualmente
+              </button>
+            </div>
           )}
         </div>
 
-        <div className={styles.fallback}>
-          <span className={styles.fallbackLabel}>Não encontraste?</span>
-          <button className={styles.fallbackBtn} onClick={() => setManual({ title: query, artist: artistQuery, lyrics: '', setlistId: null })}>
-            ✏ Escrever letra manualmente
-          </button>
-          <button className={styles.fallbackBtn} onClick={() => setManual({ title: query, artist: artistQuery, lyrics: '', setlistId: null })}>
-            📋 Colar de texto
-          </button>
-        </div>
+        {!searched && (
+          <div className={styles.fallback}>
+            <span className={styles.fallbackLabel}>Tens uma letra?</span>
+            <button className={styles.fallbackBtn} onClick={() => setManual({ title: '', artist: '', lyrics: '', setlistId: null })}>
+              ✏ Escrever / colar manualmente
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* MODAL: escolher destino ao adicionar */}
-      {picker && (
+      {/* MODAL: escolher destino */}
+      {picker && !projectId && (
         <div className={styles.overlay} onClick={() => setPicker(null)}>
           <div className={styles.pickerModal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div>
-                <div className={styles.modalTitle}>Adicionar</div>
-                <div className={styles.modalArtist}>{picker.title} — {picker.artist}</div>
+                <div className={styles.modalTitle}>{picker.title}</div>
+                <div className={styles.modalArtist}>{picker.artist}</div>
               </div>
               <button className={styles.closeBtn} onClick={() => setPicker(null)}>✕</button>
             </div>
@@ -277,7 +286,7 @@ export default function SearchPage() {
               <span className={styles.targetIcon}>📚</span>
               <span>Só na biblioteca</span>
             </button>
-            {setlists.length > 0 && <div className={styles.targetDivider}>Ou adicionar a uma setlist</div>}
+            {setlists.length > 0 && <div className={styles.targetDivider}>Ou directo para uma setlist</div>}
             <div className={styles.targetList}>
               {setlists.map(s => (
                 <button key={s.id} className={styles.targetRow} onClick={() => doAdd(picker, s.id)}>
@@ -309,12 +318,16 @@ export default function SearchPage() {
                   <div key={i} className={line.trim() === '' ? styles.lyricBreak : styles.lyricLine}>{line || ' '}</div>
                 ))
               ) : (
-                <p className={styles.empty}>Sem letra disponível nesta fonte. Podes adicionar e colar à mão.</p>
+                <p className={styles.empty}>Sem letra disponível nesta fonte. Podes adicionar manualmente.</p>
               )}
             </div>
             <div className={styles.modalFooter}>
               {preview.lines && <span className={styles.syncNote}>✓ Inclui sincronização ({preview.lines.length} linhas)</span>}
-              <button className={styles.addBtn} onClick={() => { const r = preview.result; setPreview(null); setPicker(r) }} disabled={!!saving}>
+              <button
+                className={styles.addBtn}
+                onClick={() => { const r = preview.result; setPreview(null); projectId ? doAdd(r, null, true) : setPicker(r) }}
+                disabled={!!saving}
+              >
                 + Adicionar
               </button>
             </div>
@@ -322,7 +335,7 @@ export default function SearchPage() {
         </div>
       )}
 
-      {/* MODAL ESCREVER / COLAR */}
+      {/* MODAL MANUAL */}
       {manual && (
         <div className={styles.overlay} onClick={() => setManual(null)}>
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
@@ -332,20 +345,23 @@ export default function SearchPage() {
             </div>
             <div className={styles.manualForm}>
               <div className={styles.manualRow}>
-                <input className={styles.manualInput} placeholder="Título" value={manual.title} onChange={e => setManual({ ...manual, title: e.target.value })} />
-                <input className={styles.manualInput} placeholder="Artista" value={manual.artist} onChange={e => setManual({ ...manual, artist: e.target.value })} />
+                <input className={styles.manualInput} placeholder="Título *" value={manual.title} onChange={e => setManual({ ...manual, title: e.target.value })} />
+                <input className={styles.manualInput} placeholder="Artista *" value={manual.artist} onChange={e => setManual({ ...manual, artist: e.target.value })} />
               </div>
               <textarea
                 className={styles.manualTextarea}
                 placeholder="Cola ou escreve a letra aqui...&#10;&#10;[Verso 1]&#10;..."
                 value={manual.lyrics}
                 onChange={e => setManual({ ...manual, lyrics: e.target.value })}
-                rows={12}
+                rows={10}
               />
             </div>
             <div className={styles.modalFooter}>
-              {manual.setlistId && <span className={styles.syncNote}>Será adicionada à setlist escolhida</span>}
-              <button className={styles.addBtn} onClick={saveManual} disabled={savingManual || !manual.title.trim() || !manual.artist.trim()}>
+              <button
+                className={styles.addBtn}
+                onClick={saveManual}
+                disabled={savingManual || !manual.title.trim() || !manual.artist.trim()}
+              >
                 {savingManual ? 'A guardar...' : 'Guardar música'}
               </button>
             </div>
