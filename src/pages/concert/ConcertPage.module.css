@@ -84,11 +84,26 @@
 }
 .modeBtn:hover { background: rgba(255,255,255,0.12); }
 
-/* Progress */
-.progressWrap { padding: 0 16px 4px; flex-shrink: 0; }
-.progressBg { height: 2px; background: rgba(255,255,255,0.08); border-radius: 1px; }
-.progressFill { height: 2px; border-radius: 1px; transition: width 0.1s linear; }
-.progressLabels { display: flex; justify-content: space-between; font-size: 10px; opacity: 0.25; margin-top: 4px; }
+/* Progress — scrubable */
+.progressWrap { padding: 0 16px 4px; flex-shrink: 0; user-select: none; }
+.progressBg {
+  height: 6px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  position: relative;
+  touch-action: none;
+}
+.progressFill { height: 6px; border-radius: 3px; transition: width 0.08s linear; }
+.progressThumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.progressLabels { display: flex; justify-content: space-between; font-size: 10px; opacity: 0.3; margin-top: 6px; }
 
 /* Song notes */
 .notesBanner {
@@ -191,6 +206,28 @@
   cursor: pointer;
   flex-shrink: 0;
 }
+
+/* Sync controls — play + ±10s */
+.syncControls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 16px 4px;
+  flex-shrink: 0;
+}
+.seekBtn {
+  background: rgba(255,255,255,0.08);
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.seekBtn:hover { opacity: 1; }
 
 /* Offset */
 .offsetRow {
