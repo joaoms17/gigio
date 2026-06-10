@@ -9,11 +9,13 @@ const DEFAULT_THEME: ConcertTheme = {
   bg: '#0d0d0d', active_color: '#ffffff', accent_color: '#FF4D6D', font_size: 26
 }
 
+type Row = SetlistSong & { song: Song }
+
 export default function ConcertPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [songs, setSongs] = useState<(SetlistSong & { song: Song })[]>([])
+  const [songs, setSongs] = useState<Row[]>([])
   const [songIdx, setSongIdx] = useState(0)
   const [lineIdx, setLineIdx] = useState(0)
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_THEME)
@@ -22,12 +24,13 @@ export default function ConcertPage() {
   const [offset, setOffset] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [playing, setPlaying] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showSetlist, setShowSetlist] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startRef = useRef<number>(0)
 
   useEffect(() => {
     if (!id || !user) return
-    // keep screen awake
     let wakeLock: any = null
     navigator.wakeLock?.request('screen').then(wl => { wakeLock = wl }).catch(() => {})
 
@@ -50,6 +53,19 @@ export default function ConcertPage() {
       setSyncLines(null)
     }
   }, [songIdx, songs])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); advance() }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); retreat() }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); if (songIdx > 0) setSongIdx(s => s - 1) }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); if (songIdx < songs.length - 1) setSongIdx(s => s + 1) }
+      else if (e.key === 'Escape') navigate(`/setlist/${id}`)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [songIdx, lineIdx, songs.length, syncLines])
 
   function startTimer() {
     startRef.current = Date.now() - elapsed * 1000
@@ -75,15 +91,17 @@ export default function ConcertPage() {
 
   function togglePlay() { playing ? stopTimer() : startTimer() }
 
-  const currentSong = songs[songIdx]?.song
-  const plainLines = currentSong?.lyrics?.split('\n') ?? []
+  const currentRow = songs[songIdx]
+  const currentSong = currentRow?.song
+  const plainLines = (currentSong?.edited_lyrics ?? currentSong?.lyrics ?? '').split('\n')
   const lines = syncLines ? syncLines.map(l => l.text) : plainLines
   const duration = currentSong?.duration_sec ?? 0
   const progress = duration ? Math.min(elapsed / duration, 1) : 0
+  const displayKey = currentRow?.performance_key ?? currentSong?.performance_key ?? currentSong?.original_key
 
   function advance() {
     if (lineIdx < lines.length - 1) setLineIdx(l => l + 1)
-    else if (songIdx < songs.length - 1) { setSongIdx(s => s + 1) }
+    else if (songIdx < songs.length - 1) setSongIdx(s => s + 1)
   }
   function retreat() {
     if (lineIdx > 0) setLineIdx(l => l - 1)
@@ -98,32 +116,60 @@ export default function ConcertPage() {
       {/* Header */}
       <div className={styles.header}>
         <button className={styles.exitBtn} onClick={() => navigate(`/setlist/${id}`)}>✕</button>
-        <div className={styles.songName} style={{ color: theme.accent_color }}>
-          {currentSong?.title} — {currentSong?.artist}
+        <div className={styles.headerCenter}>
+          <div className={styles.songName} style={{ color: theme.active_color }}>
+            {currentSong?.title}
+            {displayKey && <span className={styles.keyChip} style={{ borderColor: theme.accent_color, color: theme.accent_color }}>{displayKey}</span>}
+          </div>
+          <div className={styles.artistName} style={{ color: theme.active_color, opacity: 0.4 }}>
+            {currentSong?.artist}
+            <span className={styles.songCounter} style={{ color: theme.accent_color }}>
+              {songIdx + 1}/{songs.length}
+            </span>
+          </div>
         </div>
         <div className={styles.headerRight}>
           {syncLines && (
             <button
               className={styles.modeBtn}
-              style={{ color: autoMode ? theme.accent_color : undefined }}
+              style={{ color: autoMode ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
               onClick={() => { setAutoMode(m => !m); if (!autoMode) startTimer() }}
             >
-              {autoMode ? '⟳ auto' : '✋ manual'}
+              {autoMode ? '⟳' : '✋'}
             </button>
           )}
+          <button
+            className={styles.modeBtn}
+            style={{ color: showSetlist ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
+            onClick={() => setShowSetlist(s => !s)}
+          >≡</button>
+          <button
+            className={styles.modeBtn}
+            style={{ color: showSettings ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
+            onClick={() => setShowSettings(s => !s)}
+          >⚙</button>
         </div>
       </div>
 
-      {/* Progress */}
-      <div className={styles.progressWrap}>
-        <div className={styles.progressBg}>
-          <div className={styles.progressFill} style={{ width: `${progress * 100}%`, background: theme.accent_color }} />
+      {/* Progress bar */}
+      {duration > 0 && (
+        <div className={styles.progressWrap}>
+          <div className={styles.progressBg}>
+            <div className={styles.progressFill} style={{ width: `${progress * 100}%`, background: theme.accent_color }} />
+          </div>
+          <div className={styles.progressLabels} style={{ color: theme.active_color }}>
+            <span>{Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}</span>
+            <span>{Math.floor(duration / 60)}:{String(duration % 60).padStart(2, '0')}</span>
+          </div>
         </div>
-        <div className={styles.progressLabels}>
-          <span>{Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}</span>
-          <span>{Math.floor(duration / 60)}:{String(duration % 60).padStart(2, '0')}</span>
+      )}
+
+      {/* Song notes banner */}
+      {currentRow?.notes && (
+        <div className={styles.notesBanner} style={{ borderColor: theme.accent_color + '40', color: theme.active_color, opacity: 0.6 }}>
+          {currentRow.notes}
         </div>
-      </div>
+      )}
 
       {/* Lyrics */}
       <div className={styles.lyricsArea} onClick={advance}>
@@ -138,7 +184,7 @@ export default function ConcertPage() {
               style={{
                 color: isActive ? theme.active_color : theme.active_color,
                 fontSize: isActive ? theme.font_size : theme.font_size * 0.72,
-                opacity: isActive ? 1 : isPast ? 0.25 : 0.45,
+                opacity: isActive ? 1 : isPast ? 0.2 : 0.4,
                 fontWeight: isActive ? 800 : 600,
               }}
             >
@@ -146,17 +192,30 @@ export default function ConcertPage() {
             </div>
           )
         })}
+        {lines.length === 0 && (
+          <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
+            Sem letra disponível
+          </div>
+        )}
       </div>
 
       {/* Controls */}
       <div className={styles.controls}>
-        <button className={styles.navBtn} style={{ color: theme.active_color, opacity: 0.5 }} onClick={retreat}>← Anterior</button>
+        <button
+          className={styles.navBtn}
+          style={{ color: theme.active_color, opacity: songIdx === 0 && lineIdx === 0 ? 0.2 : 0.5 }}
+          onClick={retreat}
+        >← Anterior</button>
         {autoMode && (
           <button className={styles.playBtn} style={{ background: theme.accent_color }} onClick={togglePlay}>
             {playing ? '⏸' : '▶'}
           </button>
         )}
-        <button className={styles.navBtn} style={{ color: theme.active_color, opacity: 0.7 }} onClick={advance}>Próxima →</button>
+        <button
+          className={styles.navBtn}
+          style={{ color: theme.active_color, opacity: songIdx === songs.length - 1 && lineIdx >= lines.length - 1 ? 0.2 : 0.7 }}
+          onClick={advance}
+        >Próxima →</button>
       </div>
 
       {autoMode && (
@@ -168,23 +227,58 @@ export default function ConcertPage() {
         </div>
       )}
 
-      {/* Setlist sidebar */}
-      <div className={styles.setlistBar}>
-        {songs.map((ss, i) => (
-          <button
-            key={ss.id}
-            className={styles.setlistItem}
-            style={{
-              background: i === songIdx ? theme.accent_color : 'transparent',
-              color: i === songIdx ? '#fff' : i < songIdx ? theme.active_color : theme.active_color,
-              opacity: i < songIdx ? 0.3 : 1,
-            }}
-            onClick={() => setSongIdx(i)}
-          >
-            {i + 1}. {ss.song?.title}
-          </button>
-        ))}
-      </div>
+      {/* Settings panel */}
+      {showSettings && (
+        <div className={styles.settingsPanel} style={{ background: theme.bg, borderColor: 'rgba(255,255,255,0.1)' }}>
+          <div className={styles.settingsRow}>
+            <span style={{ color: theme.active_color, opacity: 0.5, fontSize: 12 }}>Tamanho</span>
+            <div className={styles.settingsControls}>
+              <button className={styles.settingBtn} style={{ color: theme.active_color }} onClick={() => setTheme(t => ({ ...t, font_size: Math.max(16, t.font_size - 2) }))}>A−</button>
+              <span style={{ color: theme.active_color, fontSize: 12, fontWeight: 700, minWidth: 30, textAlign: 'center' }}>{theme.font_size}</span>
+              <button className={styles.settingBtn} style={{ color: theme.active_color }} onClick={() => setTheme(t => ({ ...t, font_size: Math.min(52, t.font_size + 2) }))}>A+</button>
+            </div>
+          </div>
+          <div className={styles.settingsRow}>
+            <span style={{ color: theme.active_color, opacity: 0.5, fontSize: 12 }}>Cor destaque</span>
+            <div className={styles.colorRow}>
+              {['#FF4D6D','#7C3AED','#2563EB','#059669','#D97706','#ffffff'].map(c => (
+                <button
+                  key={c}
+                  className={styles.colorDot}
+                  style={{ background: c, outline: theme.accent_color === c ? `2px solid ${c}` : 'none', outlineOffset: 2 }}
+                  onClick={() => setTheme(t => ({ ...t, accent_color: c }))}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Setlist panel */}
+      {showSetlist && (
+        <div className={styles.setlistPanel} style={{ borderTopColor: 'rgba(255,255,255,0.06)' }}>
+          {songs.map((ss, i) => (
+            <button
+              key={ss.id}
+              className={styles.setlistItem}
+              style={{
+                background: i === songIdx ? theme.accent_color : 'transparent',
+                color: i === songIdx ? '#fff' : theme.active_color,
+                opacity: i < songIdx ? 0.3 : 1,
+              }}
+              onClick={() => { setSongIdx(i); setShowSetlist(false) }}
+            >
+              <span className={styles.setlistNum}>{i + 1}</span>
+              <span className={styles.setlistTitle}>{ss.song?.title}</span>
+              {(ss.performance_key ?? ss.song?.original_key) && (
+                <span className={styles.setlistKey} style={{ color: i === songIdx ? 'rgba(255,255,255,0.7)' : theme.accent_color }}>
+                  {ss.performance_key ?? ss.song?.original_key}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

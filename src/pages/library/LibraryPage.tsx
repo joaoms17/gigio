@@ -103,15 +103,11 @@ export default function LibraryPage() {
                 <div className={styles.previewMeta}>
                   <div className={styles.previewTitle}>{selected.title}</div>
                   <div className={styles.previewArtist}>{selected.artist}</div>
-                  {selected.duration_sec ? (
-                    <div className={styles.previewDur}>
-                      {Math.floor(selected.duration_sec / 60)}:{String(selected.duration_sec % 60).padStart(2, '0')}
-                    </div>
-                  ) : null}
+                  <button className={styles.editBtn} onClick={() => navigate(`/songs/${selected.id}`)}>✎ Editar</button>
                 </div>
                 <div className={styles.lyrics}>
-                  {selected.lyrics
-                    ? <LyricsView lyrics={selected.lyrics} />
+                  {(selected.edited_lyrics ?? selected.lyrics)
+                    ? <LyricsView lyrics={selected.edited_lyrics ?? selected.lyrics} />
                     : <span className={styles.noLyrics}>Sem letra guardada</span>
                   }
                 </div>

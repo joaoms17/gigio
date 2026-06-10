@@ -4,13 +4,15 @@
   flex-direction: column;
   padding: 0;
   user-select: none;
+  overflow: hidden;
 }
 
 .header {
   display: flex;
   align-items: center;
   padding: 12px 16px;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 .exitBtn {
   background: rgba(255,255,255,0.08);
@@ -21,38 +23,93 @@
   border-radius: 50%;
   font-size: 14px;
   flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.exitBtn:hover { background: rgba(255,255,255,0.14); }
+
+.headerCenter {
+  flex: 1;
+  min-width: 0;
 }
 .songName {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 800;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
-.headerRight { display: flex; gap: 8px; flex-shrink: 0; }
-.modeBtn {
-  background: rgba(255,255,255,0.08);
-  border: none;
-  color: rgba(255,255,255,0.4);
-  font-size: 11px;
+.keyChip {
+  font-size: 10px;
   font-weight: 700;
-  padding: 5px 10px;
-  border-radius: 6px;
+  padding: 1px 7px;
+  border-radius: 12px;
+  border: 1.5px solid;
+  flex-shrink: 0;
+  letter-spacing: 0.04em;
+}
+.artistName {
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 1px;
+}
+.songCounter {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
-.progressWrap { padding: 0 16px; margin-bottom: 8px; }
+.headerRight {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.modeBtn {
+  background: rgba(255,255,255,0.06);
+  border: none;
+  font-size: 14px;
+  font-weight: 700;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modeBtn:hover { background: rgba(255,255,255,0.12); }
+
+/* Progress */
+.progressWrap { padding: 0 16px 4px; flex-shrink: 0; }
 .progressBg { height: 2px; background: rgba(255,255,255,0.08); border-radius: 1px; }
 .progressFill { height: 2px; border-radius: 1px; transition: width 0.1s linear; }
-.progressLabels { display: flex; justify-content: space-between; font-size: 10px; color: rgba(255,255,255,0.2); margin-top: 4px; }
+.progressLabels { display: flex; justify-content: space-between; font-size: 10px; opacity: 0.25; margin-top: 4px; }
 
+/* Song notes */
+.notesBanner {
+  margin: 0 16px 8px;
+  padding: 8px 12px;
+  border: 1px solid;
+  border-radius: 8px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* Lyrics */
 .lyricsArea {
   flex: 1;
-  padding: 24px 24px 16px;
+  padding: 24px 28px 16px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   cursor: pointer;
+  min-height: 0;
 }
 
 .lyricLine {
@@ -61,12 +118,20 @@
   min-height: 1.8em;
 }
 
+.emptyLyrics {
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Controls */
 .controls {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   padding: 12px 16px;
+  flex-shrink: 0;
 }
 .navBtn {
   background: rgba(255,255,255,0.06);
@@ -75,7 +140,10 @@
   font-weight: 700;
   padding: 10px 18px;
   border-radius: 10px;
+  cursor: pointer;
+  transition: opacity 0.15s;
 }
+.navBtn:hover { background: rgba(255,255,255,0.1); }
 .playBtn {
   border: none;
   width: 44px;
@@ -83,14 +151,18 @@
   border-radius: 50%;
   font-size: 16px;
   color: white;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
+/* Offset */
 .offsetRow {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 4px 16px 8px;
+  padding: 0 16px 8px;
+  flex-shrink: 0;
 }
 .offsetBtn {
   background: rgba(255,255,255,0.06);
@@ -100,23 +172,87 @@
   width: 28px;
   height: 28px;
   border-radius: 6px;
+  cursor: pointer;
 }
 
-.setlistBar {
-  border-top: 1px solid rgba(255,255,255,0.06);
-  padding: 10px 12px;
+/* Settings panel */
+.settingsPanel {
+  border-top: 1px solid;
+  padding: 12px 16px;
+  flex-shrink: 0;
+}
+.settingsRow {
   display: flex;
-  gap: 6px;
-  overflow-x: auto;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+.settingsControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settingBtn {
+  background: rgba(255,255,255,0.08);
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.colorRow {
+  display: flex;
+  gap: 8px;
+}
+.colorDot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+.colorDot:hover { transform: scale(1.2); }
+
+/* Setlist panel */
+.setlistPanel {
+  border-top: 1px solid;
+  padding: 8px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 40dvh;
+  overflow-y: auto;
   flex-shrink: 0;
 }
 .setlistItem {
   border: none;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 12px;
   border-radius: 8px;
-  white-space: nowrap;
-  flex-shrink: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
   transition: background 0.15s, opacity 0.15s;
+}
+.setlistNum {
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.5;
+  min-width: 16px;
+}
+.setlistTitle {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.setlistKey {
+  font-size: 10px;
+  font-weight: 800;
+  flex-shrink: 0;
 }
