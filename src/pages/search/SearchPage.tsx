@@ -6,6 +6,7 @@ import { searchGenius } from '../../lib/genius'
 import { getLyricsOvh } from '../../lib/lyricsovh'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
+import { extractLyricsFromPdf } from '../../lib/pdfLyrics'
 import type { SearchResult, LyricLine, Setlist } from '../../types'
 import styles from './SearchPage.module.css'
 
@@ -41,6 +42,7 @@ export default function SearchPage() {
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const [manual, setManual] = useState<ManualState | null>(null)
   const [savingManual, setSavingManual] = useState(false)
+  const [importingPdf, setImportingPdf] = useState(false)
   const [picker, setPicker] = useState<SearchResult | null>(null)
   const [setlists, setSetlists] = useState<Setlist[]>([])
 
@@ -364,6 +366,31 @@ export default function SearchPage() {
               <div className={styles.manualRow}>
                 <input className={styles.manualInput} placeholder="Título *" value={manual.title} onChange={e => setManual({ ...manual, title: e.target.value })} />
                 <input className={styles.manualInput} placeholder="Artista *" value={manual.artist} onChange={e => setManual({ ...manual, artist: e.target.value })} />
+              </div>
+              <div className={styles.pdfRow}>
+                <label className={styles.pdfBtn}>
+                  {importingPdf ? '⏳ A ler PDF...' : '📄 Importar letra de PDF'}
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    style={{ display: 'none' }}
+                    disabled={importingPdf}
+                    onChange={async e => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      setImportingPdf(true)
+                      try {
+                        const lyrics = await extractLyricsFromPdf(file)
+                        setManual(m => m ? { ...m, lyrics } : m)
+                      } catch {
+                        alert('Não foi possível ler o PDF. Tenta copiar o texto manualmente.')
+                      } finally {
+                        setImportingPdf(false)
+                        e.target.value = ''
+                      }
+                    }}
+                  />
+                </label>
               </div>
               <textarea
                 className={styles.manualTextarea}

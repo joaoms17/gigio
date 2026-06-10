@@ -139,6 +139,14 @@
 .syncNote { font-size: 12px; color: #10b981; font-weight: 600; margin-right: auto; }
 
 .manualForm { display: flex; flex-direction: column; gap: 10px; }
+.pdfRow { display: flex; }
+.pdfBtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  background: var(--bg2); border: 1.5px solid var(--border); color: var(--text2);
+  cursor: pointer; transition: border-color 0.15s, color 0.15s; white-space: nowrap;
+}
+.pdfBtn:hover { border-color: var(--io); color: var(--io); }
 .manualRow { display: flex; gap: 8px; }
 .manualInput {
   flex: 1; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px;

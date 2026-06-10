@@ -29,6 +29,7 @@ export default function ConcertPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startRef = useRef<number>(0)
   const saveThemeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const activeLineRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!id || !user) return
@@ -54,6 +55,12 @@ export default function ConcertPage() {
       setSyncLines(null)
     }
   }, [songIdx, songs])
+
+  // Auto-scroll active line into view in manual (no-sync) mode
+  useEffect(() => {
+    if (syncLines) return
+    activeLineRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [lineIdx, syncLines])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -182,32 +189,60 @@ export default function ConcertPage() {
       )}
 
       {/* Lyrics */}
-      <div className={styles.lyricsArea} onClick={advance}>
-        {visibleLines.map((line, i) => {
-          const absIdx = visibleStart + i
-          const isActive = absIdx === lineIdx
-          const isPast = absIdx < lineIdx
-          return (
-            <div
-              key={absIdx}
-              className={styles.lyricLine}
-              style={{
-                color: isActive ? theme.active_color : theme.active_color,
-                fontSize: isActive ? theme.font_size : theme.font_size * 0.72,
-                opacity: isActive ? 1 : isPast ? 0.2 : 0.4,
-                fontWeight: isActive ? 800 : 600,
-              }}
-            >
-              {line || ' '}
+      {!syncLines ? (
+        /* Manual mode: full scrollable lyrics, equal visual weight */
+        <div className={styles.lyricsScroll}>
+          {lines.length === 0 ? (
+            <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
+              Sem letra disponível
             </div>
-          )
-        })}
-        {lines.length === 0 && (
-          <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
-            Sem letra disponível
-          </div>
-        )}
-      </div>
+          ) : lines.map((line, i) => (
+            <div
+              key={i}
+              ref={i === lineIdx ? activeLineRef : null}
+              className={styles.lyricLineManual}
+              style={{
+                color: theme.active_color,
+                fontSize: theme.font_size * 0.88,
+                fontWeight: i === lineIdx ? 800 : 400,
+                opacity: i < lineIdx ? 0.3 : 1,
+                borderLeftColor: i === lineIdx ? theme.accent_color : 'transparent',
+              }}
+              onClick={() => setLineIdx(i)}
+            >
+              {line || ' '}
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* Sync mode: windowed, auto-scrolls via timer */
+        <div className={styles.lyricsArea} onClick={advance}>
+          {visibleLines.map((line, i) => {
+            const absIdx = visibleStart + i
+            const isActive = absIdx === lineIdx
+            const isPast = absIdx < lineIdx
+            return (
+              <div
+                key={absIdx}
+                className={styles.lyricLine}
+                style={{
+                  color: theme.active_color,
+                  fontSize: isActive ? theme.font_size : theme.font_size * 0.72,
+                  opacity: isActive ? 1 : isPast ? 0.2 : 0.4,
+                  fontWeight: isActive ? 800 : 600,
+                }}
+              >
+                {line || ' '}
+              </div>
+            )
+          })}
+          {lines.length === 0 && (
+            <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
+              Sem letra disponível
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Controls */}
       <div className={styles.controls}>
