@@ -1,7 +1,9 @@
 .page { padding: 32px 28px; max-width: 680px; }
-.title { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; margin-bottom: 28px; }
+@media (max-width: 640px) { .page { padding: 20px 16px; } }
 
-.section { margin-bottom: 32px; }
+.title { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; margin: 0 0 28px; }
+
+.section { margin-bottom: 36px; }
 .sectionTitle { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 10px; }
 
 .card { background: var(--bg2); border-radius: var(--radius); overflow: hidden; margin-bottom: 12px; }
@@ -11,6 +13,45 @@
 .label { font-size: 13px; font-weight: 600; }
 .hint { font-size: 11px; color: var(--text3); margin-top: 2px; }
 
+/* Account */
+.accountRow { display: flex; align-items: center; gap: 14px; padding: 16px; border-bottom: 1px solid var(--border); }
+.accountAvatar {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--gig), var(--io));
+  color: white; font-size: 18px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.accountInfo { flex: 1; min-width: 0; }
+.accountEmail { font-size: 13px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fieldRow { padding: 14px 16px; }
+.fieldLabel { display: block; font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.fieldInputRow { display: flex; gap: 8px; }
+.fieldInput {
+  flex: 1; padding: 9px 12px; border: 1.5px solid var(--border);
+  border-radius: 10px; background: var(--bg); color: var(--text);
+  font-size: 14px; font-family: inherit; transition: border-color 0.15s;
+}
+.fieldInput:focus { outline: none; border-color: var(--gig); }
+.saveSmall {
+  padding: 9px 14px; border: none; border-radius: 10px;
+  background: var(--gig); color: white; font-size: 13px; font-weight: 700;
+  cursor: pointer; white-space: nowrap; transition: background 0.2s;
+  flex-shrink: 0;
+}
+.saveSmall:disabled { opacity: 0.5; cursor: not-allowed; }
+.saveSmallDone { background: #10b981; }
+
+.signOutBtn {
+  background: none; border: 1.5px solid var(--border);
+  border-radius: 10px; padding: 9px 16px;
+  font-size: 13px; font-weight: 600; color: var(--text3);
+  cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+.signOutBtn:hover { border-color: #ef4444; color: #ef4444; }
+
+/* Swatches */
 .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
 .swatch {
   width: 26px; height: 26px; border-radius: 50%;
@@ -20,22 +61,25 @@
 .swatch:hover { transform: scale(1.15); }
 .swatchSel { border-color: var(--text); box-shadow: 0 0 0 2px white inset; }
 
-.sliderRow { display: flex; align-items: center; gap: 8px; color: var(--text3); }
+/* Slider */
+.sliderRow { display: flex; align-items: center; gap: 8px; }
 .slider { width: 100px; accent-color: var(--gig); }
 .sliderVal { font-size: 11px; color: var(--text3); min-width: 32px; }
 
+/* Preview */
 .preview {
-  border-radius: var(--radius); padding: 20px 24px;
+  border-radius: var(--radius); padding: 24px 28px;
   margin-bottom: 12px; position: relative; overflow: hidden;
 }
-.previewPast { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-.previewActive { font-weight: 800; margin-bottom: 6px; transition: font-size 0.15s; }
-.previewFuture { font-size: 17px; font-weight: 600; }
-.previewBar { height: 2px; border-radius: 1px; width: 40%; margin-top: 16px; }
+.previewPast { font-weight: 600; margin-bottom: 6px; line-height: 1.7; transition: all 0.15s; }
+.previewActive { font-weight: 800; margin-bottom: 6px; line-height: 1.7; transition: all 0.15s; }
+.previewFuture { font-weight: 600; line-height: 1.7; transition: all 0.15s; }
+.previewBar { height: 2px; border-radius: 1px; width: 40%; margin-top: 20px; }
 
 .saveBtn {
-  padding: 11px 22px; border: none; border-radius: var(--radius);
+  padding: 12px 22px; border: none; border-radius: var(--radius);
   background: linear-gradient(135deg, var(--gig), var(--io));
-  color: white; font-size: 13px; font-weight: 700;
+  color: white; font-size: 13px; font-weight: 700; cursor: pointer;
   transition: background 0.3s;
 }
+.saveBtn:hover { opacity: 0.88; }

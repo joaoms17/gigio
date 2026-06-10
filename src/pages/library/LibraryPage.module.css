@@ -6,6 +6,10 @@
   overflow: hidden;
 }
 
+@media (max-width: 640px) {
+  .page { padding: 16px; }
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -227,11 +231,20 @@
   margin-top: 4px;
 }
 
-.previewDur {
+.editBtn {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 6px 14px;
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  color: var(--text2);
   font-size: 12px;
-  color: var(--text3);
-  margin-top: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
 }
+.editBtn:hover { border-color: var(--gig); color: var(--gig); }
 
 .lyrics {
   font-size: 14px;

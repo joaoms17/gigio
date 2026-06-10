@@ -1,0 +1,203 @@
+.page {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(160deg, #fff0f3 0%, #f4f0ff 50%, #f0f7ff 100%);
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 20px;
+  box-shadow: 0 8px 40px rgba(124, 58, 237, 0.12);
+  width: 100%;
+  max-width: 420px;
+  overflow: hidden;
+}
+
+.logo {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, #FF4D6D, #7C3AED);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  padding: 28px 24px 0;
+}
+
+.loading {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text3);
+  font-size: 14px;
+}
+
+.errorIcon, .successIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 28px auto 0;
+}
+.errorIcon { background: #fee2e2; color: #dc2626; }
+.successIcon { background: #d1fae5; color: #059669; }
+
+.title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: var(--text);
+  text-align: center;
+  padding: 16px 24px 8px;
+  margin: 0;
+}
+
+.sub {
+  font-size: 14px;
+  color: var(--text3);
+  text-align: center;
+  padding: 0 24px 20px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.btn {
+  display: block;
+  width: calc(100% - 48px);
+  margin: 0 24px 24px;
+  padding: 14px;
+  background: linear-gradient(135deg, var(--gig), var(--io));
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(255, 77, 109, 0.28);
+  transition: opacity 0.15s;
+}
+.btn:hover { opacity: 0.88; }
+
+/* Project invite */
+.projectBanner {
+  padding: 24px 24px 20px;
+  text-align: center;
+}
+.bannerName {
+  font-size: 24px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: -0.3px;
+}
+.bannerType {
+  font-size: 13px;
+  color: rgba(255,255,255,0.7);
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.inviteBody {
+  padding: 20px 24px 24px;
+}
+.inviteMsg {
+  font-size: 15px;
+  color: var(--text2);
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.projectDesc {
+  font-size: 13px;
+  color: var(--text3);
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.inviteMeta {
+  margin-bottom: 16px;
+}
+.expiryNote {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.acceptBtn {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  margin-bottom: 10px;
+}
+.acceptBtn:hover { opacity: 0.88; }
+.acceptBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.declineBtn {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text3);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.declineBtn:hover { border-color: var(--text3); }
+
+/* Code form */
+.codeForm {
+  padding: 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.codeInput {
+  padding: 14px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+  font-family: monospace;
+  transition: border-color 0.15s;
+}
+.codeInput:focus { outline: none; border-color: var(--gig); }
+.codeInput::placeholder { font-weight: 400; letter-spacing: normal; font-size: 16px; }
+
+.codeError {
+  font-size: 13px;
+  color: #dc2626;
+  margin: 0;
+  text-align: center;
+}
+
+.backLink {
+  display: block;
+  text-align: center;
+  padding: 16px 24px;
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: var(--text3);
+  cursor: pointer;
+}
+.backLink:hover { color: var(--gig); }

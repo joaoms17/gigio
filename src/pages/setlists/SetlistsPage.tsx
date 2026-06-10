@@ -10,9 +10,18 @@ interface Row {
   id: string
   name: string
   date: string | null
+  venue: string | null
+  status: string | null
   is_shared: boolean
-  band: { name: string } | null
+  band: { name: string; color: string } | null
   setlist_songs: { count: number }[]
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  draft: 'Rascunho',
+  preparing: 'A preparar',
+  final: 'Final',
+  archived: 'Arquivada',
 }
 
 export default function SetlistsPage() {
@@ -21,12 +30,13 @@ export default function SetlistsPage() {
   const [setlists, setSetlists] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [picking, setPicking] = useState(false)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     if (!user) return
     supabase
       .from('setlists')
-      .select('id, name, date, is_shared, band:bands(name), setlist_songs(count)')
+      .select('id, name, date, venue, status, is_shared, band:bands(name, color), setlist_songs(count)')
       .eq('owner_id', user.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
@@ -39,45 +49,79 @@ export default function SetlistsPage() {
     if (!user) return
     const { data } = await supabase
       .from('setlists')
-      .insert({ name: 'Nova Setlist', owner_id: user.id, band_id: projectId, is_shared: true })
+      .insert({ name: 'Nova Setlist', owner_id: user.id, band_id: projectId, is_shared: true, status: 'draft' })
       .select()
       .single()
     if (data) navigate(`/setlist/${data.id}`)
   }
-  const createSetlist = () => setPicking(true)
+
+  const filtered = setlists.filter(s =>
+    !search || s.name.toLowerCase().includes(search.toLowerCase()) ||
+    s.band?.name?.toLowerCase().includes(search.toLowerCase()) ||
+    s.venue?.toLowerCase().includes(search.toLowerCase())
+  )
 
   return (
     <Layout>
       <div className={styles.page}>
         <div className={styles.header}>
-          <h1 className={styles.title}>Setlists</h1>
-          <button className={styles.newBtn} onClick={createSetlist}>+ Nova Setlist</button>
+          <div>
+            <h1 className={styles.title}>Setlists</h1>
+            <p className={styles.sub}>{setlists.length} setlist{setlists.length !== 1 ? 's' : ''}</p>
+          </div>
+          <button className={styles.newBtn} onClick={() => setPicking(true)}>+ Nova Setlist</button>
         </div>
+
+        {setlists.length > 3 && (
+          <input
+            className={styles.searchInput}
+            placeholder="Filtrar setlists..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        )}
 
         {loading ? (
           <p className={styles.empty}>A carregar...</p>
-        ) : setlists.length === 0 ? (
+        ) : filtered.length === 0 && !search ? (
           <div className={styles.emptyState}>
             <div className={styles.emptyIcon}>🎤</div>
             <p className={styles.emptyTitle}>Ainda sem setlists</p>
-            <button className={styles.newBtn} onClick={createSetlist}>Criar setlist</button>
+            <p className={styles.emptySub}>Cria a primeira setlist num projeto para começar.</p>
+            <button className={styles.newBtn} onClick={() => setPicking(true)}>Criar setlist</button>
           </div>
         ) : (
           <div className={styles.grid}>
-            {setlists.map((s, i) => (
-              <div key={s.id} className={`${styles.card} ${styles[`c${(i % 3) + 1}`]}`} onClick={() => navigate(`/setlist/${s.id}`)}>
-                <div className={styles.cardTitle}>{s.name}</div>
-                <div className={styles.cardSub}>
-                  {s.band?.name ?? 'Solo'}
-                  {s.date ? ` · ${new Date(s.date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+            {filtered.map(s => {
+              const accentColor = s.band?.color ?? '#7C3AED'
+              return (
+                <div key={s.id} className={styles.card} onClick={() => navigate(`/setlist/${s.id}`)}>
+                  <div className={styles.cardAccent} style={{ background: accentColor }} />
+                  <div className={styles.cardBody}>
+                    <div className={styles.cardTitle}>{s.name}</div>
+                    <div className={styles.cardSub}>
+                      {s.band?.name ?? 'Pessoal'}
+                      {s.venue ? ` · ${s.venue}` : ''}
+                    </div>
+                    {s.date && (
+                      <div className={styles.cardDate}>
+                        {new Date(s.date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </div>
+                    )}
+                    <div className={styles.cardTags}>
+                      <span className={styles.tag}>{s.setlist_songs?.[0]?.count ?? 0} músicas</span>
+                      {s.status && s.status !== 'draft' && (
+                        <span className={styles.statusBadge} data-status={s.status}>
+                          {STATUS_LABELS[s.status] ?? s.status}
+                        </span>
+                      )}
+                      {s.is_shared && <span className={styles.tagShared}>partilhada</span>}
+                    </div>
+                  </div>
                 </div>
-                <div className={styles.cardTags}>
-                  <span className={styles.tag}>{s.setlist_songs?.[0]?.count ?? 0} músicas</span>
-                  {s.is_shared && <span className={styles.tagShared}>partilhada</span>}
-                </div>
-              </div>
-            ))}
-            <div className={styles.addCard} onClick={createSetlist}>
+              )
+            })}
+            <div className={styles.addCard} onClick={() => setPicking(true)}>
               <span className={styles.plusBig}>+</span>
               <span>Nova Setlist</span>
             </div>

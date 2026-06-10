@@ -16,8 +16,10 @@ const DEFAULT_THEME: ConcertTheme = {
 export default function SettingsPage() {
   const { user } = useAuth()
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_THEME)
-  const [saved, setSaved] = useState(false)
+  const [themeSaved, setThemeSaved] = useState(false)
   const [displayName, setDisplayName] = useState('')
+  const [nameSaved, setNameSaved] = useState(false)
+  const [savingName, setSavingName] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -28,15 +30,30 @@ export default function SettingsPage() {
       })
   }, [user])
 
+  function pick(key: keyof ConcertTheme, value: string | number) {
+    setTheme(prev => ({ ...prev, [key]: value }))
+    setThemeSaved(false)
+  }
+
   async function saveTheme() {
     if (!user) return
     await supabase.from('profiles').update({ concert_theme: theme }).eq('id', user.id)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    setThemeSaved(true)
+    setTimeout(() => setThemeSaved(false), 2000)
   }
 
-  function pick(key: keyof ConcertTheme, value: string | number) {
-    setTheme(prev => ({ ...prev, [key]: value }))
+  async function saveName() {
+    if (!user || !displayName.trim()) return
+    setSavingName(true)
+    await supabase.from('profiles').update({ display_name: displayName.trim() }).eq('id', user.id)
+    setSavingName(false)
+    setNameSaved(true)
+    setTimeout(() => setNameSaved(false), 2000)
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut()
+    window.location.href = '/auth'
   }
 
   return (
@@ -44,10 +61,45 @@ export default function SettingsPage() {
       <div className={styles.page}>
         <h1 className={styles.title}>Definições</h1>
 
+        {/* Account */}
         <section className={styles.section}>
-          <div className={styles.sectionTitle}>Modo Concerto</div>
+          <div className={styles.sectionTitle}>CONTA</div>
           <div className={styles.card}>
+            <div className={styles.accountRow}>
+              <div className={styles.accountAvatar}>
+                {displayName ? displayName[0].toUpperCase() : user?.email?.[0]?.toUpperCase() ?? '?'}
+              </div>
+              <div className={styles.accountInfo}>
+                <div className={styles.accountEmail}>{user?.email}</div>
+              </div>
+            </div>
+            <div className={styles.fieldRow}>
+              <label className={styles.fieldLabel}>Nome de utilizador</label>
+              <div className={styles.fieldInputRow}>
+                <input
+                  className={styles.fieldInput}
+                  value={displayName}
+                  onChange={e => setDisplayName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveName()}
+                  placeholder="O teu nome"
+                />
+                <button
+                  className={`${styles.saveSmall} ${nameSaved ? styles.saveSmallDone : ''}`}
+                  onClick={saveName}
+                  disabled={savingName || !displayName.trim()}
+                >
+                  {savingName ? '...' : nameSaved ? '✓' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          </div>
+          <button className={styles.signOutBtn} onClick={signOut}>Sair da conta</button>
+        </section>
 
+        {/* Concert theme */}
+        <section className={styles.section}>
+          <div className={styles.sectionTitle}>MODO CONCERTO</div>
+          <div className={styles.card}>
             <div className={styles.row}>
               <div className={styles.rowLabel}>
                 <div className={styles.label}>Fundo</div>
@@ -74,7 +126,7 @@ export default function SettingsPage() {
                   <button
                     key={c} onClick={() => pick('active_color', c)}
                     className={`${styles.swatch} ${theme.active_color === c ? styles.swatchSel : ''}`}
-                    style={{ background: c }}
+                    style={{ background: c, border: c === '#ffffff' ? '1.5px solid var(--border)' : undefined }}
                   />
                 ))}
               </div>
@@ -82,8 +134,8 @@ export default function SettingsPage() {
 
             <div className={styles.row}>
               <div className={styles.rowLabel}>
-                <div className={styles.label}>Acento</div>
-                <div className={styles.hint}>Barra de progresso e UI</div>
+                <div className={styles.label}>Cor de acento</div>
+                <div className={styles.hint}>Barra de progresso e destaques</div>
               </div>
               <div className={styles.swatches}>
                 {ACCENT_SWATCHES.map(c => (
@@ -102,47 +154,39 @@ export default function SettingsPage() {
                 <div className={styles.hint}>Linha ativa no concerto</div>
               </div>
               <div className={styles.sliderRow}>
-                <span style={{ fontSize: 12 }}>A</span>
+                <span style={{ fontSize: 12, color: 'var(--text3)' }}>A</span>
                 <input
-                  type="range" min={16} max={40} value={theme.font_size}
+                  type="range" min={16} max={48} value={theme.font_size}
                   onChange={e => pick('font_size', Number(e.target.value))}
                   className={styles.slider}
                 />
-                <span style={{ fontSize: 18, fontWeight: 700 }}>A</span>
+                <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text3)' }}>A</span>
                 <span className={styles.sliderVal}>{theme.font_size}px</span>
               </div>
             </div>
-
           </div>
 
+          {/* Live preview */}
           <div className={styles.preview} style={{ background: theme.bg }}>
-            <div className={styles.previewPast} style={{ color: theme.active_color, opacity: 0.3 }}>
+            <div className={styles.previewPast} style={{ color: theme.active_color, opacity: 0.3, fontSize: theme.font_size * 0.72 }}>
               Let me play among the stars
             </div>
             <div className={styles.previewActive} style={{ color: theme.active_color, fontSize: theme.font_size }}>
               Let me see what spring is like
             </div>
-            <div className={styles.previewFuture} style={{ color: theme.active_color, opacity: 0.4 }}>
+            <div className={styles.previewFuture} style={{ color: theme.active_color, opacity: 0.4, fontSize: theme.font_size * 0.72 }}>
               On Jupiter and Mars
             </div>
             <div className={styles.previewBar} style={{ background: theme.accent_color }} />
           </div>
 
-          <button className={styles.saveBtn} style={{ background: saved ? '#10b981' : undefined }} onClick={saveTheme}>
-            {saved ? '✓ Guardado' : 'Guardar preferências'}
+          <button
+            className={styles.saveBtn}
+            style={{ background: themeSaved ? '#10b981' : undefined }}
+            onClick={saveTheme}
+          >
+            {themeSaved ? '✓ Guardado' : 'Guardar preferências do concerto'}
           </button>
-        </section>
-
-        <section className={styles.section}>
-          <div className={styles.sectionTitle}>Conta</div>
-          <div className={styles.card}>
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.label}>{displayName}</div>
-                <div className={styles.hint}>{user?.email}</div>
-              </div>
-            </div>
-          </div>
         </section>
       </div>
     </Layout>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { signIn, signUp } from '../../lib/auth'
 import styles from './AuthPage.module.css'
 
@@ -20,6 +20,8 @@ export default function AuthPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const redirectTo = searchParams.get('redirect') ?? '/'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -29,13 +31,13 @@ export default function AuthPage() {
       if (mode === 'login') {
         const { error, data } = await signIn(email, password)
         if (error) throw error
-        if (data.session) navigate('/', { replace: true })
+        if (data.session) navigate(redirectTo, { replace: true })
       } else {
         const { error, data } = await signUp(email, password, name)
         if (error) throw error
         // se confirmação desativada, session já existe
         if (data.session) {
-          navigate('/', { replace: true })
+          navigate(redirectTo, { replace: true })
         } else {
           setError('Conta criada! Confirma o teu email para entrar.')
         }
