@@ -57,6 +57,22 @@
 
 .empty { text-align: center; padding: 32px 16px; color: var(--text3); font-size: 13px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
 
+/* Tablet / larger screens — bigger rows and controls */
+@media (min-width: 768px) {
+  .listTitle { font-size: 13px; }
+  .addBtn { font-size: 14px; padding: 10px 18px; }
+  .songRow { gap: 12px; padding: 13px 10px; }
+  .songNum { font-size: 13px; width: 22px; }
+  .songTitle { font-size: 17px; }
+  .songArtist { font-size: 14px; gap: 6px; }
+  .songDur { font-size: 14px; }
+  .keyChip { font-size: 12px; padding: 2px 8px; }
+  .syncBadge { font-size: 11px; padding: 2px 7px; }
+  .dragHandle { font-size: 20px; }
+  .iconBtn { font-size: 18px; padding: 6px 9px; }
+  .libraryRow { padding: 14px 10px; }
+}
+
 .preview { background: var(--bg2); border-radius: var(--radius); padding: 16px; overflow-y: auto; max-height: 600px; display: flex; flex-direction: column; }
 .previewTitle { font-size: 13px; font-weight: 700; color: var(--io); margin-bottom: 12px; }
 .lyrics { font-size: 13px; line-height: 2; color: var(--text2); }

@@ -1,13 +1,20 @@
 .section {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--io);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  margin: 16px 0 5px;
+  margin: 18px 0 6px;
   text-align: center;
 }
 .section:first-child { margin-top: 0; }
-.line { text-align: center; }
-.break { height: 10px; }
+.line { text-align: center; font-size: 16px; line-height: 1.9; }
+.break { height: 12px; }
 .hint { color: var(--text3); font-style: italic; }
+
+/* Tablet / larger screens — bigger, easier to read */
+@media (min-width: 768px) {
+  .section { font-size: 14px; margin: 22px 0 8px; }
+  .line { font-size: 21px; line-height: 2; }
+  .break { height: 16px; }
+}
