@@ -292,7 +292,7 @@ export default function ProjectDashboardPage() {
       .single()
     setCreatingSetlist(false)
     setShowCreateSetlist(false)
-    if (data) navigate(`/setlist/${data.id}`)
+    if (data) navigate(`/setlist/${data.id}?add=1`)
   }
 
   if (loading) {

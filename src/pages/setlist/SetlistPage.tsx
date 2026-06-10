@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -60,6 +60,8 @@ export default function SetlistPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const autoAddDone = useRef(false)
   const [setlist, setSetlist] = useState<Setlist | null>(null)
   const [songs, setSongs] = useState<Row[]>([])
   const [library, setLibrary] = useState<Song[]>([])
@@ -89,6 +91,14 @@ export default function SetlistPage() {
       })
     loadSongs()
   }, [id, user])
+
+  useEffect(() => {
+    if (autoAddDone.current) return
+    if (searchParams.get('add') !== '1') return
+    if (!setlist || !user) return
+    autoAddDone.current = true
+    loadLibrary()
+  }, [setlist])
 
   function selectRow(ss: Row) {
     setSelected(ss)
