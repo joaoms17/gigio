@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF4D6D"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded rect -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- Guitar body (lower bout) -->
+  <ellipse cx="256" cy="330" rx="96" ry="82" fill="white" opacity="0.95"/>
+  <!-- Guitar body (upper bout) -->
+  <ellipse cx="256" cy="230" rx="72" ry="62" fill="white" opacity="0.95"/>
+  <!-- Waist cutout -->
+  <rect x="196" y="256" width="120" height="40" fill="url(#bg)"/>
+
+  <!-- Sound hole -->
+  <circle cx="256" cy="318" r="28" fill="url(#bg)"/>
+  <circle cx="256" cy="318" r="20" fill="white" opacity="0.15"/>
+
+  <!-- Neck -->
+  <rect x="244" y="100" width="24" height="140" rx="8" fill="white" opacity="0.9"/>
+
+  <!-- Headstock -->
+  <rect x="236" y="82" width="40" height="30" rx="8" fill="white" opacity="0.9"/>
+
+  <!-- Fret lines -->
+  <rect x="244" y="136" width="24" height="3" rx="1.5" fill="url(#bg)" opacity="0.6"/>
+  <rect x="244" y="158" width="24" height="3" rx="1.5" fill="url(#bg)" opacity="0.6"/>
+  <rect x="244" y="180" width="24" height="3" rx="1.5" fill="url(#bg)" opacity="0.6"/>
+  <rect x="244" y="202" width="24" height="3" rx="1.5" fill="url(#bg)" opacity="0.6"/>
+
+  <!-- Tuning pegs -->
+  <circle cx="244" cy="88" r="6" fill="#FF4D6D"/>
+  <circle cx="268" cy="88" r="6" fill="#FF4D6D"/>
+  <circle cx="244" cy="104" r="6" fill="#7C3AED"/>
+  <circle cx="268" cy="104" r="6" fill="#7C3AED"/>
+
+  <!-- Bridge -->
+  <rect x="230" y="362" width="52" height="10" rx="5" fill="white" opacity="0.7"/>
+
+  <!-- Strings (subtle) -->
+  <line x1="250" y1="108" x2="250" y2="365" stroke="white" stroke-width="1.5" opacity="0.3"/>
+  <line x1="256" y1="108" x2="256" y2="365" stroke="white" stroke-width="1.5" opacity="0.3"/>
+  <line x1="262" y1="108" x2="262" y2="365" stroke="white" stroke-width="1.5" opacity="0.3"/>
+</svg>
