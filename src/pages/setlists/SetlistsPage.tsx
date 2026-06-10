@@ -69,7 +69,7 @@ export default function SetlistsPage() {
             <h1 className={styles.title}>Setlists</h1>
             <p className={styles.sub}>{setlists.length} setlist{setlists.length !== 1 ? 's' : ''}</p>
           </div>
-          <button className={styles.newBtn} onClick={() => setPicking(true)}>+ Nova Setlist</button>
+          <button className={styles.newBtn} onClick={() => setPicking(true)}>+ Nova setlist</button>
         </div>
 
         {setlists.length > 3 && (
@@ -123,7 +123,7 @@ export default function SetlistsPage() {
             })}
             <div className={styles.addCard} onClick={() => setPicking(true)}>
               <span className={styles.plusBig}>+</span>
-              <span>Nova Setlist</span>
+              <span>Nova setlist</span>
             </div>
           </div>
         )}

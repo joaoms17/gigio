@@ -174,8 +174,8 @@ export const PROJECT_COLORS = [
 ]
 
 export const ROLE_LABELS: Record<ProjectRole, string> = {
-  owner: 'Owner',
+  owner: 'Dono',
   admin: 'Admin',
   editor: 'Editor',
-  viewer: 'Viewer',
+  viewer: 'Visualizador',
 }

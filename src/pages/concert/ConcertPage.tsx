@@ -242,7 +242,7 @@ export default function ConcertPage() {
 
       {/* ── Header ── */}
       <div className={styles.header}>
-        <button className={styles.exitBtn} onClick={() => navigate(`/setlist/${id}`)}>✕</button>
+        <button className={styles.exitBtn} title="Sair do concerto" onClick={() => navigate(`/setlist/${id}`)}>✕</button>
         <span className={styles.counter} style={{ color: theme.accent_color }}>
           {songIdx + 1} / {songs.length}
         </span>
