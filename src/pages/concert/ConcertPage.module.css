@@ -84,6 +84,21 @@
 }
 .modeBtn:hover { background: rgba(255,255,255,0.12); }
 
+.modeSwitchBtn {
+  background: rgba(255,255,255,0.06);
+  border: 1.5px solid;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0 12px;
+  height: 34px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.modeSwitchBtn:hover { background: rgba(255,255,255,0.12); }
+
 /* Progress — scrubable */
 .progressWrap { padding: 0 16px 4px; flex-shrink: 0; user-select: none; }
 .progressBg {

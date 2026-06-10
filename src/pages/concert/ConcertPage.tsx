@@ -21,7 +21,7 @@ export default function ConcertPage() {
   const [lineIdx, setLineIdx] = useState(0)
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_THEME)
   const [syncLines, setSyncLines] = useState<LyricLine[] | null>(null)
-  const [teleprompterMode, setTeleprompterMode] = useState(true)
+  const [viewMode, setViewMode] = useState<'sync' | 'semi' | 'manual'>('semi')
   const [scrollSpeed, setScrollSpeed] = useState(1)   // px per 16ms frame
   const [offset, setOffset] = useState(0)
   const [elapsed, setElapsed] = useState(0)
@@ -57,15 +57,19 @@ export default function ConcertPage() {
     setLineIdx(0); setElapsed(0); stopTimer(); setPlaying(false)
     if (song.has_sync) {
       supabase.from('lyric_syncs').select('lines').eq('song_id', song.id).single()
-        .then(({ data }) => setSyncLines(data?.lines as LyricLine[] ?? null))
+        .then(({ data }) => {
+          setSyncLines(data?.lines as LyricLine[] ?? null)
+          if (data?.lines) setViewMode('sync')
+        })
     } else {
       setSyncLines(null)
+      setViewMode('semi')
     }
   }, [songIdx, songs])
 
   // ── Teleprompter rAF scroll (manual mode only) ───────────────────────────
   useEffect(() => {
-    if (syncLines || !teleprompterMode) {
+    if (viewMode !== 'semi') {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
       animFrameRef.current = null
       return
@@ -83,15 +87,15 @@ export default function ConcertPage() {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
     }
-  }, [syncLines, teleprompterMode, scrollSpeed])
+  }, [viewMode, scrollSpeed])
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (syncLines) {
+      if (viewMode === 'sync') {
         if (e.key === ' ') { e.preventDefault(); togglePlay() }
-        else if (e.key === 'ArrowLeft')  { e.preventDefault(); seekDelta(-10) }
-        else if (e.key === 'ArrowRight') { e.preventDefault(); seekDelta(10) }
+        else if (e.key === 'ArrowLeft')  { e.preventDefault(); seekDelta(-5) }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); seekDelta(5) }
       } else {
         if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); advance() }
         else if (e.key === 'ArrowLeft') { e.preventDefault(); retreat() }
@@ -102,7 +106,7 @@ export default function ConcertPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [songIdx, lineIdx, songs.length, syncLines, playing, elapsed])
+  }, [songIdx, lineIdx, songs.length, syncLines, viewMode, playing, elapsed])
 
   // ── Timer (sync mode) ────────────────────────────────────────────────────
   function startTimer() {
@@ -234,14 +238,19 @@ export default function ConcertPage() {
           {songIdx + 1} / {songs.length}
         </span>
         <div className={styles.headerRight}>
-          {!syncLines && (
-            <button
-              className={styles.modeBtn}
-              style={{ color: teleprompterMode ? theme.accent_color : 'rgba(255,255,255,0.25)' }}
-              title="Teleprompter auto-scroll"
-              onClick={() => setTeleprompterMode(m => !m)}
-            >↕</button>
-          )}
+          <button
+            className={styles.modeSwitchBtn}
+            style={{ color: theme.accent_color, borderColor: theme.accent_color + '40' }}
+            onClick={() => {
+              if (syncLines) {
+                setViewMode(m => m === 'sync' ? 'semi' : m === 'semi' ? 'manual' : 'sync')
+              } else {
+                setViewMode(m => m === 'semi' ? 'manual' : 'semi')
+              }
+            }}
+          >
+            {viewMode === 'sync' ? 'Sync' : viewMode === 'semi' ? 'Semi' : 'Manual'}
+          </button>
           <button
             className={styles.modeBtn}
             style={{ color: showSetlist ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
@@ -271,7 +280,7 @@ export default function ConcertPage() {
       </div>
 
       {/* ── Progress bar — scrubable (sync only) ── */}
-      {syncLines && duration > 0 && (
+      {viewMode === 'sync' && syncLines && duration > 0 && (
         <div className={styles.progressWrap}>
           <div
             className={styles.progressBg}
@@ -301,67 +310,7 @@ export default function ConcertPage() {
       )}
 
       {/* ── Lyrics ── */}
-      {!syncLines ? (
-        teleprompterMode ? (
-          /* Semi mode — teleprompter auto-scroll + active line */
-          <div
-            ref={lyricsScrollRef}
-            className={styles.lyricsScroll}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-          >
-            {lines.length === 0 ? (
-              <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
-                Sem letra disponível
-              </div>
-            ) : lines.map((line, i) => (
-              <div
-                key={i}
-                ref={i === lineIdx ? activeLineRef : null}
-                className={styles.lyricLineManual}
-                style={{
-                  color: theme.active_color,
-                  fontSize: theme.font_size * 0.88,
-                  fontWeight: i === lineIdx ? 800 : 400,
-                  opacity: i < lineIdx ? 0.35 : 1,
-                  borderLeftColor: i === lineIdx ? theme.accent_color : 'transparent',
-                }}
-                onClick={() => setLineIdx(i)}
-              >
-                {line || ' '}
-              </div>
-            ))}
-            <div style={{ height: '50vh' }} />
-          </div>
-        ) : (
-          /* Manual mode — plain scroll, all lines equal */
-          <div
-            className={styles.lyricsScroll}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-          >
-            {lines.length === 0 ? (
-              <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
-                Sem letra disponível
-              </div>
-            ) : lines.map((line, i) => (
-              <div
-                key={i}
-                className={styles.lyricLineManual}
-                style={{
-                  color: theme.active_color,
-                  fontSize: theme.font_size * 0.88,
-                  fontWeight: 400,
-                  opacity: 1,
-                  borderLeftColor: 'transparent',
-                }}
-              >
-                {line || ' '}
-              </div>
-            ))}
-          </div>
-        )
-      ) : (
+      {viewMode === 'sync' && syncLines ? (
         /* Sync mode — windowed karaoke view, tap to seek */
         <div className={styles.lyricsArea}>
           {visibleLines.map((line, i) => {
@@ -381,7 +330,7 @@ export default function ConcertPage() {
                 }}
                 onClick={() => seekToLine(absIdx)}
               >
-                {line || ' '}
+                {line || ' '}
               </div>
             )
           })}
@@ -391,16 +340,74 @@ export default function ConcertPage() {
             </div>
           )}
         </div>
+      ) : viewMode === 'semi' ? (
+        /* Semi mode — teleprompter auto-scroll + active line */
+        <div
+          ref={lyricsScrollRef}
+          className={styles.lyricsScroll}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          {lines.length === 0 ? (
+            <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
+              Sem letra disponível
+            </div>
+          ) : lines.map((line, i) => (
+            <div
+              key={i}
+              ref={i === lineIdx ? activeLineRef : null}
+              className={styles.lyricLineManual}
+              style={{
+                color: theme.active_color,
+                fontSize: theme.font_size * 0.88,
+                fontWeight: i === lineIdx ? 800 : 400,
+                opacity: i < lineIdx ? 0.35 : 1,
+                borderLeftColor: i === lineIdx ? theme.accent_color : 'transparent',
+              }}
+              onClick={() => setLineIdx(i)}
+            >
+              {line || ' '}
+            </div>
+          ))}
+          <div style={{ height: '50vh' }} />
+        </div>
+      ) : (
+        /* Manual mode — plain scroll, all lines equal */
+        <div
+          className={styles.lyricsScroll}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          {lines.length === 0 ? (
+            <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
+              Sem letra disponível
+            </div>
+          ) : lines.map((line, i) => (
+            <div
+              key={i}
+              className={styles.lyricLineManual}
+              style={{
+                color: theme.active_color,
+                fontSize: theme.font_size * 0.88,
+                fontWeight: 400,
+                opacity: 1,
+                borderLeftColor: 'transparent',
+              }}
+            >
+              {line || ' '}
+            </div>
+          ))}
+        </div>
       )}
 
       {/* ── Sync controls (play + seek buttons) ── */}
-      {syncLines && (
+      {viewMode === 'sync' && (
         <div className={styles.syncControls}>
           <button
             className={styles.seekBtn}
             style={{ color: theme.active_color }}
-            onClick={() => seekDelta(-10)}
-          >−10s</button>
+            onClick={() => seekDelta(-5)}
+          >−5s</button>
           <button
             className={styles.playBtn}
             style={{ background: theme.accent_color }}
@@ -411,13 +418,13 @@ export default function ConcertPage() {
           <button
             className={styles.seekBtn}
             style={{ color: theme.active_color }}
-            onClick={() => seekDelta(10)}
-          >+10s</button>
+            onClick={() => seekDelta(5)}
+          >+5s</button>
         </div>
       )}
 
       {/* ── Offset row (sync fine-tune) ── */}
-      {syncLines && (
+      {viewMode === 'sync' && (
         <div className={styles.offsetRow}>
           <span style={{ color: theme.active_color, opacity: 0.3, fontSize: 11 }}>offset</span>
           <button className={styles.offsetBtn} style={{ color: theme.active_color, opacity: 0.4 }} onClick={() => setOffset(o => o - 0.5)}>−</button>
@@ -459,7 +466,7 @@ export default function ConcertPage() {
               <button className={styles.settingBtn} style={{ color: theme.active_color }} onClick={() => updateTheme({ font_size: Math.min(52, theme.font_size + 2) })}>A+</button>
             </div>
           </div>
-          {!syncLines && teleprompterMode && (
+          {viewMode === 'semi' && (
             <div className={styles.settingsRow}>
               <span style={{ color: theme.active_color, opacity: 0.5, fontSize: 12 }}>Velocidade scroll</span>
               <div className={styles.settingsControls}>
