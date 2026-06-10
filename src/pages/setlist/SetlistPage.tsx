@@ -207,7 +207,7 @@ export default function SetlistPage() {
     if (!id || !window.confirm(`Apagar a setlist "${setlist?.name}"? Esta ação não pode ser desfeita.`)) return
     await supabase.from('setlist_songs').delete().eq('setlist_id', id)
     await supabase.from('setlists').delete().eq('id', id)
-    setlist?.band_id ? navigate(`/projects/${setlist.band_id}?tab=setlists`) : navigate('/')
+    setlist?.band_id ? navigate(`/projects/${setlist.band_id}?tab=setlists`) : navigate('/setlists')
   }
 
   async function duplicateTo(projectId: string) {
@@ -235,8 +235,8 @@ export default function SetlistPage() {
       <div className={styles.page}>
         <div className={styles.header}>
           <div className={styles.headerLeft}>
-            <button className={styles.back} onClick={() => setlist?.band_id ? navigate(`/projects/${setlist.band_id}?tab=setlists`) : navigate('/')}>
-              ← {setlist?.band_id ? 'Projeto' : 'Início'}
+            <button className={styles.back} onClick={() => setlist?.band_id ? navigate(`/projects/${setlist.band_id}?tab=setlists`) : navigate('/setlists')}>
+              ← {setlist?.band_id ? 'Projeto' : 'Setlists'}
             </button>
             {editingName ? (
               <input

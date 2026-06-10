@@ -678,9 +678,9 @@ export default function ProjectDashboardPage() {
                             value={m.role}
                             onChange={e => changeRole(m.user_id, e.target.value as ProjectRole)}
                           >
-                            <option value="admin">Admin</option>
-                            <option value="editor">Editor</option>
-                            <option value="viewer">Viewer</option>
+                            <option value="admin">{ROLE_LABELS.admin}</option>
+                            <option value="editor">{ROLE_LABELS.editor}</option>
+                            <option value="viewer">{ROLE_LABELS.viewer}</option>
                           </select>
                         ) : (
                           <span className={styles.roleBadge} data-role={m.role}>
@@ -734,9 +734,9 @@ export default function ProjectDashboardPage() {
                       value={inviteRole}
                       onChange={e => setInviteRole(e.target.value as typeof inviteRole)}
                     >
-                      <option value="admin">Admin</option>
-                      <option value="editor">Editor</option>
-                      <option value="viewer">Viewer</option>
+                      <option value="admin">{ROLE_LABELS.admin}</option>
+                      <option value="editor">{ROLE_LABELS.editor}</option>
+                      <option value="viewer">{ROLE_LABELS.viewer}</option>
                     </select>
                     <button
                       className={styles.inviteBtn}
@@ -856,7 +856,7 @@ export default function ProjectDashboardPage() {
         <div className={styles.modalOverlay} onClick={() => setShowCreateSetlist(false)}>
           <div className={styles.createModal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <div className={styles.modalTitle}>Nova Setlist</div>
+              <div className={styles.modalTitle}>Nova setlist</div>
               <button className={styles.modalClose} onClick={() => setShowCreateSetlist(false)}>✕</button>
             </div>
             <div className={styles.modalBody}>

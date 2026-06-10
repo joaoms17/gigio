@@ -8,6 +8,7 @@ import {
   type ProjectType,
   PROJECT_TYPE_LABELS,
   PROJECT_COLORS,
+  ROLE_LABELS,
 } from '../../types'
 import styles from './ProjectsPage.module.css'
 
@@ -236,7 +237,7 @@ export default function ProjectsPage() {
 
                   <div className={styles.cardFooter}>
                     <span className={styles.roleBadge} data-role={p.myRole}>
-                      {p.myRole}
+                      {ROLE_LABELS[p.myRole as keyof typeof ROLE_LABELS] ?? p.myRole}
                     </span>
                     <button
                       className={styles.enterBtn}
