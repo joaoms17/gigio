@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import Layout from '../../components/Layout'
+import Breadcrumbs from '../../components/Breadcrumbs'
 import LyricsView from '../../components/LyricsView'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
@@ -30,6 +31,7 @@ export default function SongPage() {
   const projectId = searchParams.get('project')
 
   const [song, setSong] = useState<Song | null>(null)
+  const [projectName, setProjectName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('lyrics')
   const [saving, setSaving] = useState(false)
@@ -57,6 +59,12 @@ export default function SongPage() {
     if (!id || !user) return
     load()
   }, [id, user])
+
+  useEffect(() => {
+    if (!projectId) { setProjectName(null); return }
+    supabase.from('bands').select('name').eq('id', projectId).single()
+      .then(({ data }) => setProjectName(data?.name ?? null))
+  }, [projectId])
 
   async function load() {
     setLoading(true)
@@ -161,9 +169,19 @@ export default function SongPage() {
       <div className={styles.page}>
         {/* Top bar */}
         <div className={styles.topBar}>
-          <button className={styles.backBtn} onClick={() => { save(); navigate(backPath()) }}>
-            ← {projectId ? 'Repertório' : 'Biblioteca'}
-          </button>
+          <Breadcrumbs items={
+            projectId
+              ? [
+                  { label: 'Projetos', to: '/' },
+                  { label: projectName ?? 'Projeto', to: `/projects/${projectId}` },
+                  { label: 'Repertório', to: `/projects/${projectId}?tab=repertoire` },
+                  { label: song.title || 'Música' },
+                ]
+              : [
+                  { label: 'Biblioteca', to: '/library' },
+                  { label: song.title || 'Música' },
+                ]
+          } />
           <div className={styles.saveState}>
             {saving ? (
               <span className={styles.saving}>A guardar...</span>

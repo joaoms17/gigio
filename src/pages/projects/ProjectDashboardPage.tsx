@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Layout from '../../components/Layout'
+import Breadcrumbs from '../../components/Breadcrumbs'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import {
@@ -321,9 +322,10 @@ export default function ProjectDashboardPage() {
       <div className={styles.page}>
         {/* Header */}
         <div className={styles.header}>
-          <button className={styles.backBtn} onClick={() => navigate('/')}>
-            ← Projetos
-          </button>
+          <Breadcrumbs items={[
+            { label: 'Projetos', to: '/' },
+            { label: project.name },
+          ]} />
           <div className={styles.projectHead}>
             <div className={styles.projectAvatar} style={{ background: projectColor }}>
               {project.image_url

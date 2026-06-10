@@ -9,6 +9,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import Layout from '../../components/Layout'
+import Breadcrumbs from '../../components/Breadcrumbs'
 import LyricsView from '../../components/LyricsView'
 import ProjectPickerModal from '../../components/ProjectPickerModal'
 import { supabase } from '../../lib/supabase'
@@ -63,6 +64,7 @@ export default function SetlistPage() {
   const [searchParams] = useSearchParams()
   const autoAddDone = useRef(false)
   const [setlist, setSetlist] = useState<Setlist | null>(null)
+  const [projectName, setProjectName] = useState<string | null>(null)
   const [songs, setSongs] = useState<Row[]>([])
   const [library, setLibrary] = useState<Song[]>([])
   const [librarySearch, setLibrarySearch] = useState('')
@@ -81,10 +83,11 @@ export default function SetlistPage() {
 
   useEffect(() => {
     if (!id || !user) return
-    supabase.from('setlists').select('*').eq('id', id).single()
+    supabase.from('setlists').select('*, bands(name)').eq('id', id).single()
       .then(({ data }) => {
         if (data) {
           setSetlist(data)
+          setProjectName((data as any).bands?.name ?? null)
           setName(data.name)
           setVenue(data.venue ?? '')
           setDate(data.date ?? '')
@@ -235,9 +238,18 @@ export default function SetlistPage() {
       <div className={styles.page}>
         <div className={styles.header}>
           <div className={styles.headerLeft}>
-            <button className={styles.back} onClick={() => setlist?.band_id ? navigate(`/projects/${setlist.band_id}?tab=setlists`) : navigate('/setlists')}>
-              ← {setlist?.band_id ? 'Projeto' : 'Setlists'}
-            </button>
+            <Breadcrumbs items={
+              setlist?.band_id
+                ? [
+                    { label: 'Projetos', to: '/' },
+                    { label: projectName ?? 'Projeto', to: `/projects/${setlist.band_id}?tab=setlists` },
+                    { label: setlist?.name ?? 'Setlist' },
+                  ]
+                : [
+                    { label: 'Setlists', to: '/setlists' },
+                    { label: setlist?.name ?? 'Setlist' },
+                  ]
+            } />
             {editingName ? (
               <input
                 className={styles.nameInput}
