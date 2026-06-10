@@ -8,13 +8,45 @@
 .editHint { font-size: 14px; color: var(--text3); font-weight: 400; }
 .nameInput { font-size: 22px; font-weight: 800; border: none; border-bottom: 2px solid var(--gig); outline: none; background: transparent; width: 300px; max-width: 100%; }
 .meta { font-size: 12px; color: var(--text3); margin-top: 4px; }
-.metaRow { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
-.venueInput { padding: 4px 10px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--bg2); color: var(--text); font-size: 12px; min-width: 140px; font-family: inherit; transition: border-color 0.15s; }
-.venueInput:focus { outline: none; border-color: var(--gig); }
-.dateInput { padding: 4px 8px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--bg2); color: var(--text2); font-size: 12px; font-family: inherit; cursor: pointer; transition: border-color 0.15s; }
-.dateInput:focus { outline: none; border-color: var(--gig); }
-.statusSelect { padding: 4px 8px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--bg2); color: var(--text2); font-size: 12px; cursor: pointer; font-family: inherit; }
-.statusSelect:focus { outline: none; border-color: var(--gig); }
+.metaRow { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+
+.songsChip {
+  display: inline-flex; align-items: center;
+  padding: 9px 16px; border-radius: 12px;
+  background: linear-gradient(135deg, #FF4D6D18, #7C3AED14);
+  color: var(--gig); font-size: 15px; font-weight: 800; white-space: nowrap;
+}
+
+.metaField {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 14px; border-radius: 12px;
+  border: 1.5px solid var(--border); background: var(--bg2);
+  transition: border-color 0.15s;
+}
+.metaField:focus-within { border-color: var(--gig); }
+.metaIcon { font-size: 17px; line-height: 1; flex-shrink: 0; }
+
+.venueInput { border: none; background: none; color: var(--text); font-size: 15px; font-weight: 600; min-width: 150px; font-family: inherit; outline: none; }
+.venueInput::placeholder { color: var(--text3); font-weight: 500; }
+.dateInput { border: none; background: none; color: var(--text); font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; outline: none; }
+
+.statusSelect {
+  padding: 10px 16px; border: none; border-radius: 12px;
+  font-size: 15px; font-weight: 800; cursor: pointer; font-family: inherit;
+  background: var(--bg3); color: var(--text2);
+}
+.statusSelect:focus { outline: none; }
+.statusSelect[data-status="draft"]     { background: #6b728020; color: #9ca3af; }
+.statusSelect[data-status="preparing"] { background: #F59E0B22; color: #D97706; }
+.statusSelect[data-status="final"]     { background: #10b98122; color: #059669; }
+.statusSelect[data-status="archived"]  { background: #6b728020; color: #6b7280; }
+
+@media (min-width: 768px) {
+  .songsChip { font-size: 16px; padding: 11px 18px; }
+  .metaField { padding: 11px 16px; }
+  .venueInput, .dateInput { font-size: 16px; }
+  .statusSelect { font-size: 16px; padding: 12px 18px; }
+}
 .librarySearch { width: 100%; padding: 10px 12px; border-radius: 9px; border: 1.5px solid var(--border); background: var(--bg2); color: var(--text); font-size: 14px; margin-bottom: 12px; font-family: inherit; transition: border-color 0.15s; box-sizing: border-box; }
 .librarySearch:focus { outline: none; border-color: var(--gig); }
 .headerActions { display: flex; gap: 8px; flex-shrink: 0; }

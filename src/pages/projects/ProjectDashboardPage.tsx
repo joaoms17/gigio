@@ -67,7 +67,7 @@ export default function ProjectDashboardPage() {
   const confirmDialog = useConfirm()
   const { id: projectId } = useParams<{ id: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
-  const activeTab = (searchParams.get('tab') as Tab) ?? 'overview'
+  const activeTab = (searchParams.get('tab') as Tab) ?? 'setlists'
 
   const [project, setProject] = useState<Project | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
@@ -390,9 +390,8 @@ export default function ProjectDashboardPage() {
         {/* Tabs */}
         <div className={styles.tabs} style={{ '--tab-color': projectColor } as React.CSSProperties}>
           {([
-            ['overview', 'Visão Geral'],
-            ['repertoire', 'Repertório'],
             ['setlists', 'Setlists'],
+            ['repertoire', 'Repertório'],
             ['members', 'Membros'],
             ['settings', 'Definições'],
           ] as [Tab, string][]).map(([id, label]) => (

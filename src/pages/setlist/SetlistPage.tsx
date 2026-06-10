@@ -262,25 +262,32 @@ export default function SetlistPage() {
               </h1>
             )}
             <div className={styles.metaRow}>
-              <span className={styles.meta}>
-                {songs.length} música{songs.length !== 1 ? 's' : ''}
+              <span className={styles.songsChip}>
+                ♪ {songs.length} música{songs.length !== 1 ? 's' : ''}
                 {totalMin > 0 ? ` · ~${totalMin} min` : ''}
               </span>
-              <input
-                className={styles.venueInput}
-                value={venue}
-                onChange={e => setVenue(e.target.value)}
-                onBlur={e => saveVenue(e.target.value)}
-                placeholder="Local / evento..."
-              />
-              <input
-                className={styles.dateInput}
-                type="date"
-                value={date}
-                onChange={e => saveDate(e.target.value)}
-              />
+              <div className={styles.metaField}>
+                <span className={styles.metaIcon}>📍</span>
+                <input
+                  className={styles.venueInput}
+                  value={venue}
+                  onChange={e => setVenue(e.target.value)}
+                  onBlur={e => saveVenue(e.target.value)}
+                  placeholder="Local / evento..."
+                />
+              </div>
+              <div className={styles.metaField}>
+                <span className={styles.metaIcon}>📅</span>
+                <input
+                  className={styles.dateInput}
+                  type="date"
+                  value={date}
+                  onChange={e => saveDate(e.target.value)}
+                />
+              </div>
               <select
                 className={styles.statusSelect}
+                data-status={status}
                 value={status}
                 onChange={e => saveStatus(e.target.value)}
               >
