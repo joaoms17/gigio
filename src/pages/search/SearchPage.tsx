@@ -185,6 +185,22 @@ export default function SearchPage() {
     }
   }
 
+  // Read a PDF and open the manual form pre-filled with the extracted lyrics
+  async function importPdf(file: File) {
+    setImportingPdf(true)
+    try {
+      const { extractLyricsFromPdf } = await import('../../lib/pdfLyrics')
+      const lyrics = await extractLyricsFromPdf(file)
+      setManual(m => m
+        ? { ...m, lyrics }
+        : { title: query, artist: artistQuery, lyrics, setlistId })
+    } catch (err: any) {
+      alert(err?.message ?? 'Não foi possível ler o PDF. Tenta copiar o texto manualmente.')
+    } finally {
+      setImportingPdf(false)
+    }
+  }
+
   return (
     <Layout>
       <div className={styles.page}>
@@ -291,9 +307,21 @@ export default function SearchPage() {
         {!searched && (
           <div className={styles.fallback}>
             <span className={styles.fallbackLabel}>Tens uma letra?</span>
-            <button className={styles.fallbackBtn} onClick={() => setManual({ title: '', artist: '', lyrics: '', setlistId })}>
-              ✏ Escrever / colar manualmente
-            </button>
+            <div className={styles.fallbackBtns}>
+              <button className={styles.fallbackBtn} onClick={() => setManual({ title: '', artist: '', lyrics: '', setlistId })}>
+                ✏ Escrever / colar manualmente
+              </button>
+              <label className={`${styles.fallbackBtn} ${importingPdf ? styles.fallbackBtnBusy : ''}`}>
+                {importingPdf ? '⏳ A ler PDF...' : '📄 Importar de PDF'}
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  style={{ display: 'none' }}
+                  disabled={importingPdf}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) importPdf(f); e.target.value = '' }}
+                />
+              </label>
+            </div>
           </div>
         )}
       </div>
@@ -383,21 +411,7 @@ export default function SearchPage() {
                     accept="application/pdf"
                     style={{ display: 'none' }}
                     disabled={importingPdf}
-                    onChange={async e => {
-                      const file = e.target.files?.[0]
-                      if (!file) return
-                      setImportingPdf(true)
-                      try {
-                        const { extractLyricsFromPdf } = await import('../../lib/pdfLyrics')
-                        const lyrics = await extractLyricsFromPdf(file)
-                        setManual(m => m ? { ...m, lyrics } : m)
-                      } catch (err: any) {
-                        alert(err?.message ?? 'Não foi possível ler o PDF. Tenta copiar o texto manualmente.')
-                      } finally {
-                        setImportingPdf(false)
-                        e.target.value = ''
-                      }
-                    }}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) importPdf(f); e.target.value = '' }}
                   />
                 </label>
               </div>

@@ -88,6 +88,21 @@
 .previewBtn:hover { border-color: var(--gig); color: var(--gig); }
 .previewBtn:disabled { opacity: 0.5; }
 
+/* Tablet — bigger search form, results and badges */
+@media (min-width: 768px) {
+  .title { font-size: 30px; }
+  .sub { font-size: 15px; }
+  .searchInput, .artistInput { font-size: 17px; padding: 14px 16px; }
+  .searchBtn { font-size: 16px; padding: 14px 24px; }
+  .resultRow { padding: 14px 10px; gap: 12px; }
+  .resultTitle { font-size: 17px; gap: 8px; }
+  .resultArtist { font-size: 14px; }
+  .badge { font-size: 11px; padding: 2px 7px; }
+  .syncBadge { font-size: 11px; padding: 2px 8px; }
+  .addBtn, .savedBtn { font-size: 15px; padding: 10px 18px; }
+  .previewBtn { font-size: 15px; padding: 10px 16px; }
+}
+
 .empty { font-size: 13px; color: var(--text3); padding: 20px 0; }
 .noResults { text-align: center; padding: 32px 16px; }
 .noResultsSub { font-size: 13px; color: var(--text3); margin-top: 6px; margin-bottom: 16px; }
@@ -104,11 +119,19 @@
   margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border);
 }
 .fallbackLabel { font-size: 13px; color: var(--text3); }
+.fallbackBtns { display: flex; gap: 10px; flex-wrap: wrap; }
 .fallbackBtn {
+  display: inline-flex; align-items: center; justify-content: center;
   padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
   background: var(--bg2); border: 1px solid var(--border); color: var(--text2); cursor: pointer;
 }
 .fallbackBtn:hover { border-color: var(--gig); color: var(--text); }
+.fallbackBtnBusy { opacity: 0.6; pointer-events: none; }
+
+@media (min-width: 768px) {
+  .fallbackLabel { font-size: 15px; }
+  .fallbackBtn { font-size: 15px; padding: 11px 18px; }
+}
 
 /* modais */
 .overlay {
