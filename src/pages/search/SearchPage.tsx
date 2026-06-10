@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Layout from '../../components/Layout'
+import Breadcrumbs from '../../components/Breadcrumbs'
 import { searchLrclib, getLrclibLyrics } from '../../lib/lrclib'
 import { searchGenius } from '../../lib/genius'
 import { getLyricsOvh } from '../../lib/lyricsovh'
@@ -183,13 +184,16 @@ export default function SearchPage() {
       <div className={styles.page}>
         <div className={styles.pageHeader}>
           {setlistId ? (
-            <button className={styles.backBtn} onClick={() => navigate(`/setlist/${setlistId}`)}>
-              ← Voltar à setlist
-            </button>
+            <Breadcrumbs items={[
+              { label: 'Setlist', to: `/setlist/${setlistId}` },
+              { label: 'Adicionar música' },
+            ]} />
           ) : projectId ? (
-            <button className={styles.backBtn} onClick={() => navigate(`/projects/${projectId}?tab=repertoire`)}>
-              ← {projectName ?? 'Projeto'}
-            </button>
+            <Breadcrumbs items={[
+              { label: 'Projetos', to: '/' },
+              { label: projectName ?? 'Projeto', to: `/projects/${projectId}?tab=repertoire` },
+              { label: 'Adicionar música' },
+            ]} />
           ) : null}
           <h1 className={styles.title}>
             {setlistId ? 'Adicionar música à setlist' : projectId ? 'Adicionar ao repertório' : 'Buscar Letras'}
