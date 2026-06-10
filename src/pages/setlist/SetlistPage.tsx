@@ -266,6 +266,19 @@ export default function SetlistPage() {
                 ♪ {songs.length} música{songs.length !== 1 ? 's' : ''}
                 {totalMin > 0 ? ` · ~${totalMin} min` : ''}
               </span>
+              <select
+                className={styles.statusSelect}
+                data-status={status}
+                value={status}
+                onChange={e => saveStatus(e.target.value)}
+              >
+                <option value="draft">Rascunho</option>
+                <option value="preparing">A preparar</option>
+                <option value="final">Final</option>
+                <option value="archived">Arquivada</option>
+              </select>
+            </div>
+            <div className={styles.dateVenueGroup}>
               <div className={styles.metaField}>
                 <span className={styles.metaIcon}>📍</span>
                 <input
@@ -285,25 +298,16 @@ export default function SetlistPage() {
                   onChange={e => saveDate(e.target.value)}
                 />
               </div>
-              <select
-                className={styles.statusSelect}
-                data-status={status}
-                value={status}
-                onChange={e => saveStatus(e.target.value)}
-              >
-                <option value="draft">Rascunho</option>
-                <option value="preparing">A preparar</option>
-                <option value="final">Final</option>
-                <option value="archived">Arquivada</option>
-              </select>
             </div>
           </div>
           <div className={styles.headerActions}>
-            <button className={styles.deleteBtn} onClick={deleteSetlist}>🗑 Apagar</button>
-            <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>⧉ Duplicar</button>
             <button className={styles.concertBtn} onClick={() => navigate(`/setlist/${id}/concert`)}>
               ▶ Iniciar Concerto
             </button>
+            <div className={styles.secondaryActions}>
+              <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>⧉ Duplicar</button>
+              <button className={styles.deleteBtn} onClick={deleteSetlist}>🗑 Apagar</button>
+            </div>
           </div>
         </div>
 
