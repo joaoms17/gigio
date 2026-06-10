@@ -477,14 +477,14 @@ export default function ConcertPage() {
             </div>
           )}
           <div className={styles.settingsRow}>
-            <span style={{ color: theme.active_color, opacity: 0.5, fontSize: 12 }}>Cor destaque</span>
+            <span style={{ color: theme.active_color, opacity: 0.5, fontSize: 12 }}>Cor da letra</span>
             <div className={styles.colorRow}>
-              {['#FF4D6D','#7C3AED','#2563EB','#059669','#D97706','#ffffff'].map(c => (
+              {['#ffffff','#f5f0e8','#fde68a','#bbf7d0','#bfdbfe','#fecaca'].map(c => (
                 <button
                   key={c}
                   className={styles.colorDot}
-                  style={{ background: c, outline: theme.accent_color === c ? `2px solid ${c}` : 'none', outlineOffset: 2 }}
-                  onClick={() => updateTheme({ accent_color: c })}
+                  style={{ background: c, outline: theme.active_color === c ? `2px solid ${c}` : 'none', outlineOffset: 2 }}
+                  onClick={() => updateTheme({ active_color: c })}
                 />
               ))}
             </div>
