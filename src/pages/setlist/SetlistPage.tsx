@@ -11,7 +11,6 @@ import { CSS } from '@dnd-kit/utilities'
 import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import { useConfirm } from '../../components/ConfirmDialog'
-import LyricsView from '../../components/LyricsView'
 import ProjectPickerModal from '../../components/ProjectPickerModal'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
@@ -20,25 +19,19 @@ import styles from './SetlistPage.module.css'
 
 type Row = SetlistSong & { song: Song }
 
-function SortableSongRow({ ss, index, isSelected, onSelect, onRemove }: {
-  ss: Row; index: number; isSelected: boolean
-  onSelect: (ss: Row) => void; onRemove: (id: string) => void
+function SortableSongRow({ ss, index, onEdit, onRemove }: {
+  ss: Row; index: number
+  onEdit: (songId: string) => void; onRemove: (id: string) => void
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: ss.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`${styles.songRow} ${isDragging ? styles.dragging : ''} ${isSelected ? styles.songRowSelected : ''}`}
-      onClick={() => onSelect(ss)}
-    >
+    <div ref={setNodeRef} style={style} className={`${styles.songRow} ${isDragging ? styles.dragging : ''}`}>
       <button
         ref={setActivatorNodeRef}
         className={styles.dragHandle}
         {...attributes}
         {...listeners}
-        onClick={e => e.stopPropagation()}
         title="Arrastar para reordenar"
       >⋮⋮</button>
       <div className={styles.songNum}>{index + 1}</div>
@@ -47,13 +40,15 @@ function SortableSongRow({ ss, index, isSelected, onSelect, onRemove }: {
         <div className={styles.songArtist}>
           {ss.song?.artist}
           {ss.performance_key && <span className={styles.keyChip}>{ss.performance_key}</span>}
+          {ss.notes && <span className={styles.notesIndicator} title={ss.notes}>📝</span>}
           {ss.song?.has_sync && <span className={styles.syncBadge}>sync ✓</span>}
         </div>
       </div>
       <div className={styles.songDur}>
         {ss.song?.duration_sec ? `${Math.floor(ss.song.duration_sec / 60)}:${String(ss.song.duration_sec % 60).padStart(2, '0')}` : ''}
       </div>
-      <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onRemove(ss.id) }}>✕</button>
+      <button className={styles.iconBtn} onClick={() => onEdit(ss.song_id)} title="Editar música">✎</button>
+      <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onRemove(ss.id) }} title="Remover da setlist">✕</button>
     </div>
   )
 }
@@ -70,10 +65,8 @@ export default function SetlistPage() {
   const [songs, setSongs] = useState<Row[]>([])
   const [library, setLibrary] = useState<Song[]>([])
   const [librarySearch, setLibrarySearch] = useState('')
+  const [libSelection, setLibSelection] = useState<Set<string>>(new Set())
   const [showLibrary, setShowLibrary] = useState(false)
-  const [selected, setSelected] = useState<Row | null>(null)
-  const [editKey, setEditKey] = useState('')
-  const [editNotes, setEditNotes] = useState('')
   const [editingName, setEditingName] = useState(false)
   const [name, setName] = useState('')
   const [venue, setVenue] = useState('')
@@ -107,12 +100,6 @@ export default function SetlistPage() {
     loadLibrary()
   }, [setlist])
 
-  function selectRow(ss: Row) {
-    setSelected(ss)
-    setEditKey(ss.performance_key ?? '')
-    setEditNotes(ss.notes ?? '')
-  }
-
   async function loadSongs() {
     if (!id) return
     const { data } = await supabase
@@ -135,7 +122,34 @@ export default function SetlistPage() {
       all = data ?? []
     }
     setLibrary(all.filter(s => !existingIds.includes(s.id)))
+    setLibSelection(new Set())
+    setLibrarySearch('')
     setShowLibrary(true)
+  }
+
+  function closeLibrary() {
+    setShowLibrary(false)
+    setLibSelection(new Set())
+  }
+
+  async function addSelectedSongs() {
+    if (!id || libSelection.size === 0) return
+    const toAdd = library.filter(s => libSelection.has(s.id))
+    const basePos = songs.length
+    await supabase.from('setlist_songs').insert(
+      toAdd.map((s, i) => ({ setlist_id: id, song_id: s.id, position: basePos + i }))
+    )
+    await loadSongs()
+    closeLibrary()
+  }
+
+  function toggleSelection(songId: string) {
+    setLibSelection(prev => {
+      const next = new Set(prev)
+      if (next.has(songId)) next.delete(songId)
+      else next.add(songId)
+      return next
+    })
   }
 
   async function saveVenue(val: string) {
@@ -156,32 +170,9 @@ export default function SetlistPage() {
     await supabase.from('setlists').update({ status: val }).eq('id', id)
   }
 
-  async function saveSetlistSongMeta() {
-    if (!selected) return
-    await supabase.from('setlist_songs').update({
-      performance_key: editKey.trim() || null,
-      notes: editNotes.trim() || null,
-    }).eq('id', selected.id)
-    setSongs(prev => prev.map(ss =>
-      ss.id === selected.id
-        ? { ...ss, performance_key: editKey.trim() || undefined, notes: editNotes.trim() || undefined }
-        : ss
-    ))
-    setSelected(prev => prev ? { ...prev, performance_key: editKey.trim() || undefined, notes: editNotes.trim() || undefined } : prev)
-  }
-
-  async function addSong(song: Song) {
-    if (!id) return
-    const pos = songs.length
-    await supabase.from('setlist_songs').insert({ setlist_id: id, song_id: song.id, position: pos })
-    loadSongs()
-    setShowLibrary(false)
-  }
-
   async function removeSong(ssId: string) {
     await supabase.from('setlist_songs').delete().eq('id', ssId)
     setSongs(prev => prev.filter(s => s.id !== ssId))
-    if (selected?.id === ssId) setSelected(null)
   }
 
   async function handleDragEnd(e: DragEndEvent) {
@@ -235,6 +226,9 @@ export default function SetlistPage() {
 
   const totalSec = songs.reduce((acc, s) => acc + (s.song?.duration_sec ?? 0), 0)
   const totalMin = Math.floor(totalSec / 60)
+  const filteredLibrary = library.filter(s =>
+    !librarySearch || `${s.title} ${s.artist}`.toLowerCase().includes(librarySearch.toLowerCase())
+  )
 
   return (
     <Layout>
@@ -306,81 +300,33 @@ export default function SetlistPage() {
           </div>
         </div>
 
-        <div className={styles.layout}>
-          <div className={styles.songList}>
-            <div className={styles.listHeader}>
-              <span className={styles.listTitle}>Ordem das músicas</span>
-              <button className={styles.addBtn} onClick={loadLibrary}>+ Adicionar</button>
+        {/* Song list — single column */}
+        <div className={styles.songList}>
+          <div className={styles.listHeader}>
+            <span className={styles.listTitle}>Ordem das músicas</span>
+            <button className={styles.addBtn} onClick={loadLibrary}>+ Adicionar</button>
+          </div>
+
+          {songs.length === 0 ? (
+            <div className={styles.empty}>
+              <p>Sem músicas ainda</p>
+              <button className={styles.addBtn} onClick={loadLibrary}>+ Adicionar música</button>
             </div>
-
-            {songs.length === 0 ? (
-              <div className={styles.empty}>
-                <p>Sem músicas ainda</p>
-                <button className={styles.addBtn} onClick={loadLibrary}>+ Adicionar música</button>
-              </div>
-            ) : (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={songs.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                  {songs.map((ss, i) => (
-                    <SortableSongRow
-                      key={ss.id}
-                      ss={ss}
-                      index={i}
-                      isSelected={selected?.id === ss.id}
-                      onSelect={selectRow}
-                      onRemove={removeSong}
-                    />
-                  ))}
-                </SortableContext>
-              </DndContext>
-            )}
-          </div>
-
-          <div className={styles.preview}>
-            {selected ? (
-              <>
-                <div className={styles.previewTitle}>
-                  {selected.song.title} — {selected.song.artist}
-                </div>
-
-                {/* Per-song fields */}
-                <div className={styles.songMeta}>
-                  <div className={styles.songMetaField}>
-                    <label className={styles.songMetaLabel}>Tom no concerto</label>
-                    <input
-                      className={styles.songMetaInput}
-                      value={editKey}
-                      onChange={e => setEditKey(e.target.value)}
-                      onBlur={saveSetlistSongMeta}
-                      onKeyDown={e => e.key === 'Enter' && (e.currentTarget.blur())}
-                      placeholder="ex: Am, G, C#m..."
-                    />
-                  </div>
-                  <div className={styles.songMetaField}>
-                    <label className={styles.songMetaLabel}>Notas para a música</label>
-                    <textarea
-                      className={styles.songMetaNotes}
-                      value={editNotes}
-                      onChange={e => setEditNotes(e.target.value)}
-                      onBlur={saveSetlistSongMeta}
-                      placeholder="Intro, tempos, avisos..."
-                      rows={2}
-                    />
-                  </div>
-                </div>
-
-                <div className={styles.lyricsDivider} />
-                <div className={styles.lyrics}>
-                  <LyricsView lyrics={selected.song.edited_lyrics ?? selected.song.lyrics} />
-                </div>
-              </>
-            ) : (
-              <div className={styles.previewEmpty}>
-                <div className={styles.previewEmptyIcon}>🎵</div>
-                <p>Seleciona uma música para ver a letra e editar detalhes</p>
-              </div>
-            )}
-          </div>
+          ) : (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={songs.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                {songs.map((ss, i) => (
+                  <SortableSongRow
+                    key={ss.id}
+                    ss={ss}
+                    index={i}
+                    onEdit={songId => navigate(`/songs/${songId}`)}
+                    onRemove={removeSong}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          )}
         </div>
       </div>
 
@@ -393,11 +339,11 @@ export default function SetlistPage() {
       )}
 
       {showLibrary && (
-        <div className={styles.overlay} onClick={() => setShowLibrary(false)}>
+        <div className={styles.overlay} onClick={closeLibrary}>
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <span className={styles.modalTitle}>Biblioteca</span>
-              <button className={styles.closeBtn} onClick={() => setShowLibrary(false)}>✕</button>
+              <button className={styles.closeBtn} onClick={closeLibrary}>✕</button>
             </div>
             <input
               className={styles.librarySearch}
@@ -412,7 +358,7 @@ export default function SetlistPage() {
                 <button
                   className={styles.addBtn}
                   onClick={() => {
-                    setShowLibrary(false)
+                    closeLibrary()
                     navigate(setlist?.band_id ? `/search?project=${setlist.band_id}&setlist=${id}` : `/search?setlist=${id}`)
                   }}
                 >
@@ -421,27 +367,37 @@ export default function SetlistPage() {
               </div>
             ) : (
               <>
-                {library
-                  .filter(s => !librarySearch || `${s.title} ${s.artist}`.toLowerCase().includes(librarySearch.toLowerCase()))
-                  .map(song => (
-                    <div key={song.id} className={styles.libraryRow} onClick={() => addSong(song)}>
-                      <div className={styles.songInfo}>
-                        <div className={styles.songTitle}>{song.title}</div>
-                        <div className={styles.songArtist}>{song.artist} {song.has_sync && <span className={styles.syncBadge}>sync ✓</span>}</div>
-                      </div>
-                      <span className={styles.addIcon}>+</span>
+                {filteredLibrary.map(song => (
+                  <div
+                    key={song.id}
+                    className={`${styles.libraryRow} ${libSelection.has(song.id) ? styles.libraryRowSelected : ''}`}
+                    onClick={() => toggleSelection(song.id)}
+                  >
+                    <div className={styles.songInfo}>
+                      <div className={styles.songTitle}>{song.title}</div>
+                      <div className={styles.songArtist}>{song.artist} {song.has_sync && <span className={styles.syncBadge}>sync ✓</span>}</div>
                     </div>
-                  ))
-                }
+                    <span className={libSelection.has(song.id) ? styles.selIconChecked : styles.selIcon}>
+                      {libSelection.has(song.id) ? '✓' : '○'}
+                    </span>
+                  </div>
+                ))}
                 <button
                   className={styles.searchNewBtn}
                   onClick={() => {
-                    setShowLibrary(false)
+                    closeLibrary()
                     navigate(setlist?.band_id ? `/search?project=${setlist.band_id}&setlist=${id}` : `/search?setlist=${id}`)
                   }}
                 >
                   🔍 Pesquisar música que não está aqui
                 </button>
+                {libSelection.size > 0 && (
+                  <div className={styles.modalAddBar}>
+                    <button className={styles.addSelectedBtn} onClick={addSelectedSongs}>
+                      + Adicionar {libSelection.size} música{libSelection.size !== 1 ? 's' : ''}
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>

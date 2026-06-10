@@ -6,7 +6,7 @@ import type { SetlistSong, Song, ConcertTheme, LyricLine } from '../../types'
 import styles from './ConcertPage.module.css'
 
 const DEFAULT_THEME: ConcertTheme = {
-  bg: '#0d0d0d', active_color: '#ffffff', accent_color: '#FF4D6D', font_size: 26, line_height: 1.6
+  bg: '#0d0d0d', active_color: '#ffffff', accent_color: '#FF4D6D', font_size: 32, line_height: 1.6
 }
 
 type Row = SetlistSong & { song: Song }
@@ -21,24 +21,22 @@ export default function ConcertPage() {
   const [lineIdx, setLineIdx] = useState(0)
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_THEME)
   const [syncLines, setSyncLines] = useState<LyricLine[] | null>(null)
-  const [viewMode, setViewMode] = useState<'sync' | 'semi' | 'manual'>('semi')
-  const [scrollSpeed] = useState(1)
-  const [offset, setOffset] = useState(0)
+  const [viewMode, setViewMode] = useState<'semi' | 'manual'>('semi')
   const [elapsed, setElapsed] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const [semiPlaying, setSemiPlaying] = useState(true)
   const [showSetlist, setShowSetlist] = useState(false)
+  const [scrollFollowing, setScrollFollowing] = useState(true)
 
-  const scrollPausedRef = useRef(false)
+  const timerRef              = useRef<ReturnType<typeof setInterval> | null>(null)
+  const startRef              = useRef<number>(0)
+  const activeLineRef         = useRef<HTMLDivElement>(null)
+  const lyricsScrollRef       = useRef<HTMLDivElement>(null)
+  const touchStartRef         = useRef<{ x: number; y: number } | null>(null)
+  const programmaticScrollRef = useRef(false)
+  const scrollTimerRef        = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const syncLinesRef          = useRef<LyricLine[] | null>(null)
 
-  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null)
-  const startRef    = useRef<number>(0)
-  const activeLineRef  = useRef<HTMLDivElement>(null)
-  const lyricsScrollRef = useRef<HTMLDivElement>(null)
-  const animFrameRef   = useRef<number | null>(null)
-  const touchStartRef  = useRef<{ x: number; y: number } | null>(null)
-  const userTouchingRef = useRef(false)
-  const scrubbing = useRef(false)
+  useEffect(() => { syncLinesRef.current = syncLines }, [syncLines])
 
   // ── Load ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -52,58 +50,41 @@ export default function ConcertPage() {
     return () => { wakeLock?.release(); stopTimer() }
   }, [id, user])
 
+  // ── Song change ─────────────────────────────────────────────────────────
   useEffect(() => {
     const song = songs[songIdx]?.song
     if (!song) return
     setLineIdx(0); setElapsed(0); stopTimer(); setPlaying(false)
-    scrollPausedRef.current = false; setSemiPlaying(true)
+    setScrollFollowing(true)
     if (lyricsScrollRef.current) lyricsScrollRef.current.scrollTop = 0
     if (song.has_sync) {
       supabase.from('lyric_syncs').select('lines').eq('song_id', song.id).single()
-        .then(({ data }) => {
-          setSyncLines(data?.lines as LyricLine[] ?? null)
-          if (data?.lines) setViewMode('sync')
-        })
+        .then(({ data }) => setSyncLines(data?.lines as LyricLine[] ?? null))
     } else {
       setSyncLines(null)
-      setViewMode('semi')
     }
   }, [songIdx, songs])
 
-  // ── Teleprompter rAF scroll (manual mode only) ───────────────────────────
+  // ── Scroll following ─────────────────────────────────────────────────────
   useEffect(() => {
-    if (viewMode !== 'semi') {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
-      animFrameRef.current = null
-      return
-    }
-    let lastTs = performance.now()
-    function tick(now: number) {
-      const delta = now - lastTs
-      lastTs = now
-      if (!userTouchingRef.current && !scrollPausedRef.current && lyricsScrollRef.current) {
-        lyricsScrollRef.current.scrollTop += (scrollSpeed * delta) / 16
-      }
-      animFrameRef.current = requestAnimationFrame(tick)
-    }
-    animFrameRef.current = requestAnimationFrame(tick)
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
-    }
-  }, [viewMode, scrollSpeed])
+    if (viewMode !== 'semi' || !scrollFollowing) return
+    if (!activeLineRef.current) return
+    programmaticScrollRef.current = true
+    activeLineRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+    scrollTimerRef.current = setTimeout(() => {
+      programmaticScrollRef.current = false
+    }, 800)
+  }, [lineIdx, viewMode, scrollFollowing])
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (viewMode === 'sync') {
+      if (viewMode === 'semi' && syncLinesRef.current) {
         if (e.key === ' ') { e.preventDefault(); togglePlay() }
         else if (e.key === 'ArrowLeft')  { e.preventDefault(); seekDelta(-5) }
         else if (e.key === 'ArrowRight') { e.preventDefault(); seekDelta(5) }
-      } else if (viewMode === 'semi') {
-        if (e.key === ' ') { e.preventDefault(); toggleSemiPlay() }
-        else if (e.key === 'ArrowLeft')  { e.preventDefault(); semiSeek(-1) }
-        else if (e.key === 'ArrowRight') { e.preventDefault(); semiSeek(1) }
-      } else {
+      } else if (viewMode === 'manual') {
         if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); advance() }
         else if (e.key === 'ArrowLeft') { e.preventDefault(); retreat() }
       }
@@ -113,19 +94,20 @@ export default function ConcertPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [songIdx, lineIdx, songs.length, syncLines, viewMode, playing, elapsed])
+  }, [songIdx, lineIdx, songs.length, viewMode, playing, elapsed])
 
-  // ── Timer (sync mode) ────────────────────────────────────────────────────
+  // ── Timer ────────────────────────────────────────────────────────────────
   function startTimer() {
     startRef.current = Date.now() - elapsed * 1000
     timerRef.current = setInterval(() => {
       const secs = (Date.now() - startRef.current) / 1000
       setElapsed(secs)
-      if (syncLines) {
-        const ms = (secs + offset) * 1000
+      const sl = syncLinesRef.current
+      if (sl) {
+        const ms = secs * 1000
         let idx = 0
-        for (let i = 0; i < syncLines.length; i++) {
-          if (syncLines[i].time_ms <= ms) idx = i
+        for (let i = 0; i < sl.length; i++) {
+          if (sl[i].time_ms <= ms) idx = i
         }
         setLineIdx(idx)
       }
@@ -140,28 +122,18 @@ export default function ConcertPage() {
 
   function togglePlay() { playing ? stopTimer() : startTimer() }
 
-  function toggleSemiPlay() {
-    scrollPausedRef.current = !scrollPausedRef.current
-    setSemiPlaying(!scrollPausedRef.current)
-  }
-
-  function semiSeek(dir: 1 | -1) {
-    if (lyricsScrollRef.current) {
-      const jump = (theme.font_size * (theme.line_height ?? 1.6)) * 5
-      lyricsScrollRef.current.scrollTop += dir * jump
-    }
-  }
-
-  // ── Seek (sync mode) ─────────────────────────────────────────────────────
+  // ── Seek ─────────────────────────────────────────────────────────────────
   function seekTo(time: number) {
-    const t = Math.max(0, Math.min(time, duration))
+    const dur = songs[songIdx]?.song?.duration_sec ?? 0
+    const t = Math.max(0, dur ? Math.min(time, dur) : time)
     setElapsed(t)
     startRef.current = Date.now() - t * 1000
-    if (syncLines) {
-      const ms = (t + offset) * 1000
+    const sl = syncLinesRef.current
+    if (sl) {
+      const ms = t * 1000
       let idx = 0
-      for (let i = 0; i < syncLines.length; i++) {
-        if (syncLines[i].time_ms <= ms) idx = i
+      for (let i = 0; i < sl.length; i++) {
+        if (sl[i].time_ms <= ms) idx = i
       }
       setLineIdx(idx)
     }
@@ -169,45 +141,28 @@ export default function ConcertPage() {
 
   function seekDelta(delta: number) { seekTo(elapsed + delta) }
 
-  function seekToLine(i: number) {
-    if (!syncLines) return
-    seekTo(syncLines[i].time_ms / 1000 - offset)
-  }
-
-  // ── Progress bar scrub ───────────────────────────────────────────────────
-  function handleProgressPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    scrubbing.current = true
-    e.currentTarget.setPointerCapture(e.pointerId)
-    const rect = e.currentTarget.getBoundingClientRect()
-    seekTo(((e.clientX - rect.left) / rect.width) * duration)
-  }
-  function handleProgressPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!scrubbing.current) return
-    const rect = e.currentTarget.getBoundingClientRect()
-    seekTo(((e.clientX - rect.left) / rect.width) * duration)
-  }
-  function handleProgressPointerUp() { scrubbing.current = false }
-
-  // ── Swipe (manual mode) — 75% horizontal threshold ───────────────────────
+  // ── Swipe (horizontal = change song) ────────────────────────────────────
   function handleTouchStart(e: React.TouchEvent) {
-    userTouchingRef.current = true
     const t = e.touches[0]
     touchStartRef.current = { x: t.clientX, y: t.clientY }
   }
   function handleTouchEnd(e: React.TouchEvent) {
-    if (touchStartRef.current) {
-      const t = e.changedTouches[0]
-      const dx = t.clientX - touchStartRef.current.x
-      const dy = t.clientY - touchStartRef.current.y
-      const absDx = Math.abs(dx), absDy = Math.abs(dy)
-      const total = absDx + absDy
-      if (total > 60 && absDx / total >= 0.75) {
-        if (dx < 0 && songIdx < songs.length - 1) setSongIdx(s => s + 1)
-        else if (dx > 0 && songIdx > 0) setSongIdx(s => s - 1)
-      }
-      touchStartRef.current = null
+    if (!touchStartRef.current) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - touchStartRef.current.x
+    const dy = t.clientY - touchStartRef.current.y
+    const absDx = Math.abs(dx), absDy = Math.abs(dy)
+    const total = absDx + absDy
+    if (total > 60 && absDx / total >= 0.75) {
+      if (dx < 0 && songIdx < songs.length - 1) setSongIdx(s => s + 1)
+      else if (dx > 0 && songIdx > 0) setSongIdx(s => s - 1)
     }
-    setTimeout(() => { userTouchingRef.current = false }, 350)
+    touchStartRef.current = null
+  }
+
+  function handleScroll() {
+    if (programmaticScrollRef.current) return
+    setScrollFollowing(false)
   }
 
   // ── Manual mode nav ───────────────────────────────────────────────────────
@@ -225,17 +180,9 @@ export default function ConcertPage() {
   const currentSong = currentRow?.song
   const plainLines  = (currentSong?.edited_lyrics ?? currentSong?.lyrics ?? '').split('\n')
   const lines       = syncLines ? syncLines.map(l => l.text) : plainLines
-  const duration    = currentSong?.duration_sec ?? 0
-  const progress    = duration ? Math.min(elapsed / duration, 1) : 0
+  const prevSong    = songs[songIdx - 1]?.song
+  const nextSong    = songs[songIdx + 1]?.song
   const displayKey  = currentRow?.performance_key ?? currentSong?.performance_key ?? currentSong?.original_key
-
-  const visibleStart = Math.max(0, lineIdx - 2)
-  const visibleLines = lines.slice(visibleStart, visibleStart + 8)
-  const prevSong = songs[songIdx - 1]?.song
-  const nextSong = songs[songIdx + 1]?.song
-
-  const timeLabel = (s: number) =>
-    `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
   return (
     <div className={styles.page} style={{ background: theme.bg }}>
@@ -250,15 +197,9 @@ export default function ConcertPage() {
           <button
             className={styles.modeSwitchBtn}
             style={{ color: theme.accent_color, borderColor: theme.accent_color + '40' }}
-            onClick={() => {
-              if (syncLines) {
-                setViewMode(m => m === 'sync' ? 'semi' : m === 'semi' ? 'manual' : 'sync')
-              } else {
-                setViewMode(m => m === 'semi' ? 'manual' : 'semi')
-              }
-            }}
+            onClick={() => setViewMode(m => m === 'semi' ? 'manual' : 'semi')}
           >
-            {viewMode === 'sync' ? 'Sync' : viewMode === 'semi' ? 'Semi' : 'Manual'}
+            {viewMode === 'semi' ? 'Semi' : 'Manual'}
           </button>
           <button
             className={styles.modeBtn}
@@ -283,29 +224,6 @@ export default function ConcertPage() {
         </div>
       </div>
 
-      {/* ── Progress bar — scrubable (sync only) ── */}
-      {viewMode === 'sync' && syncLines && duration > 0 && (
-        <div className={styles.progressWrap}>
-          <div
-            className={styles.progressBg}
-            style={{ cursor: 'pointer' }}
-            onPointerDown={handleProgressPointerDown}
-            onPointerMove={handleProgressPointerMove}
-            onPointerUp={handleProgressPointerUp}
-          >
-            <div className={styles.progressFill} style={{ width: `${progress * 100}%`, background: theme.accent_color }} />
-            <div
-              className={styles.progressThumb}
-              style={{ left: `${progress * 100}%`, background: theme.accent_color }}
-            />
-          </div>
-          <div className={styles.progressLabels} style={{ color: theme.active_color }}>
-            <span>{timeLabel(elapsed)}</span>
-            <span>{timeLabel(duration)}</span>
-          </div>
-        </div>
-      )}
-
       {/* ── Notes banner ── */}
       {currentRow?.notes && (
         <div className={styles.notesBanner} style={{ borderColor: theme.accent_color + '40', color: theme.active_color, opacity: 0.6 }}>
@@ -314,41 +232,11 @@ export default function ConcertPage() {
       )}
 
       {/* ── Lyrics ── */}
-      {viewMode === 'sync' && syncLines ? (
-        /* Sync mode — windowed karaoke view, tap to seek */
-        <div className={styles.lyricsArea}>
-          {visibleLines.map((line, i) => {
-            const absIdx = visibleStart + i
-            const isActive = absIdx === lineIdx
-            const isPast   = absIdx < lineIdx
-            return (
-              <div
-                key={absIdx}
-                className={styles.lyricLine}
-                style={{
-                  color: theme.active_color,
-                  fontSize: isActive ? theme.font_size : theme.font_size * 0.72,
-                  opacity: isActive ? 1 : isPast ? 0.2 : 0.4,
-                  fontWeight: isActive ? 800 : 600,
-                  cursor: 'pointer',
-                }}
-                onClick={() => seekToLine(absIdx)}
-              >
-                {line || ' '}
-              </div>
-            )
-          })}
-          {lines.length === 0 && (
-            <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
-              Sem letra disponível
-            </div>
-          )}
-        </div>
-      ) : viewMode === 'semi' ? (
-        /* Semi mode — teleprompter auto-scroll + active line */
+      {viewMode === 'semi' ? (
         <div
           ref={lyricsScrollRef}
           className={styles.lyricsScroll}
+          onScroll={handleScroll}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
@@ -365,11 +253,11 @@ export default function ConcertPage() {
               className={styles.lyricLineManual}
               style={{
                 color: theme.active_color,
-                fontSize: theme.font_size * 0.88,
+                fontSize: theme.font_size,
                 lineHeight: theme.line_height ?? 1.6,
                 fontWeight: i === lineIdx ? 800 : 400,
                 opacity: i < lineIdx ? 0.35 : 1,
-                borderLeftColor: i === lineIdx ? theme.accent_color : 'transparent',
+                background: i === lineIdx ? `${theme.accent_color}22` : 'transparent',
               }}
               onClick={() => setLineIdx(i)}
             >
@@ -379,7 +267,6 @@ export default function ConcertPage() {
           <div style={{ height: '50vh' }} />
         </div>
       ) : (
-        /* Manual mode — plain scroll, all lines equal */
         <div
           className={styles.lyricsScroll}
           onTouchStart={handleTouchStart}
@@ -397,11 +284,10 @@ export default function ConcertPage() {
               className={styles.lyricLineManual}
               style={{
                 color: theme.active_color,
-                fontSize: theme.font_size * 0.88,
+                fontSize: theme.font_size,
                 lineHeight: theme.line_height ?? 1.6,
                 fontWeight: 400,
                 opacity: 1,
-                borderLeftColor: 'transparent',
               }}
             >
               {line}
@@ -410,13 +296,26 @@ export default function ConcertPage() {
         </div>
       )}
 
-      {/* ── Controls (sync + semi) ── */}
-      {(viewMode === 'sync' || viewMode === 'semi') && (
+      {/* ── Re-sync button ── */}
+      {viewMode === 'semi' && !scrollFollowing && (
+        <div className={styles.resyncWrap}>
+          <button
+            className={styles.resyncBtn}
+            style={{ borderColor: theme.accent_color + '80', color: theme.accent_color }}
+            onClick={() => setScrollFollowing(true)}
+          >
+            ↩ Seguir letra
+          </button>
+        </div>
+      )}
+
+      {/* ── Controls (semi + syncLines only) ── */}
+      {viewMode === 'semi' && syncLines && (
         <div className={styles.controls}>
           <button
             className={styles.seekBtn}
             style={{ color: theme.active_color, borderColor: `${theme.active_color}20` }}
-            onClick={() => viewMode === 'sync' ? seekDelta(-5) : semiSeek(-1)}
+            onClick={() => seekDelta(-5)}
           >
             <span className={styles.seekArrow}>‹‹</span>
             <span className={styles.seekLabel}>5</span>
@@ -424,28 +323,18 @@ export default function ConcertPage() {
           <button
             className={styles.playBtn}
             style={{ background: theme.accent_color }}
-            onClick={viewMode === 'sync' ? togglePlay : toggleSemiPlay}
+            onClick={togglePlay}
           >
-            {(viewMode === 'sync' ? playing : semiPlaying) ? '⏸' : '▶'}
+            {playing ? '⏸' : '▶'}
           </button>
           <button
             className={styles.seekBtn}
             style={{ color: theme.active_color, borderColor: `${theme.active_color}20` }}
-            onClick={() => viewMode === 'sync' ? seekDelta(5) : semiSeek(1)}
+            onClick={() => seekDelta(5)}
           >
             <span className={styles.seekLabel}>5</span>
             <span className={styles.seekArrow}>››</span>
           </button>
-        </div>
-      )}
-
-      {/* ── Offset row (sync fine-tune) ── */}
-      {viewMode === 'sync' && (
-        <div className={styles.offsetRow}>
-          <span style={{ color: theme.active_color, opacity: 0.3, fontSize: 11 }}>offset</span>
-          <button className={styles.offsetBtn} style={{ color: theme.active_color, opacity: 0.4 }} onClick={() => setOffset(o => o - 0.5)}>−</button>
-          <span style={{ color: theme.active_color, opacity: 0.5, fontSize: 12, fontWeight: 700 }}>{offset.toFixed(1)}s</span>
-          <button className={styles.offsetBtn} style={{ color: theme.active_color, opacity: 0.4 }} onClick={() => setOffset(o => o + 0.5)}>+</button>
         </div>
       )}
 
