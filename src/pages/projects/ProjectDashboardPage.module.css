@@ -609,3 +609,22 @@
   .inviteEmailInput { min-width: auto; }
   .settingsPage { max-width: 100%; }
 }
+
+/* Editable avatar (image upload) */
+.avatarEditable { cursor: pointer; position: relative; }
+.avatarEditable:hover .avatarEditIcon { opacity: 1; }
+.avatarEditIcon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.45);
+  font-size: 18px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  border-radius: inherit;
+}
+
+.modalOverlay { animation: overlayIn 0.18s ease-out; }
+.createModal { animation: sheetIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }

@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import { supabase } from '../../lib/supabase'
+import { uploadProjectImage } from '../../lib/uploadImage'
 import { useAuth } from '../../hooks/useAuth'
 import {
   type Project,
@@ -67,6 +68,7 @@ export default function ProjectDashboardPage() {
   const activeTab = (searchParams.get('tab') as Tab) ?? 'overview'
 
   const [project, setProject] = useState<Project | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
   const [myRole, setMyRole] = useState<ProjectRole>('viewer')
   const [members, setMembers] = useState<ProjectMember[]>([])
   const [setlists, setSetlists] = useState<SetlistCard[]>([])
@@ -327,12 +329,42 @@ export default function ProjectDashboardPage() {
             { label: project.name },
           ]} />
           <div className={styles.projectHead}>
-            <div className={styles.projectAvatar} style={{ background: projectColor }}>
+            <label
+              className={`${styles.projectAvatar} ${canManage ? styles.avatarEditable : ''}`}
+              style={{ background: projectColor }}
+              title={canManage ? 'Alterar imagem do projeto' : undefined}
+            >
               {project.image_url
                 ? <img src={project.image_url} alt={project.name} className={styles.avatarImg} />
                 : initials(project.name)
               }
-            </div>
+              {canManage && (
+                <>
+                  <span className={styles.avatarEditIcon}>📷</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    disabled={uploadingImage}
+                    onChange={async e => {
+                      const file = e.target.files?.[0]
+                      if (!file || !projectId) return
+                      setUploadingImage(true)
+                      try {
+                        const url = await uploadProjectImage(projectId, file)
+                        await supabase.from('bands').update({ image_url: url }).eq('id', projectId)
+                        setProject(p => p ? { ...p, image_url: url } : p)
+                      } catch (err: any) {
+                        alert('Erro ao carregar imagem: ' + (err?.message ?? err))
+                      } finally {
+                        setUploadingImage(false)
+                        e.target.value = ''
+                      }
+                    }}
+                  />
+                </>
+              )}
+            </label>
             <div>
               <h1 className={styles.projectName}>{project.name}</h1>
               <div className={styles.projectMeta}>

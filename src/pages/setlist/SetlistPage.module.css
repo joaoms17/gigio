@@ -99,3 +99,6 @@
   transition: border-color 0.15s, color 0.15s;
 }
 .searchNewBtn:hover { border-color: var(--gig); color: var(--gig); }
+
+.overlay { animation: overlayIn 0.18s ease-out; }
+.modal { animation: sheetIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }

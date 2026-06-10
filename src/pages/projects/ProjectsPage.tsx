@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import { uploadProjectImage } from '../../lib/uploadImage'
 import { useAuth } from '../../hooks/useAuth'
 import {
   type Project,
@@ -57,6 +58,8 @@ export default function ProjectsPage() {
   const [createType, setCreateType] = useState<ProjectType>('band')
   const [createDesc, setCreateDesc] = useState('')
   const [createColor, setCreateColor] = useState(PROJECT_COLORS[0])
+  const [createImage, setCreateImage] = useState<File | null>(null)
+  const [createImagePreview, setCreateImagePreview] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
@@ -125,12 +128,24 @@ export default function ProjectsPage() {
       })
       .select()
       .single()
+    if (error) { setCreating(false); alert('Erro ao criar projeto: ' + error.message); return }
+    if (data && createImage) {
+      try {
+        const url = await uploadProjectImage(data.id, createImage)
+        await supabase.from('bands').update({ image_url: url }).eq('id', data.id)
+      } catch { /* imagem falhou mas projeto foi criado */ }
+    }
     setCreating(false)
-    if (error) { alert('Erro ao criar projeto: ' + error.message); return }
     setShowCreate(false)
     resetCreateForm()
     await loadProjects()
     if (data) navigate(`/projects/${data.id}`)
+  }
+
+  function pickCreateImage(file: File | null) {
+    setCreateImage(file)
+    if (createImagePreview) URL.revokeObjectURL(createImagePreview)
+    setCreateImagePreview(file ? URL.createObjectURL(file) : null)
   }
 
   async function joinByCode() {
@@ -160,6 +175,7 @@ export default function ProjectsPage() {
     setCreateType('band')
     setCreateDesc('')
     setCreateColor(PROJECT_COLORS[0])
+    pickCreateImage(null)
   }
 
   return (
@@ -202,7 +218,15 @@ export default function ProjectsPage() {
                 onClick={() => navigate(`/projects/${p.id}`)}
                 style={{ '--project-color': p.color } as React.CSSProperties}
               >
-                <div className={styles.cardAccent} style={{ background: p.color }} />
+                <div
+                  className={styles.cardBanner}
+                  style={p.image_url
+                    ? undefined
+                    : { background: `linear-gradient(120deg, ${p.color}, ${p.color}88)` }
+                  }
+                >
+                  {p.image_url && <img src={p.image_url} alt="" className={styles.cardBannerImg} />}
+                </div>
                 <div className={styles.cardBody}>
                   <div className={styles.cardTop}>
                     <div className={styles.avatar} style={{ background: p.color }}>
@@ -355,9 +379,36 @@ export default function ProjectsPage() {
               </div>
             </div>
 
+            <div className={styles.field}>
+              <label className={styles.label}>Imagem (opcional)</label>
+              <div className={styles.imageRow}>
+                <label className={styles.imagePicker} style={{ background: createImagePreview ? 'transparent' : createColor }}>
+                  {createImagePreview
+                    ? <img src={createImagePreview} alt="" className={styles.imagePreview} />
+                    : <span className={styles.imagePickerIcon}>📷</span>
+                  }
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={e => pickCreateImage(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+                <div className={styles.imageHint}>
+                  {createImage
+                    ? <button className={styles.imageRemove} onClick={() => pickCreateImage(null)}>Remover imagem</button>
+                    : 'Toca para escolher uma foto da banda ou logotipo'
+                  }
+                </div>
+              </div>
+            </div>
+
             <div className={styles.modalPreview}>
               <div className={styles.previewAvatar} style={{ background: createColor }}>
-                {createName ? initials(createName) : '?'}
+                {createImagePreview
+                  ? <img src={createImagePreview} alt="" className={styles.imagePreview} />
+                  : (createName ? initials(createName) : '?')
+                }
               </div>
               <div>
                 <div className={styles.previewName}>{createName || 'Nome do projeto'}</div>
