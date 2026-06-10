@@ -66,16 +66,36 @@ export default function ConcertPage() {
   }, [songIdx, songs])
 
   // ── Scroll following ─────────────────────────────────────────────────────
-  useEffect(() => {
+  function recenterActiveLine(behavior: ScrollBehavior = 'smooth') {
     if (viewMode !== 'semi' || !scrollFollowing) return
     if (!activeLineRef.current) return
     programmaticScrollRef.current = true
-    activeLineRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    activeLineRef.current.scrollIntoView({ behavior, block: 'center' })
     if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
     scrollTimerRef.current = setTimeout(() => {
       programmaticScrollRef.current = false
     }, 800)
+  }
+
+  useEffect(() => {
+    recenterActiveLine()
   }, [lineIdx, viewMode, scrollFollowing])
+
+  // Re-center when the tablet rotates / viewport resizes
+  useEffect(() => {
+    function onResize() {
+      // iOS reflows the layout after the rotation animation — re-center a
+      // couple of times so it lands centred whenever the reflow settles.
+      requestAnimationFrame(() => recenterActiveLine('auto'))
+      setTimeout(() => recenterActiveLine('auto'), 350)
+    }
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+    }
+  }, [viewMode, scrollFollowing, lineIdx])
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useEffect(() => {
