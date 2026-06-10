@@ -24,6 +24,15 @@ export default function Layout({ children }: Props) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [projects, setProjects] = useState<Project[]>([])
+  const [offline, setOffline] = useState(!navigator.onLine)
+
+  useEffect(() => {
+    const on = () => setOffline(false)
+    const off = () => setOffline(true)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
   const displayName: string = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? ''
 
   useEffect(() => {
@@ -49,6 +58,12 @@ export default function Layout({ children }: Props) {
 
   return (
     <div className={styles.shell}>
+
+      {offline && (
+        <div className={styles.offlineBanner}>
+          ⚡ Sem ligação — as alterações podem não ser guardadas
+        </div>
+      )}
 
       {/* ── DESKTOP SIDEBAR ── */}
       <aside className={styles.sidebar}>
