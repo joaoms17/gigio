@@ -10,6 +10,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import Layout from '../../components/Layout'
 import LyricsView from '../../components/LyricsView'
+import ProjectPickerModal from '../../components/ProjectPickerModal'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import type { Setlist, SetlistSong, Song } from '../../types'
@@ -59,6 +60,7 @@ export default function SetlistPage() {
   const [selected, setSelected] = useState<Song | null>(null)
   const [editingName, setEditingName] = useState(false)
   const [name, setName] = useState('')
+  const [duplicating, setDuplicating] = useState(false)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
@@ -124,6 +126,23 @@ export default function SetlistPage() {
     setEditingName(false)
   }
 
+  async function duplicateTo(projectId: string) {
+    if (!user || !setlist) return
+    setDuplicating(false)
+    const { data: newSl, error } = await supabase
+      .from('setlists')
+      .insert({ name: `${setlist.name} (cópia)`, owner_id: user.id, band_id: projectId, is_shared: true })
+      .select()
+      .single()
+    if (error) { alert('Erro ao duplicar: ' + error.message); return }
+    if (newSl && songs.length) {
+      await supabase.from('setlist_songs').insert(
+        songs.map((s, i) => ({ setlist_id: newSl.id, song_id: s.song_id, position: i }))
+      )
+    }
+    if (newSl) navigate(`/setlist/${newSl.id}`)
+  }
+
   const totalSec = songs.reduce((acc, s) => acc + (s.song?.duration_sec ?? 0), 0)
   const totalMin = Math.floor(totalSec / 60)
 
@@ -152,9 +171,12 @@ export default function SetlistPage() {
               {totalMin > 0 ? ` · ~${totalMin} min` : ''}
             </p>
           </div>
-          <button className={styles.concertBtn} onClick={() => navigate(`/setlist/${id}/concert`)}>
-            ▶ Iniciar Concerto
-          </button>
+          <div className={styles.headerActions}>
+            <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>⧉ Duplicar</button>
+            <button className={styles.concertBtn} onClick={() => navigate(`/setlist/${id}/concert`)}>
+              ▶ Iniciar Concerto
+            </button>
+          </div>
         </div>
 
         <div className={styles.layout}>
@@ -190,6 +212,14 @@ export default function SetlistPage() {
           </div>
         </div>
       </div>
+
+      {duplicating && (
+        <ProjectPickerModal
+          title="Duplicar setlist para que projeto?"
+          onPick={duplicateTo}
+          onClose={() => setDuplicating(false)}
+        />
+      )}
 
       {showLibrary && (
         <div className={styles.overlay} onClick={() => setShowLibrary(false)}>

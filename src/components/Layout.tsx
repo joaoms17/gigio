@@ -55,7 +55,7 @@ export default function Layout({ children }: Props) {
           </NavLink>
 
           <div className={styles.bandsSection}>
-            <div className={styles.bandsLabel}>BANDAS</div>
+            <div className={styles.bandsLabel}>PROJETOS</div>
             {bands.map(b => (
               <NavLink
                 key={b.id}
@@ -67,7 +67,7 @@ export default function Layout({ children }: Props) {
               </NavLink>
             ))}
             <button className={styles.newBand} onClick={() => navigate('/bands')}>
-              <span className={styles.plus}>+</span> Nova banda
+              <span className={styles.plus}>+</span> Novo projeto
             </button>
           </div>
         </nav>

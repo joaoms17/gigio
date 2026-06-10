@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../../components/Layout'
+import ProjectPickerModal from '../../components/ProjectPickerModal'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './SetlistsPage.module.css'
@@ -19,6 +20,7 @@ export default function SetlistsPage() {
   const navigate = useNavigate()
   const [setlists, setSetlists] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
+  const [picking, setPicking] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -33,11 +35,16 @@ export default function SetlistsPage() {
       })
   }, [user])
 
-  async function createSetlist() {
+  async function createInProject(projectId: string) {
     if (!user) return
-    const { data } = await supabase.from('setlists').insert({ name: 'Nova Setlist', owner_id: user.id }).select().single()
+    const { data } = await supabase
+      .from('setlists')
+      .insert({ name: 'Nova Setlist', owner_id: user.id, band_id: projectId, is_shared: true })
+      .select()
+      .single()
     if (data) navigate(`/setlist/${data.id}`)
   }
+  const createSetlist = () => setPicking(true)
 
   return (
     <Layout>
@@ -77,6 +84,14 @@ export default function SetlistsPage() {
           </div>
         )}
       </div>
+
+      {picking && (
+        <ProjectPickerModal
+          title="Em que projeto criar a setlist?"
+          onPick={(id) => { setPicking(false); createInProject(id) }}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </Layout>
   )
 }

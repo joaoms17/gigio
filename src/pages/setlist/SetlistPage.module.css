@@ -7,7 +7,10 @@
 .editHint { font-size: 14px; color: var(--text3); font-weight: 400; }
 .nameInput { font-size: 22px; font-weight: 800; border: none; border-bottom: 2px solid var(--gig); outline: none; background: transparent; width: 300px; }
 .meta { font-size: 12px; color: var(--text3); margin-top: 4px; }
-.concertBtn { padding: 11px 20px; border: none; border-radius: var(--radius); background: linear-gradient(135deg, var(--gig), var(--io)); color: white; font-size: 13px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+.headerActions { display: flex; gap: 8px; flex-shrink: 0; }
+.dupBtn { padding: 11px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--text2); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.dupBtn:hover { border-color: var(--gig); color: var(--gig); }
+.concertBtn { padding: 11px 20px; border: none; border-radius: var(--radius); background: linear-gradient(135deg, var(--gig), var(--io)); color: white; font-size: 13px; font-weight: 700; white-space: nowrap; flex-shrink: 0; cursor: pointer; }
 
 .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 700px) { .layout { grid-template-columns: 1fr; } }

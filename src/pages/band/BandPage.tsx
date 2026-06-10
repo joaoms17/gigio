@@ -105,7 +105,7 @@ export default function BandPage() {
     setCreating(true)
     const { data, error } = await supabase.from('bands').insert({ name: newName.trim(), owner_id: user.id }).select().single()
     setCreating(false)
-    if (error) { alert('Erro ao criar banda: ' + error.message); return }
+    if (error) { alert('Erro ao criar projeto: ' + error.message); return }
     setNewName('')
     await loadBands()
     if (data) openBand(data)
@@ -116,9 +116,9 @@ export default function BandPage() {
     setJoining(true)
     const code = joinCode.trim().toUpperCase()
     const { data: band, error } = await supabase.from('bands').select('*').eq('invite_code', code).single()
-    if (error || !band) { alert('Código inválido ou banda não encontrada.'); setJoining(false); return }
+    if (error || !band) { alert('Código inválido ou projeto não encontrado.'); setJoining(false); return }
     if (band.invite_expires_at && new Date(band.invite_expires_at).getTime() < Date.now()) {
-      alert('Este código de convite expirou. Pede um novo ao dono da banda.'); setJoining(false); return
+      alert('Este código de convite expirou. Pede um novo ao dono do projeto.'); setJoining(false); return
     }
     const { error: memErr } = await supabase.from('band_members').insert({ band_id: band.id, user_id: user.id, role: 'member' })
     setJoining(false)
@@ -174,10 +174,10 @@ export default function BandPage() {
     if (!activeBand || !user) return
     const isOwner = activeBand.owner_id === user.id
     if (isOwner) {
-      if (!confirm(`Eliminar a banda "${activeBand.name}"? Todos os membros serão removidos.`)) return
+      if (!confirm(`Eliminar o projeto "${activeBand.name}"? Todos os membros serão removidos.`)) return
       await supabase.from('bands').delete().eq('id', activeBand.id)
     } else {
-      if (!confirm(`Sair da banda "${activeBand.name}"?`)) return
+      if (!confirm(`Sair do projeto "${activeBand.name}"?`)) return
       await supabase.from('band_members').delete().eq('band_id', activeBand.id).eq('user_id', user.id)
     }
     setActiveBand(null); setShowSettings(false); loadBands()
@@ -186,12 +186,11 @@ export default function BandPage() {
   // ---------- BAND DETAIL ----------
   if (activeBand) {
     const isOwner = activeBand.owner_id === user?.id
-    const shared = setlists.filter(s => s.is_shared).length
     return (
       <Layout>
         <div className={styles.detailPage}>
           <div className={styles.detailHeader}>
-            <button className={styles.back} onClick={() => { setActiveBand(null); setMembers([]); setSetlists([]); navigate('/bands') }}>← Bandas</button>
+            <button className={styles.back} onClick={() => { setActiveBand(null); setMembers([]); setSetlists([]); navigate('/bands') }}>← Projetos</button>
             <div className={styles.detailTitleRow}>
               <div>
                 <h1 className={styles.bandName}>{activeBand.name}</h1>
@@ -281,7 +280,7 @@ export default function BandPage() {
                   <span>Nova setlist</span>
                 </button>
               </div>
-              {setlists.length === 0 && <p className={styles.hint}>Cria a primeira setlist desta banda. Fica partilhada com {shared >= 0 ? 'todos os membros' : ''}.</p>}
+              {setlists.length === 0 && <p className={styles.hint}>Cria a primeira setlist deste projeto. Fica partilhada com todos os membros.</p>}
             </div>
           </div>
         </div>
@@ -290,22 +289,22 @@ export default function BandPage() {
           <div className={styles.overlay} onClick={() => setShowSettings(false)}>
             <div className={styles.modal} onClick={e => e.stopPropagation()}>
               <div className={styles.modalHeader}>
-                <span className={styles.modalTitle}>Definições da banda</span>
+                <span className={styles.modalTitle}>Definições do projeto</span>
                 <button className={styles.closeBtn} onClick={() => setShowSettings(false)}>✕</button>
               </div>
               {isOwner ? (
                 <>
-                  <label className={styles.modalLabel}>Nome da banda</label>
+                  <label className={styles.modalLabel}>Nome do projeto</label>
                   <div className={styles.modalRow}>
                     <input className={styles.modalInput} value={renameInput} onChange={e => setRenameInput(e.target.value)} />
                     <button className={styles.saveBtn} onClick={saveRename}>Guardar</button>
                   </div>
                 </>
               ) : (
-                <p className={styles.modalNote}>Só o dono da banda pode alterar as definições.</p>
+                <p className={styles.modalNote}>Só o dono do projeto pode alterar as definições.</p>
               )}
               <button className={styles.dangerBtn} onClick={leaveOrDelete}>
-                {isOwner ? '🗑 Eliminar banda' : '↩ Sair da banda'}
+                {isOwner ? '🗑 Eliminar projeto' : '↩ Sair do projeto'}
               </button>
             </div>
           </div>
@@ -318,16 +317,16 @@ export default function BandPage() {
   return (
     <Layout>
       <div className={styles.page}>
-        <h1 className={styles.title}>Bandas</h1>
+        <h1 className={styles.title}>Projetos</h1>
 
         <div className={styles.tabs}>
-          <button className={tab === 'create' ? styles.tabActive : styles.tabBtn} onClick={() => setTab('create')}>Criar banda</button>
+          <button className={tab === 'create' ? styles.tabActive : styles.tabBtn} onClick={() => setTab('create')}>Criar projeto</button>
           <button className={tab === 'join' ? styles.tabActive : styles.tabBtn} onClick={() => setTab('join')}>Entrar com código</button>
         </div>
 
         {tab === 'create' ? (
           <div className={styles.formBox}>
-            <input className={styles.input} placeholder="Nome da banda" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createBand()} />
+            <input className={styles.input} placeholder="Nome do projeto" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createBand()} />
             <button className={styles.createBtn} onClick={createBand} disabled={creating || !newName.trim()}>{creating ? 'A criar...' : 'Criar'}</button>
           </div>
         ) : (
@@ -337,14 +336,14 @@ export default function BandPage() {
           </div>
         )}
 
-        <div className={styles.colTitle}>AS TUAS BANDAS</div>
+        <div className={styles.colTitle}>OS TEUS PROJETOS</div>
         {loading ? (
           <p className={styles.hint}>A carregar...</p>
         ) : bands.length === 0 ? (
           <div className={styles.emptyState}>
             <div className={styles.emptyIcon}>🎸</div>
-            <p>Ainda não tens bandas.</p>
-            <p className={styles.emptySub}>Cria uma ou entra com um código.</p>
+            <p>Ainda não tens projetos.</p>
+            <p className={styles.emptySub}>Cria um ou entra com um código.</p>
           </div>
         ) : (
           <div className={styles.bandList}>

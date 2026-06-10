@@ -155,19 +155,6 @@ export default function SearchPage() {
     }
   }
 
-  async function createSetlistAndAdd(r: SearchResult) {
-    if (!user) return
-    const { data } = await supabase
-      .from('setlists')
-      .insert({ name: 'Nova Setlist', owner_id: user.id })
-      .select()
-      .single()
-    if (data) {
-      setSetlists(prev => [data, ...prev])
-      await doAdd(r, data.id)
-    }
-  }
-
   async function saveManual() {
     if (!manual || !manual.title.trim() || !manual.artist.trim()) return
     setSavingManual(true)
@@ -299,9 +286,6 @@ export default function SearchPage() {
                 </button>
               ))}
             </div>
-            <button className={styles.newSetlistRow} onClick={() => createSetlistAndAdd(picker)}>
-              ＋ Nova setlist
-            </button>
           </div>
         </div>
       )}

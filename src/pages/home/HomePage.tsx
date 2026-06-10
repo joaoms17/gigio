@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../../components/Layout'
+import ProjectPickerModal from '../../components/ProjectPickerModal'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './HomePage.module.css'
@@ -29,6 +30,7 @@ export default function HomePage() {
   const [setlists, setSetlists] = useState<SetlistCard[]>([])
   const [stats, setStats] = useState<Stats>({ setlistsTotal: 0, setlistsShared: 0, songsTotal: 0, songsWithLyrics: 0, bandsTotal: 0, membersTotal: 0 })
   const [loading, setLoading] = useState(true)
+  const [picking, setPicking] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -70,11 +72,16 @@ export default function HomePage() {
     setLoading(false)
   }
 
-  async function createSetlist() {
+  async function createInProject(projectId: string) {
     if (!user) return
-    const { data } = await supabase.from('setlists').insert({ name: 'Nova Setlist', owner_id: user.id }).select().single()
+    const { data } = await supabase
+      .from('setlists')
+      .insert({ name: 'Nova Setlist', owner_id: user.id, band_id: projectId, is_shared: true })
+      .select()
+      .single()
     if (data) navigate(`/setlist/${data.id}`)
   }
+  const createSetlist = () => setPicking(true)
 
   function cardInfo(s: SetlistCard) {
     const songs = s.setlist_songs ?? []
@@ -116,7 +123,7 @@ export default function HomePage() {
             <div className={styles.statSub}>{stats.songsWithLyrics} com letras</div>
           </div>
           <div className={styles.statCard}>
-            <div className={styles.statLabel}>Bandas</div>
+            <div className={styles.statLabel}>Projetos</div>
             <div className={styles.statNum}>{stats.bandsTotal}</div>
             <div className={styles.statSub}>{stats.membersTotal} membro{stats.membersTotal !== 1 ? 's' : ''} total</div>
           </div>
@@ -159,6 +166,14 @@ export default function HomePage() {
           </div>
         )}
       </div>
+
+      {picking && (
+        <ProjectPickerModal
+          title="Em que projeto criar a setlist?"
+          onPick={(id) => { setPicking(false); createInProject(id) }}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </Layout>
   )
 }
