@@ -50,7 +50,8 @@ export default function Layout({ children }: Props) {
   }
 
   const navItems = [
-    { to: '/', end: true, icon: '⊞', label: 'Projetos' },
+    { to: '/', end: true, icon: '📅', label: 'Calendário' },
+    { to: '/projects', icon: '⊞', label: 'Projetos' },
     { to: '/library', icon: '♪', label: 'Músicas' },
     { to: '/setlists', icon: '≡', label: 'Setlists' },
     { to: '/search', icon: '⌕', label: 'Buscar' },

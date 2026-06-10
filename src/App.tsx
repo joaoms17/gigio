@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext'
 import { ConfirmProvider } from './components/ConfirmDialog'
 import { useAuth } from './hooks/useAuth'
 import AuthPage from './pages/auth/AuthPage'
+import CalendarPage from './pages/calendar/CalendarPage'
 import ProjectsPage from './pages/projects/ProjectsPage'
 import ProjectDashboardPage from './pages/projects/ProjectDashboardPage'
 import SetlistPage from './pages/setlist/SetlistPage'
@@ -27,8 +28,11 @@ function AppRoutes() {
     <Routes>
       <Route path="/auth" element={<AuthPage />} />
 
-      {/* Projetos — landing após login */}
-      <Route path="/" element={<AuthGuard><ProjectsPage /></AuthGuard>} />
+      {/* Calendário — landing após login */}
+      <Route path="/" element={<AuthGuard><CalendarPage /></AuthGuard>} />
+
+      {/* Projetos */}
+      <Route path="/projects" element={<AuthGuard><ProjectsPage /></AuthGuard>} />
       <Route path="/projects/:id" element={<AuthGuard><ProjectDashboardPage /></AuthGuard>} />
 
       {/* Setlists */}
@@ -50,7 +54,7 @@ function AppRoutes() {
 
       {/* Compatibilidade com rotas antigas */}
       <Route path="/band/:id" element={<AuthGuard><BandRedirect /></AuthGuard>} />
-      <Route path="/bands" element={<Navigate to="/" replace />} />
+      <Route path="/bands" element={<Navigate to="/projects" replace />} />
       <Route path="/home" element={<Navigate to="/" replace />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
