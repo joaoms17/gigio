@@ -236,6 +236,7 @@ export default function ConcertPage() {
         <div
           ref={lyricsScrollRef}
           className={styles.lyricsScroll}
+          style={{ ['--lyric-size' as any]: `${theme.font_size}px` }}
           onScroll={handleScroll}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
@@ -254,7 +255,6 @@ export default function ConcertPage() {
               className={styles.lyricLineManual}
               style={{
                 color: theme.active_color,
-                fontSize: theme.font_size,
                 lineHeight: theme.line_height ?? 1.6,
                 fontWeight: i === lineIdx ? 800 : 400,
                 opacity: i < lineIdx ? 0.35 : 1,
@@ -270,6 +270,7 @@ export default function ConcertPage() {
       ) : (
         <div
           className={styles.lyricsScroll}
+          style={{ ['--lyric-size' as any]: `${theme.font_size}px` }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
@@ -286,7 +287,6 @@ export default function ConcertPage() {
               className={styles.lyricLineManual}
               style={{
                 color: theme.active_color,
-                fontSize: theme.font_size,
                 lineHeight: theme.line_height ?? 1.6,
                 fontWeight: 400,
                 opacity: 1,
