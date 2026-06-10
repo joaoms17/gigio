@@ -348,7 +348,7 @@ export default function ConcertPage() {
             style={{ background: theme.accent_color }}
             onClick={togglePlay}
           >
-            {playing ? '⏸' : '▶'}
+            {playing ? <span className={styles.pauseIcon} /> : '▶'}
           </button>
           <button
             className={styles.seekBtn}
