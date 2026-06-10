@@ -26,6 +26,20 @@ const TYPE_OPTIONS: { value: ProjectType; label: string }[] = Object.entries(
   PROJECT_TYPE_LABELS
 ).map(([value, label]) => ({ value: value as ProjectType, label }))
 
+declare const __COMMIT_HASH__: string
+
+async function hardRefresh() {
+  if ('serviceWorker' in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations()
+    await Promise.all(regs.map(r => r.unregister()))
+  }
+  if ('caches' in window) {
+    const keys = await caches.keys()
+    await Promise.all(keys.map(k => caches.delete(k)))
+  }
+  window.location.reload()
+}
+
 export default function ProjectsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -211,6 +225,12 @@ export default function ProjectsPage() {
             </button>
           </div>
         )}
+      </div>
+
+      {/* Version bar */}
+      <div className={styles.versionBar}>
+        <span className={styles.versionHash}>v {__COMMIT_HASH__}</span>
+        <button className={styles.refreshBtn} onClick={hardRefresh}>⟳ Hard refresh</button>
       </div>
 
       {showCreate && (

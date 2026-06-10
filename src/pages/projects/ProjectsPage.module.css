@@ -442,3 +442,32 @@
   .grid { grid-template-columns: 1fr; gap: 12px; }
   .addCard { min-height: 80px; flex-direction: row; border-radius: var(--radius); }
 }
+
+.versionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 32px;
+  padding: 8px 12px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  gap: 12px;
+}
+.versionHash {
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--text3);
+}
+.refreshBtn {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--text3);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.refreshBtn:hover { color: var(--gig); border-color: var(--gig); }
