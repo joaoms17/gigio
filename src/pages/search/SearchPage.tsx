@@ -28,6 +28,7 @@ export default function SearchPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const projectId = searchParams.get('project')
+  const setlistId = searchParams.get('setlist')
 
   const [projectName, setProjectName] = useState<string | null>(null)
   const [query, setQuery] = useState('')
@@ -144,7 +145,9 @@ export default function SearchPage() {
       })
       if (songId && setlistId) await addToSetlist(setlistId, songId)
       setSaved(prev => [...prev, keyOf(r)])
-      if (songId && (toProject || projectId)) {
+      if (songId && setlistId) {
+        navigate(`/setlist/${setlistId}`)
+      } else if (songId && (toProject || projectId)) {
         navigate(`/songs/${songId}?project=${projectId ?? ''}`)
       }
     } catch (err: any) {
@@ -164,7 +167,11 @@ export default function SearchPage() {
       })
       if (songId && manual.setlistId) await addToSetlist(manual.setlistId, songId)
       setManual(null)
-      if (songId && projectId) navigate(`/songs/${songId}?project=${projectId}`)
+      if (songId && setlistId) {
+        navigate(`/setlist/${setlistId}`)
+      } else if (songId && projectId) {
+        navigate(`/songs/${songId}?project=${projectId}`)
+      }
     } catch (err: any) {
       alert('Erro ao guardar: ' + (err?.message ?? err))
     } finally {
@@ -176,18 +183,22 @@ export default function SearchPage() {
     <Layout>
       <div className={styles.page}>
         <div className={styles.pageHeader}>
-          {projectId && (
+          {setlistId ? (
+            <button className={styles.backBtn} onClick={() => navigate(`/setlist/${setlistId}`)}>
+              ← Voltar à setlist
+            </button>
+          ) : projectId ? (
             <button className={styles.backBtn} onClick={() => navigate(`/projects/${projectId}?tab=repertoire`)}>
               ← {projectName ?? 'Projeto'}
             </button>
-          )}
+          ) : null}
           <h1 className={styles.title}>
-            {projectId ? `Adicionar ao repertório` : 'Buscar Letras'}
+            {setlistId ? 'Adicionar música à setlist' : projectId ? 'Adicionar ao repertório' : 'Buscar Letras'}
           </h1>
           {projectId && projectName && (
             <p className={styles.projectCtx}>Projeto: <strong>{projectName}</strong></p>
           )}
-          {!projectId && (
+          {!projectId && !setlistId && (
             <p className={styles.sub}>LRClib (com sincronização) e lyrics.ovh</p>
           )}
         </div>

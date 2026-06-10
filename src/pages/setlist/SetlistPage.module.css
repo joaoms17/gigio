@@ -88,3 +88,10 @@
 .libraryRow { display: flex; align-items: center; padding: 10px 6px; border-radius: 8px; cursor: pointer; gap: 10px; }
 .libraryRow:hover { background: var(--bg2); }
 .addIcon { font-size: 20px; color: var(--gig); font-weight: 300; }
+.searchNewBtn {
+  width: 100%; margin-top: 10px; padding: 11px; border-radius: 10px;
+  border: 1.5px dashed var(--border); background: none;
+  color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.searchNewBtn:hover { border-color: var(--gig); color: var(--gig); }

@@ -371,23 +371,41 @@ export default function SetlistPage() {
             />
             {library.length === 0 ? (
               <div className={styles.modalEmpty}>
-                <p>Sem músicas disponíveis</p>
-                <button className={styles.addBtn} onClick={() => { setShowLibrary(false); navigate(setlist?.band_id ? `/search?project=${setlist.band_id}` : '/search') }}>
-                  Ir buscar letras →
+                <p>{setlist?.band_id ? 'Nenhuma música no repertório do projeto.' : 'Sem músicas na biblioteca.'}</p>
+                <button
+                  className={styles.addBtn}
+                  onClick={() => {
+                    setShowLibrary(false)
+                    navigate(setlist?.band_id ? `/search?project=${setlist.band_id}&setlist=${id}` : `/search?setlist=${id}`)
+                  }}
+                >
+                  🔍 Pesquisar música nova
                 </button>
               </div>
             ) : (
-              library
-                .filter(s => !librarySearch || `${s.title} ${s.artist}`.toLowerCase().includes(librarySearch.toLowerCase()))
-                .map(song => (
-                  <div key={song.id} className={styles.libraryRow} onClick={() => addSong(song)}>
-                    <div className={styles.songInfo}>
-                      <div className={styles.songTitle}>{song.title}</div>
-                      <div className={styles.songArtist}>{song.artist} {song.has_sync && <span className={styles.syncBadge}>sync ✓</span>}</div>
+              <>
+                {library
+                  .filter(s => !librarySearch || `${s.title} ${s.artist}`.toLowerCase().includes(librarySearch.toLowerCase()))
+                  .map(song => (
+                    <div key={song.id} className={styles.libraryRow} onClick={() => addSong(song)}>
+                      <div className={styles.songInfo}>
+                        <div className={styles.songTitle}>{song.title}</div>
+                        <div className={styles.songArtist}>{song.artist} {song.has_sync && <span className={styles.syncBadge}>sync ✓</span>}</div>
+                      </div>
+                      <span className={styles.addIcon}>+</span>
                     </div>
-                    <span className={styles.addIcon}>+</span>
-                  </div>
-                ))
+                  ))
+                }
+                <button
+                  className={styles.searchNewBtn}
+                  onClick={() => {
+                    setShowLibrary(false)
+                    navigate(setlist?.band_id ? `/search?project=${setlist.band_id}&setlist=${id}` : `/search?setlist=${id}`)
+                  }}
+                >
+                  🔍 Pesquisar música que não está aqui
+                </button>
+              </>
             )}
           </div>
         </div>
