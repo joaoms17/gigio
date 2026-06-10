@@ -302,37 +302,65 @@ export default function ConcertPage() {
 
       {/* ── Lyrics ── */}
       {!syncLines ? (
-        /* Manual mode — full scroll */
-        <div
-          ref={lyricsScrollRef}
-          className={styles.lyricsScroll}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-        >
-          {lines.length === 0 ? (
-            <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
-              Sem letra disponível
-            </div>
-          ) : lines.map((line, i) => (
-            <div
-              key={i}
-              ref={i === lineIdx ? activeLineRef : null}
-              className={styles.lyricLineManual}
-              style={{
-                color: theme.active_color,
-                fontSize: theme.font_size * 0.88,
-                fontWeight: i === lineIdx ? 800 : 400,
-                opacity: i < lineIdx ? 0.35 : 1,
-                borderLeftColor: i === lineIdx ? theme.accent_color : 'transparent',
-              }}
-              onClick={() => setLineIdx(i)}
-            >
-              {line || ' '}
-            </div>
-          ))}
-          {/* Bottom padding so last line can reach center */}
-          <div style={{ height: '50vh' }} />
-        </div>
+        teleprompterMode ? (
+          /* Semi mode — teleprompter auto-scroll + active line */
+          <div
+            ref={lyricsScrollRef}
+            className={styles.lyricsScroll}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
+            {lines.length === 0 ? (
+              <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
+                Sem letra disponível
+              </div>
+            ) : lines.map((line, i) => (
+              <div
+                key={i}
+                ref={i === lineIdx ? activeLineRef : null}
+                className={styles.lyricLineManual}
+                style={{
+                  color: theme.active_color,
+                  fontSize: theme.font_size * 0.88,
+                  fontWeight: i === lineIdx ? 800 : 400,
+                  opacity: i < lineIdx ? 0.35 : 1,
+                  borderLeftColor: i === lineIdx ? theme.accent_color : 'transparent',
+                }}
+                onClick={() => setLineIdx(i)}
+              >
+                {line || ' '}
+              </div>
+            ))}
+            <div style={{ height: '50vh' }} />
+          </div>
+        ) : (
+          /* Manual mode — plain scroll, all lines equal */
+          <div
+            className={styles.lyricsScroll}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
+            {lines.length === 0 ? (
+              <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
+                Sem letra disponível
+              </div>
+            ) : lines.map((line, i) => (
+              <div
+                key={i}
+                className={styles.lyricLineManual}
+                style={{
+                  color: theme.active_color,
+                  fontSize: theme.font_size * 0.88,
+                  fontWeight: 400,
+                  opacity: 1,
+                  borderLeftColor: 'transparent',
+                }}
+              >
+                {line || ' '}
+              </div>
+            ))}
+          </div>
+        )
       ) : (
         /* Sync mode — windowed karaoke view, tap to seek */
         <div className={styles.lyricsArea}>
