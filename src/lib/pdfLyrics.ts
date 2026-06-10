@@ -1,49 +1,129 @@
 import * as pdfjsLib from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url'
+// Vite bundles this as a real worker file — reliable in production/iOS
+import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
+let workerReady = false
 
+function setupWorker() {
+  if (workerReady) return
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker()
+  } catch {
+    // Fallback: main-thread "fake worker" via dynamic import of the module
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
+  }
+  workerReady = true
+}
+
+async function openPdf(data: ArrayBuffer) {
+  setupWorker()
+  try {
+    return await pdfjsLib.getDocument({ data }).promise
+  } catch (err: any) {
+    if (err?.name === 'PasswordException') {
+      throw new Error('Este PDF está protegido por palavra-passe.')
+    }
+    // Worker may have failed to boot — retry on the main thread
+    try {
+      pdfjsLib.GlobalWorkerOptions.workerPort = null as any
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
+      return await pdfjsLib.getDocument({ data }).promise
+    } catch {
+      throw new Error('Não foi possível abrir o PDF. O ficheiro pode estar corrompido.')
+    }
+  }
+}
+
+interface Word { x: number; text: string }
+
+/** Extract lyrics text from a PDF, reconstructing lines from glyph coordinates. */
 export async function extractLyricsFromPdf(file: File): Promise<string> {
   const buffer = await file.arrayBuffer()
-  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise
-  const pages: string[] = []
+  const pdf = await openPdf(buffer)
+
+  const pageLines: string[][] = []
 
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p)
     const content = await page.getTextContent()
 
-    // Group text items by Y position (same line = Y within 2px of each other)
-    const lineMap = new Map<number, { x: number; text: string }[]>()
-
+    // Cluster items into lines by Y with tolerance (glyphs on the same visual
+    // line often differ by a fraction of a pixel)
+    const clusters: { y: number; words: Word[] }[] = []
     for (const item of content.items as any[]) {
-      if (!item.str?.trim()) continue
-      const y = Math.round(item.transform[5])
+      const text = item.str
+      if (!text || !text.trim()) continue
+      const y = item.transform[5]
       const x = item.transform[4]
-      if (!lineMap.has(y)) lineMap.set(y, [])
-      lineMap.get(y)!.push({ x, text: item.str })
+      const hit = clusters.find(c => Math.abs(c.y - y) <= 2.5)
+      if (hit) {
+        hit.words.push({ x, text })
+        hit.y = (hit.y + y) / 2
+      } else {
+        clusters.push({ y, words: [{ x, text }] })
+      }
     }
 
-    // Sort lines top-to-bottom (higher Y = higher on page in PDF coords)
-    const sortedYs = [...lineMap.keys()].sort((a, b) => b - a)
+    // Top-to-bottom (PDF Y grows upward)
+    clusters.sort((a, b) => b.y - a.y)
+
+    // Median gap between consecutive lines → paragraph break threshold
+    const gaps: number[] = []
+    for (let i = 1; i < clusters.length; i++) {
+      gaps.push(clusters[i - 1].y - clusters[i].y)
+    }
+    const sorted = [...gaps].sort((a, b) => a - b)
+    const medianGap = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0
 
     const lines: string[] = []
     let prevY: number | null = null
-
-    for (const y of sortedYs) {
-      // Insert blank line if gap between lines is large (paragraph break)
-      if (prevY !== null && prevY - y > 20) {
+    for (const c of clusters) {
+      if (prevY !== null && medianGap > 0 && prevY - c.y > medianGap * 1.8) {
         lines.push('')
       }
-      prevY = y
-
-      // Sort words on this line left-to-right
-      const words = lineMap.get(y)!.sort((a, b) => a.x - b.x)
-      lines.push(words.map(w => w.text).join(' ').trim())
+      prevY = c.y
+      const text = c.words
+        .sort((a, b) => a.x - b.x)
+        .map(w => w.text)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      if (text) lines.push(text)
     }
-
-    const pageText = lines.join('\n').trim()
-    if (pageText) pages.push(pageText)
+    pageLines.push(lines)
   }
 
-  return pages.join('\n\n')
+  // Remove headers/footers: lines repeated on (almost) every page, and bare page numbers
+  const lineCount = new Map<string, number>()
+  for (const lines of pageLines) {
+    for (const l of new Set(lines.filter(Boolean))) {
+      lineCount.set(l, (lineCount.get(l) ?? 0) + 1)
+    }
+  }
+  const repeated = new Set(
+    [...lineCount.entries()]
+      .filter(([, n]) => pdf.numPages >= 2 && n >= pdf.numPages)
+      .map(([l]) => l)
+  )
+
+  const cleaned = pageLines.map(lines =>
+    lines
+      .filter(l => !repeated.has(l))
+      .filter(l => !/^\s*(página\s+)?\d{1,3}\s*(\/\s*\d{1,3})?\s*$/i.test(l))
+  )
+
+  const text = cleaned
+    .map(lines => lines.join('\n').replace(/\n{3,}/g, '\n\n').trim())
+    .filter(Boolean)
+    .join('\n\n')
+
+  if (!text.trim()) {
+    throw new Error(
+      'Este PDF não tem texto selecionável — provavelmente é uma digitalização (imagem). ' +
+      'Tenta copiar a letra de outra fonte ou escrevê-la manualmente.'
+    )
+  }
+
+  return text
 }
