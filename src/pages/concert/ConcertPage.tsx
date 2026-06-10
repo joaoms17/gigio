@@ -21,26 +21,28 @@ export default function ConcertPage() {
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_THEME)
   const [syncLines, setSyncLines] = useState<LyricLine[] | null>(null)
   const [autoMode, setAutoMode] = useState(false)
+  const [teleprompterMode, setTeleprompterMode] = useState(true)
   const [offset, setOffset] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showSetlist, setShowSetlist] = useState(false)
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startRef = useRef<number>(0)
   const saveThemeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeLineRef = useRef<HTMLDivElement>(null)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const userTouchingRef = useRef(false)
 
   useEffect(() => {
     if (!id || !user) return
     let wakeLock: any = null
     navigator.wakeLock?.request('screen').then(wl => { wakeLock = wl }).catch(() => {})
-
     supabase.from('setlist_songs').select('*, song:songs(*)').eq('setlist_id', id).order('position')
       .then(({ data }) => setSongs((data ?? []) as any))
     supabase.from('profiles').select('concert_theme').eq('id', user.id).single()
       .then(({ data }) => { if (data?.concert_theme) setTheme(data.concert_theme as ConcertTheme) })
-
     return () => { wakeLock?.release(); stopTimer() }
   }, [id, user])
 
@@ -56,11 +58,11 @@ export default function ConcertPage() {
     }
   }, [songIdx, songs])
 
-  // Auto-scroll active line into view in manual (no-sync) mode
+  // Teleprompter auto-scroll — only when mode is on and user isn't touching
   useEffect(() => {
-    if (syncLines) return
+    if (syncLines || !teleprompterMode || userTouchingRef.current) return
     activeLineRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [lineIdx, syncLines])
+  }, [lineIdx, syncLines, teleprompterMode])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -108,6 +110,31 @@ export default function ConcertPage() {
     }, 1500)
   }
 
+  // Swipe detection — 75% horizontal threshold to change song
+  function handleTouchStart(e: React.TouchEvent) {
+    userTouchingRef.current = true
+    const t = e.touches[0]
+    touchStartRef.current = { x: t.clientX, y: t.clientY }
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (touchStartRef.current) {
+      const t = e.changedTouches[0]
+      const dx = t.clientX - touchStartRef.current.x
+      const dy = t.clientY - touchStartRef.current.y
+      const absDx = Math.abs(dx)
+      const absDy = Math.abs(dy)
+      const total = absDx + absDy
+      if (total > 60 && absDx / total >= 0.75) {
+        if (dx < 0 && songIdx < songs.length - 1) setSongIdx(s => s + 1)
+        else if (dx > 0 && songIdx > 0) setSongIdx(s => s - 1)
+      }
+      touchStartRef.current = null
+    }
+    // Give scroll deceleration time to settle before re-enabling teleprompter
+    setTimeout(() => { userTouchingRef.current = false }, 350)
+  }
+
   const currentRow = songs[songIdx]
   const currentSong = currentRow?.song
   const plainLines = (currentSong?.edited_lyrics ?? currentSong?.lyrics ?? '').split('\n')
@@ -127,33 +154,33 @@ export default function ConcertPage() {
 
   const visibleStart = Math.max(0, lineIdx - 2)
   const visibleLines = lines.slice(visibleStart, visibleStart + 8)
+  const prevSong = songs[songIdx - 1]?.song
+  const nextSong = songs[songIdx + 1]?.song
 
   return (
     <div className={styles.page} style={{ background: theme.bg }}>
-      {/* Header */}
+
+      {/* ── Compact header ── */}
       <div className={styles.header}>
         <button className={styles.exitBtn} onClick={() => navigate(`/setlist/${id}`)}>✕</button>
-        <div className={styles.headerCenter}>
-          <div className={styles.songName} style={{ color: theme.active_color }}>
-            {currentSong?.title}
-            {displayKey && <span className={styles.keyChip} style={{ borderColor: theme.accent_color, color: theme.accent_color }}>{displayKey}</span>}
-          </div>
-          <div className={styles.artistName} style={{ color: theme.active_color, opacity: 0.4 }}>
-            {currentSong?.artist}
-            <span className={styles.songCounter} style={{ color: theme.accent_color }}>
-              {songIdx + 1}/{songs.length}
-            </span>
-          </div>
-        </div>
+        <span className={styles.counter} style={{ color: theme.accent_color }}>
+          {songIdx + 1} / {songs.length}
+        </span>
         <div className={styles.headerRight}>
+          {!syncLines && (
+            <button
+              className={styles.modeBtn}
+              style={{ color: teleprompterMode ? theme.accent_color : 'rgba(255,255,255,0.25)' }}
+              title="Auto-scroll"
+              onClick={() => setTeleprompterMode(m => !m)}
+            >↕</button>
+          )}
           {syncLines && (
             <button
               className={styles.modeBtn}
               style={{ color: autoMode ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
               onClick={() => { setAutoMode(m => !m); if (!autoMode) startTimer() }}
-            >
-              {autoMode ? '⟳' : '✋'}
-            </button>
+            >{autoMode ? '⟳' : '✋'}</button>
           )}
           <button
             className={styles.modeBtn}
@@ -168,7 +195,22 @@ export default function ConcertPage() {
         </div>
       </div>
 
-      {/* Progress bar */}
+      {/* ── Song name above lyrics ── */}
+      <div className={styles.songInfo}>
+        <div className={styles.songTitle} style={{ color: theme.active_color }}>
+          {currentSong?.title}
+          {displayKey && (
+            <span className={styles.keyChip} style={{ borderColor: theme.accent_color, color: theme.accent_color }}>
+              {displayKey}
+            </span>
+          )}
+        </div>
+        <div className={styles.songArtist} style={{ color: theme.active_color, opacity: 0.4 }}>
+          {currentSong?.artist}
+        </div>
+      </div>
+
+      {/* ── Progress bar (sync only) ── */}
       {duration > 0 && (
         <div className={styles.progressWrap}>
           <div className={styles.progressBg}>
@@ -181,17 +223,20 @@ export default function ConcertPage() {
         </div>
       )}
 
-      {/* Song notes banner */}
+      {/* ── Notes banner ── */}
       {currentRow?.notes && (
         <div className={styles.notesBanner} style={{ borderColor: theme.accent_color + '40', color: theme.active_color, opacity: 0.6 }}>
           {currentRow.notes}
         </div>
       )}
 
-      {/* Lyrics */}
+      {/* ── Lyrics ── */}
       {!syncLines ? (
-        /* Manual mode: full scrollable lyrics, equal visual weight */
-        <div className={styles.lyricsScroll}>
+        <div
+          className={styles.lyricsScroll}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
           {lines.length === 0 ? (
             <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
               Sem letra disponível
@@ -215,7 +260,6 @@ export default function ConcertPage() {
           ))}
         </div>
       ) : (
-        /* Sync mode: windowed, auto-scrolls via timer */
         <div className={styles.lyricsArea} onClick={advance}>
           {visibleLines.map((line, i) => {
             const absIdx = visibleStart + i
@@ -244,23 +288,33 @@ export default function ConcertPage() {
         </div>
       )}
 
-      {/* Controls */}
-      <div className={styles.controls}>
+      {/* ── Prev / Next song ── */}
+      <div className={styles.songNav}>
         <button
-          className={styles.navBtn}
-          style={{ color: theme.active_color, opacity: songIdx === 0 && lineIdx === 0 ? 0.2 : 0.5 }}
-          onClick={retreat}
-        >← Anterior</button>
+          className={styles.songNavBtn}
+          style={{ color: theme.active_color, opacity: prevSong ? 0.45 : 0.12 }}
+          onClick={() => prevSong && setSongIdx(s => s - 1)}
+          disabled={!prevSong}
+        >
+          <span className={styles.navArrow}>‹</span>
+          <span className={styles.navSongName}>{prevSong?.title ?? ''}</span>
+        </button>
+
         {autoMode && (
           <button className={styles.playBtn} style={{ background: theme.accent_color }} onClick={togglePlay}>
             {playing ? '⏸' : '▶'}
           </button>
         )}
+
         <button
-          className={styles.navBtn}
-          style={{ color: theme.active_color, opacity: songIdx === songs.length - 1 && lineIdx >= lines.length - 1 ? 0.2 : 0.7 }}
-          onClick={advance}
-        >Próxima →</button>
+          className={styles.songNavBtn}
+          style={{ color: theme.active_color, opacity: nextSong ? 0.45 : 0.12, textAlign: 'right' }}
+          onClick={() => nextSong && setSongIdx(s => s + 1)}
+          disabled={!nextSong}
+        >
+          <span className={styles.navSongName}>{nextSong?.title ?? ''}</span>
+          <span className={styles.navArrow}>›</span>
+        </button>
       </div>
 
       {autoMode && (
@@ -272,7 +326,7 @@ export default function ConcertPage() {
         </div>
       )}
 
-      {/* Settings panel */}
+      {/* ── Settings panel ── */}
       {showSettings && (
         <div className={styles.settingsPanel} style={{ background: theme.bg, borderColor: 'rgba(255,255,255,0.1)' }}>
           <div className={styles.settingsRow}>
@@ -299,7 +353,7 @@ export default function ConcertPage() {
         </div>
       )}
 
-      {/* Setlist panel */}
+      {/* ── Setlist panel ── */}
       {showSetlist && (
         <div className={styles.setlistPanel} style={{ borderTopColor: 'rgba(255,255,255,0.06)' }}>
           {songs.map((ss, i) => (

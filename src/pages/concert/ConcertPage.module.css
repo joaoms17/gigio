@@ -28,40 +28,39 @@
 }
 .exitBtn:hover { background: rgba(255,255,255,0.14); }
 
-.headerCenter {
+.counter {
   flex: 1;
-  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
-.songName {
-  font-size: 14px;
+
+/* Song info block — above lyrics */
+.songInfo {
+  padding: 4px 20px 10px;
+  flex-shrink: 0;
+}
+.songTitle {
+  font-size: 22px;
   font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  line-height: 1.2;
 }
 .keyChip {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 1px 7px;
+  padding: 2px 8px;
   border-radius: 12px;
   border: 1.5px solid;
   flex-shrink: 0;
   letter-spacing: 0.04em;
 }
-.artistName {
-  font-size: 11px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 1px;
-}
-.songCounter {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+.songArtist {
+  font-size: 13px;
+  font-weight: 500;
+  margin-top: 3px;
 }
 
 .headerRight {
@@ -144,26 +143,44 @@
   text-align: center;
 }
 
-/* Controls */
-.controls {
+/* Prev / Next song navigation */
+.songNav {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 12px 16px;
+  padding: 8px 12px;
+  gap: 6px;
   flex-shrink: 0;
 }
-.navBtn {
-  background: rgba(255,255,255,0.06);
+.songNavBtn {
+  flex: 1;
+  min-width: 0;
+  background: none;
   border: none;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 10px 18px;
-  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 6px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: background 0.15s;
+  overflow: hidden;
 }
-.navBtn:hover { background: rgba(255,255,255,0.1); }
+.songNavBtn:hover { background: rgba(255,255,255,0.06); }
+.songNavBtn:disabled { cursor: default; }
+.songNavBtn:disabled:hover { background: none; }
+.navArrow {
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.navSongName {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .playBtn {
   border: none;
   width: 44px;
