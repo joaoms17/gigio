@@ -10,6 +10,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
+import { useConfirm } from '../../components/ConfirmDialog'
 import LyricsView from '../../components/LyricsView'
 import ProjectPickerModal from '../../components/ProjectPickerModal'
 import { supabase } from '../../lib/supabase'
@@ -61,6 +62,7 @@ export default function SetlistPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const navigate = useNavigate()
+  const confirmDialog = useConfirm()
   const [searchParams] = useSearchParams()
   const autoAddDone = useRef(false)
   const [setlist, setSetlist] = useState<Setlist | null>(null)
@@ -207,7 +209,8 @@ export default function SetlistPage() {
   }
 
   async function deleteSetlist() {
-    if (!id || !window.confirm(`Apagar a setlist "${setlist?.name}"? Esta ação não pode ser desfeita.`)) return
+    if (!id) return
+    if (!await confirmDialog({ title: 'Apagar setlist', message: `Apagar a setlist "${setlist?.name}"? Esta ação não pode ser desfeita.`, confirmLabel: 'Apagar', danger: true })) return
     await supabase.from('setlist_songs').delete().eq('setlist_id', id)
     await supabase.from('setlists').delete().eq('id', id)
     setlist?.band_id ? navigate(`/projects/${setlist.band_id}?tab=setlists`) : navigate('/setlists')

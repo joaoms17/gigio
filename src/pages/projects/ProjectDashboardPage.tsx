@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
+import { useConfirm } from '../../components/ConfirmDialog'
 import { supabase } from '../../lib/supabase'
 import { uploadProjectImage } from '../../lib/uploadImage'
 import { useAuth } from '../../hooks/useAuth'
@@ -63,6 +64,7 @@ const SETLIST_STATUS_LABELS: Record<string, string> = {
 export default function ProjectDashboardPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const confirmDialog = useConfirm()
   const { id: projectId } = useParams<{ id: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = (searchParams.get('tab') as Tab) ?? 'overview'
@@ -198,14 +200,14 @@ export default function ProjectDashboardPage() {
 
   async function leaveProject() {
     if (!project || !user) return
-    if (!confirm(`Sair do projeto "${project.name}"?`)) return
+    if (!await confirmDialog({ title: 'Sair do projeto', message: `Sair do projeto "${project.name}"?`, confirmLabel: 'Sair', danger: true })) return
     await supabase.from('band_members').delete().eq('band_id', project.id).eq('user_id', user.id)
     navigate('/')
   }
 
   async function deleteProject() {
     if (!project || !user) return
-    if (!confirm(`Eliminar o projeto "${project.name}"? Esta ação é irreversível.`)) return
+    if (!await confirmDialog({ title: 'Eliminar projeto', message: `Eliminar o projeto "${project.name}"? Esta ação é irreversível.`, confirmLabel: 'Eliminar', danger: true })) return
     await supabase.from('bands').delete().eq('id', project.id)
     navigate('/')
   }
@@ -253,7 +255,7 @@ export default function ProjectDashboardPage() {
 
   async function removeMember(userId: string, displayName: string) {
     if (!project) return
-    if (!confirm(`Remover ${displayName} do projeto?`)) return
+    if (!await confirmDialog({ title: 'Remover membro', message: `Remover ${displayName} do projeto?`, confirmLabel: 'Remover', danger: true })) return
     await supabase.from('band_members').delete().eq('band_id', project.id).eq('user_id', userId)
     setMembers(prev => prev.filter(m => m.user_id !== userId))
   }
@@ -272,7 +274,7 @@ export default function ProjectDashboardPage() {
   }
 
   async function deleteSong(songId: string, title: string) {
-    if (!confirm(`Remover "${title}" do repertório?`)) return
+    if (!await confirmDialog({ title: 'Remover música', message: `Remover "${title}" do repertório?`, confirmLabel: 'Remover', danger: true })) return
     setDeletingSong(songId)
     await supabase.from('songs').delete().eq('id', songId)
     setSongs(prev => prev.filter(s => s.id !== songId))

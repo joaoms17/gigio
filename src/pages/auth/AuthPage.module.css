@@ -58,7 +58,7 @@
 }
 .tab { background: transparent; color: var(--text3); }
 .activeTab {
-  background: white;
+  background: var(--bg);
   color: var(--text);
   box-shadow: 0 2px 8px rgba(0,0,0,0.09);
 }
@@ -81,7 +81,7 @@
   transition: border-color 0.15s, background 0.15s;
   width: 100%;
 }
-.input:focus { border-color: var(--gig); background: white; }
+.input:focus { border-color: var(--gig); background: var(--bg); }
 .input::placeholder { color: var(--text3); }
 
 .btn {
@@ -116,4 +116,12 @@
   border-radius: 9px;
   text-align: left;
   border: 1px solid #10b98130;
+}
+
+/* Dark mode */
+:global([data-theme="dark"]) .page {
+  background: linear-gradient(160deg, #1d1418 0%, #171225 50%, #121826 100%);
+}
+:global([data-theme="dark"]) .card {
+  background: rgba(28, 28, 36, 0.94);
 }

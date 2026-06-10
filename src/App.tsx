@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { ConfirmProvider } from './components/ConfirmDialog'
 import { useAuth } from './hooks/useAuth'
 import AuthPage from './pages/auth/AuthPage'
 import ProjectsPage from './pages/projects/ProjectsPage'
@@ -66,7 +67,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <ConfirmProvider>
+          <AppRoutes />
+        </ConfirmProvider>
       </AuthProvider>
     </BrowserRouter>
   )
