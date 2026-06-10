@@ -1,37 +1,16 @@
 import * as pdfjsLib from 'pdfjs-dist'
-// Vite bundles this as a real worker file — reliable in production/iOS
-import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
-let workerReady = false
-
-function setupWorker() {
-  if (workerReady) return
-  try {
-    pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker()
-  } catch {
-    // Fallback: main-thread "fake worker" via dynamic import of the module
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
-  }
-  workerReady = true
-}
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
 async function openPdf(data: ArrayBuffer) {
-  setupWorker()
   try {
     return await pdfjsLib.getDocument({ data }).promise
   } catch (err: any) {
     if (err?.name === 'PasswordException') {
       throw new Error('Este PDF está protegido por palavra-passe.')
     }
-    // Worker may have failed to boot — retry on the main thread
-    try {
-      pdfjsLib.GlobalWorkerOptions.workerPort = null as any
-      pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
-      return await pdfjsLib.getDocument({ data }).promise
-    } catch {
-      throw new Error('Não foi possível abrir o PDF. O ficheiro pode estar corrompido.')
-    }
+    throw new Error('Não foi possível abrir o PDF. O ficheiro pode estar corrompido.')
   }
 }
 

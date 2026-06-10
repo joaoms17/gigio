@@ -158,12 +158,12 @@
 
 .lyricLineManual {
   line-height: 2;
-  padding: 3px 0 3px 16px;
-  border-left: 3px solid transparent;
-  transition: border-color 0.18s, opacity 0.15s;
+  padding: 4px 16px;
+  text-align: center;
+  transition: opacity 0.15s, background 0.18s;
   cursor: pointer;
   min-height: 1.8em;
-  border-radius: 0 4px 4px 0;
+  border-radius: 8px;
 }
 .lyricLineManual:active { opacity: 0.6; }
 
@@ -314,6 +314,26 @@
   transition: transform 0.12s;
 }
 .colorDot:hover { transform: scale(1.2); }
+
+/* Re-sync button */
+.resyncWrap {
+  display: flex;
+  justify-content: center;
+  padding: 2px 16px 0;
+  flex-shrink: 0;
+}
+.resyncBtn {
+  padding: 5px 18px;
+  border-radius: 20px;
+  border: 1.5px solid;
+  background: rgba(255,255,255,0.06);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: background 0.15s;
+}
+.resyncBtn:hover { background: rgba(255,255,255,0.13); }
 
 /* Setlist panel */
 .setlistPanel {

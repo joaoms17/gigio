@@ -36,7 +36,7 @@ export default function SongPage() {
   const [tab, setTab] = useState<Tab>('lyrics')
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
-  const [preview, setPreview] = useState(false)
+  const [preview, setPreview] = useState(true)
 
   // Editable fields
   const [title, setTitle] = useState('')
