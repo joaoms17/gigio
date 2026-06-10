@@ -391,8 +391,8 @@ export default function SearchPage() {
                         const { extractLyricsFromPdf } = await import('../../lib/pdfLyrics')
                         const lyrics = await extractLyricsFromPdf(file)
                         setManual(m => m ? { ...m, lyrics } : m)
-                      } catch {
-                        alert('Não foi possível ler o PDF. Tenta copiar o texto manualmente.')
+                      } catch (err: any) {
+                        alert(err?.message ?? 'Não foi possível ler o PDF. Tenta copiar o texto manualmente.')
                       } finally {
                         setImportingPdf(false)
                         e.target.value = ''
