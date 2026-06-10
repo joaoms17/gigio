@@ -46,6 +46,10 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectWithCounts[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
+  const [showJoin, setShowJoin] = useState(false)
+  const [joinCode, setJoinCode] = useState('')
+  const [joinError, setJoinError] = useState<string | null>(null)
+  const [joining, setJoining] = useState(false)
 
   // Create project form state
   const [createName, setCreateName] = useState('')
@@ -128,6 +132,28 @@ export default function ProjectsPage() {
     if (data) navigate(`/projects/${data.id}`)
   }
 
+  async function joinByCode() {
+    if (!user || !joinCode.trim()) return
+    setJoining(true)
+    setJoinError(null)
+    const { data: band, error } = await supabase
+      .from('bands')
+      .select('id, name, invite_expires_at')
+      .eq('invite_code', joinCode.trim().toUpperCase())
+      .single()
+    if (error || !band) { setJoinError('Código inválido.'); setJoining(false); return }
+    if (band.invite_expires_at && new Date(band.invite_expires_at) < new Date()) {
+      setJoinError('Este código expirou.'); setJoining(false); return
+    }
+    const { error: joinErr } = await supabase
+      .from('band_members')
+      .upsert({ band_id: band.id, user_id: user.id, role: 'editor' }, { onConflict: 'band_id,user_id' })
+    if (joinErr) { setJoinError('Erro ao entrar: ' + joinErr.message); setJoining(false); return }
+    setShowJoin(false)
+    setJoinCode('')
+    navigate(`/projects/${band.id}`)
+  }
+
   function resetCreateForm() {
     setCreateName('')
     setCreateType('band')
@@ -143,9 +169,14 @@ export default function ProjectsPage() {
             <h1 className={styles.title}>Os meus projetos</h1>
             <p className={styles.subtitle}>Bandas, projetos e colaborações musicais</p>
           </div>
-          <button className={styles.createBtn} onClick={() => setShowCreate(true)}>
-            + Criar projeto
-          </button>
+          <div className={styles.headerBtns}>
+            <button className={styles.joinBtn} onClick={() => setShowJoin(true)}>
+              Entrar com código
+            </button>
+            <button className={styles.createBtn} onClick={() => setShowCreate(true)}>
+              + Criar projeto
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -232,6 +263,37 @@ export default function ProjectsPage() {
         <span className={styles.versionHash}>v {__COMMIT_HASH__}</span>
         <button className={styles.refreshBtn} onClick={hardRefresh}>⟳ Hard refresh</button>
       </div>
+
+      {showJoin && (
+        <div className={styles.overlay} onClick={() => { setShowJoin(false); setJoinCode(''); setJoinError(null) }}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <span className={styles.modalTitle}>Entrar com código</span>
+              <button className={styles.closeBtn} onClick={() => { setShowJoin(false); setJoinCode(''); setJoinError(null) }}>✕</button>
+            </div>
+            <p className={styles.joinHint}>Pede ao dono do projeto o código de convite.</p>
+            <div className={styles.field}>
+              <input
+                className={`${styles.input} ${styles.codeInput}`}
+                value={joinCode}
+                onChange={e => { setJoinCode(e.target.value.toUpperCase()); setJoinError(null) }}
+                onKeyDown={e => e.key === 'Enter' && joinByCode()}
+                placeholder="XXXX-0000"
+                maxLength={9}
+                autoFocus
+              />
+              {joinError && <p className={styles.joinError}>{joinError}</p>}
+            </div>
+            <button
+              className={styles.submitBtn}
+              onClick={joinByCode}
+              disabled={joining || !joinCode.trim()}
+            >
+              {joining ? 'A verificar...' : 'Entrar no projeto'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showCreate && (
         <div className={styles.overlay} onClick={() => { setShowCreate(false); resetCreateForm() }}>
