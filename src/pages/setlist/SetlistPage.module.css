@@ -11,6 +11,8 @@
 .metaRow { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
 .venueInput { padding: 4px 10px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--bg2); color: var(--text); font-size: 12px; min-width: 140px; font-family: inherit; transition: border-color 0.15s; }
 .venueInput:focus { outline: none; border-color: var(--gig); }
+.dateInput { padding: 4px 8px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--bg2); color: var(--text2); font-size: 12px; font-family: inherit; cursor: pointer; transition: border-color 0.15s; }
+.dateInput:focus { outline: none; border-color: var(--gig); }
 .statusSelect { padding: 4px 8px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--bg2); color: var(--text2); font-size: 12px; cursor: pointer; font-family: inherit; }
 .statusSelect:focus { outline: none; border-color: var(--gig); }
 .librarySearch { width: 100%; padding: 10px 12px; border-radius: 9px; border: 1.5px solid var(--border); background: var(--bg2); color: var(--text); font-size: 14px; margin-bottom: 12px; font-family: inherit; transition: border-color 0.15s; box-sizing: border-box; }

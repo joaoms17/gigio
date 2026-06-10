@@ -426,8 +426,8 @@ export default function ProjectDashboardPage() {
                         <div className={styles.recentInfo}>
                           <div className={styles.recentName}>{s.name}</div>
                           <div className={styles.recentSub}>
-                            {s.date ? new Date(s.date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Sem data'}
-                            {s.venue ? ` · ${s.venue}` : ''}
+                            {s.date ? new Date(s.date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+                            {s.venue ? `${s.date ? ' · ' : ''}${s.venue}` : ''}
                           </div>
                         </div>
                         <span className={styles.recentCount}>{s.setlist_songs?.[0]?.count ?? 0} músicas</span>
@@ -597,10 +597,8 @@ export default function ProjectDashboardPage() {
                       <div className={styles.setlistBody}>
                         <div className={styles.setlistName}>{s.name}</div>
                         <div className={styles.setlistMeta}>
-                          {s.date
-                            ? new Date(s.date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' })
-                            : 'Sem data'}
-                          {s.venue ? ` · ${s.venue}` : ''}
+                          {s.date ? new Date(s.date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
+                          {s.venue ? `${s.date ? ' · ' : ''}${s.venue}` : ''}
                         </div>
                         <div className={styles.setlistTags}>
                           <span className={styles.setlistCount}>{s.setlist_songs?.[0]?.count ?? 0} músicas</span>

@@ -266,9 +266,11 @@ export default function BandPage() {
                 {setlists.map((s, i) => (
                   <div key={s.id} className={`${styles.setlistCard} ${styles[`sc${i % 3}`]}`} onClick={() => navigate(`/setlist/${s.id}`)}>
                     <div className={styles.setlistName}>{s.name}</div>
-                    <div className={styles.setlistDate}>
-                      {s.date ? new Date(s.date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Sem data'}
-                    </div>
+                    {s.date && (
+                      <div className={styles.setlistDate}>
+                        {new Date(s.date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </div>
+                    )}
                     <div className={styles.setlistTags}>
                       <span className={styles.tag}>{s.setlist_songs?.[0]?.count ?? 0} músicas</span>
                       {s.is_shared && <span className={styles.tagShared}>partilhada</span>}

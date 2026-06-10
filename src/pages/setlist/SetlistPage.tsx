@@ -73,6 +73,7 @@ export default function SetlistPage() {
   const [editingName, setEditingName] = useState(false)
   const [name, setName] = useState('')
   const [venue, setVenue] = useState('')
+  const [date, setDate] = useState('')
   const [status, setStatus] = useState('draft')
   const [duplicating, setDuplicating] = useState(false)
 
@@ -86,6 +87,7 @@ export default function SetlistPage() {
           setSetlist(data)
           setName(data.name)
           setVenue(data.venue ?? '')
+          setDate(data.date ?? '')
           setStatus(data.status ?? 'draft')
         }
       })
@@ -135,6 +137,12 @@ export default function SetlistPage() {
     if (!id) return
     setVenue(val)
     await supabase.from('setlists').update({ venue: val || null }).eq('id', id)
+  }
+
+  async function saveDate(val: string) {
+    if (!id) return
+    setDate(val)
+    await supabase.from('setlists').update({ date: val || null }).eq('id', id)
   }
 
   async function saveStatus(val: string) {
@@ -255,6 +263,12 @@ export default function SetlistPage() {
                 onChange={e => setVenue(e.target.value)}
                 onBlur={e => saveVenue(e.target.value)}
                 placeholder="Local / evento..."
+              />
+              <input
+                className={styles.dateInput}
+                type="date"
+                value={date}
+                onChange={e => saveDate(e.target.value)}
               />
               <select
                 className={styles.statusSelect}
