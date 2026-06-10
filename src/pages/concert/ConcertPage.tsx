@@ -6,7 +6,7 @@ import type { SetlistSong, Song, ConcertTheme, LyricLine } from '../../types'
 import styles from './ConcertPage.module.css'
 
 const DEFAULT_THEME: ConcertTheme = {
-  bg: '#0d0d0d', active_color: '#ffffff', accent_color: '#FF4D6D', font_size: 26
+  bg: '#0d0d0d', active_color: '#ffffff', accent_color: '#FF4D6D', font_size: 26, line_height: 1.6
 }
 
 type Row = SetlistSong & { song: Song }
@@ -22,16 +22,14 @@ export default function ConcertPage() {
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_THEME)
   const [syncLines, setSyncLines] = useState<LyricLine[] | null>(null)
   const [viewMode, setViewMode] = useState<'sync' | 'semi' | 'manual'>('semi')
-  const [scrollSpeed, setScrollSpeed] = useState(1)   // px per 16ms frame
+  const [scrollSpeed] = useState(1)
   const [offset, setOffset] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
   const [showSetlist, setShowSetlist] = useState(false)
 
   const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null)
   const startRef    = useRef<number>(0)
-  const saveThemeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activeLineRef  = useRef<HTMLDivElement>(null)
   const lyricsScrollRef = useRef<HTMLDivElement>(null)
   const animFrameRef   = useRef<number | null>(null)
@@ -169,16 +167,6 @@ export default function ConcertPage() {
   }
   function handleProgressPointerUp() { scrubbing.current = false }
 
-  // ── Theme ────────────────────────────────────────────────────────────────
-  function updateTheme(patch: Partial<ConcertTheme>) {
-    const next = { ...theme, ...patch }
-    setTheme(next)
-    if (saveThemeTimer.current) clearTimeout(saveThemeTimer.current)
-    saveThemeTimer.current = setTimeout(() => {
-      if (user) supabase.from('profiles').update({ concert_theme: next }).eq('id', user.id)
-    }, 1500)
-  }
-
   // ── Swipe (manual mode) — 75% horizontal threshold ───────────────────────
   function handleTouchStart(e: React.TouchEvent) {
     userTouchingRef.current = true
@@ -256,11 +244,6 @@ export default function ConcertPage() {
             style={{ color: showSetlist ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
             onClick={() => setShowSetlist(s => !s)}
           >≡</button>
-          <button
-            className={styles.modeBtn}
-            style={{ color: showSettings ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
-            onClick={() => setShowSettings(s => !s)}
-          >⚙</button>
         </div>
       </div>
 
@@ -360,6 +343,7 @@ export default function ConcertPage() {
               style={{
                 color: theme.active_color,
                 fontSize: theme.font_size * 0.88,
+                lineHeight: theme.line_height ?? 1.6,
                 fontWeight: i === lineIdx ? 800 : 400,
                 opacity: i < lineIdx ? 0.35 : 1,
                 borderLeftColor: i === lineIdx ? theme.accent_color : 'transparent',
@@ -389,6 +373,7 @@ export default function ConcertPage() {
               style={{
                 color: theme.active_color,
                 fontSize: theme.font_size * 0.88,
+                lineHeight: theme.line_height ?? 1.6,
                 fontWeight: 400,
                 opacity: 1,
                 borderLeftColor: 'transparent',
@@ -454,43 +439,6 @@ export default function ConcertPage() {
           <span className={styles.navArrow}>›</span>
         </button>
       </div>
-
-      {/* ── Settings panel ── */}
-      {showSettings && (
-        <div className={styles.settingsPanel} style={{ background: theme.bg, borderColor: 'rgba(255,255,255,0.1)' }}>
-          <div className={styles.settingsRow}>
-            <span style={{ color: theme.active_color, opacity: 0.5, fontSize: 12 }}>Tamanho</span>
-            <div className={styles.settingsControls}>
-              <button className={styles.settingBtn} style={{ color: theme.active_color }} onClick={() => updateTheme({ font_size: Math.max(16, theme.font_size - 2) })}>A−</button>
-              <span style={{ color: theme.active_color, fontSize: 12, fontWeight: 700, minWidth: 30, textAlign: 'center' }}>{theme.font_size}</span>
-              <button className={styles.settingBtn} style={{ color: theme.active_color }} onClick={() => updateTheme({ font_size: Math.min(52, theme.font_size + 2) })}>A+</button>
-            </div>
-          </div>
-          {viewMode === 'semi' && (
-            <div className={styles.settingsRow}>
-              <span style={{ color: theme.active_color, opacity: 0.5, fontSize: 12 }}>Velocidade scroll</span>
-              <div className={styles.settingsControls}>
-                <button className={styles.settingBtn} style={{ color: theme.active_color }} onClick={() => setScrollSpeed(s => Math.max(0.2, +(s - 0.2).toFixed(1)))}>−</button>
-                <span style={{ color: theme.active_color, fontSize: 12, fontWeight: 700, minWidth: 30, textAlign: 'center' }}>{scrollSpeed.toFixed(1)}</span>
-                <button className={styles.settingBtn} style={{ color: theme.active_color }} onClick={() => setScrollSpeed(s => Math.min(4, +(s + 0.2).toFixed(1)))}>+</button>
-              </div>
-            </div>
-          )}
-          <div className={styles.settingsRow}>
-            <span style={{ color: theme.active_color, opacity: 0.5, fontSize: 12 }}>Cor da letra</span>
-            <div className={styles.colorRow}>
-              {['#ffffff','#f5f0e8','#fde68a','#bbf7d0','#bfdbfe','#fecaca'].map(c => (
-                <button
-                  key={c}
-                  className={styles.colorDot}
-                  style={{ background: c, outline: theme.active_color === c ? `2px solid ${c}` : 'none', outlineOffset: 2 }}
-                  onClick={() => updateTheme({ active_color: c })}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Setlist panel ── */}
       {showSetlist && (

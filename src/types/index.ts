@@ -135,6 +135,7 @@ export interface ConcertTheme {
   active_color: string
   accent_color: string
   font_size: number
+  line_height?: number
 }
 
 export interface SearchResult {
