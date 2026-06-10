@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
@@ -109,9 +109,9 @@ export default function ProjectDashboardPage() {
   const canManage = myRole === 'owner' || myRole === 'admin'
   const isOwner = myRole === 'owner'
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!user || !projectId) return
-    setLoading(true)
+    if (!silent) setLoading(true)
     setError(null)
 
     const { data: membership } = await supabase
@@ -169,6 +169,13 @@ export default function ProjectDashboardPage() {
   }, [user, projectId, canManage])
 
   useEffect(() => { load() }, [load])
+
+  // Silent refresh when switching tabs so counts/lists stay current
+  const firstTabRender = useRef(true)
+  useEffect(() => {
+    if (firstTabRender.current) { firstTabRender.current = false; return }
+    load(true)
+  }, [activeTab])
 
   async function saveSettings() {
     if (!project || !settingsName.trim()) return

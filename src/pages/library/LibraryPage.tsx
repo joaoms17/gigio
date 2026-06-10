@@ -62,7 +62,16 @@ export default function LibraryPage() {
         <div className={styles.layout}>
           <div className={styles.list}>
             {loading ? (
-              <p className={styles.empty}>A carregar...</p>
+              <>
+                {[0, 1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className={styles.row} style={{ pointerEvents: 'none' }}>
+                    <div style={{ flex: 1 }}>
+                      <div className="skeleton" style={{ height: 14, width: `${55 + (i % 3) * 12}%`, marginBottom: 7 }} />
+                      <div className="skeleton" style={{ height: 11, width: `${30 + (i % 2) * 15}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </>
             ) : filtered.length === 0 ? (
               <div className={styles.emptyState}>
                 <div className={styles.emptyIcon}>🎵</div>
@@ -74,7 +83,11 @@ export default function LibraryPage() {
                 <div
                   key={song.id}
                   className={`${styles.row} ${selected?.id === song.id ? styles.rowActive : ''}`}
-                  onClick={() => setSelected(song)}
+                  onClick={() => {
+                    // On mobile the preview pane is hidden — open the song directly
+                    if (window.innerWidth <= 700) navigate(`/songs/${song.id}`)
+                    else setSelected(song)
+                  }}
                 >
                   <div className={styles.rowInfo}>
                     <div className={styles.rowTitle}>{song.title}</div>
