@@ -109,7 +109,7 @@ export default function SearchPage() {
       source: resolvedSource,
       source_provider: opts.provider ?? opts.source ?? 'manual',
       has_sync: opts.has_sync,
-      duration_sec: opts.duration_sec,
+      duration_sec: opts.duration_sec ? Math.round(opts.duration_sec) : null,
       project_id: projectId ?? null,
       is_user_edited: false,
     }).select().single()
@@ -245,7 +245,7 @@ export default function SearchPage() {
                   </div>
                   <div className={styles.resultArtist}>
                     {r.artist}
-                    {r.duration_sec ? ` · ${Math.floor(r.duration_sec / 60)}:${String(r.duration_sec % 60).padStart(2, '0')}` : ''}
+                    {r.duration_sec ? ` · ${Math.floor(r.duration_sec / 60)}:${String(Math.floor(r.duration_sec % 60)).padStart(2, '0')}` : ''}
                   </div>
                 </div>
                 <div className={styles.rowActions}>
