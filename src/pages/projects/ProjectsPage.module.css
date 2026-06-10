@@ -62,13 +62,13 @@
 }
 .card:hover {
   transform: translateY(-3px);
-  box-shadow: var(--shadow);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.11), 0 2px 8px rgba(0,0,0,0.06);
   border-color: var(--project-color, var(--gig));
 }
 .card:active { transform: translateY(-1px); }
 
 .cardAccent {
-  height: 3px;
+  height: 4px;
   width: 100%;
   opacity: 0.9;
 }
