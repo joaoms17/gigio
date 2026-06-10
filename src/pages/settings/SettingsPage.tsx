@@ -10,7 +10,7 @@ const ACTIVE_SWATCHES = ['#ffffff', '#FF4D6D', '#7C3AED', '#FBBF24', '#22D3EE', 
 const ACCENT_SWATCHES = ['#FF4D6D', '#7C3AED', '#22D3EE', '#FBBF24', '#4ADE80']
 
 const DEFAULT_THEME: ConcertTheme = {
-  bg: '#0d0d0d', active_color: '#ffffff', accent_color: '#FF4D6D', font_size: 26
+  bg: '#0d0d0d', active_color: '#ffffff', accent_color: '#FF4D6D', font_size: 26, line_height: 1.6
 }
 
 export default function SettingsPage() {
@@ -151,7 +151,7 @@ export default function SettingsPage() {
             <div className={styles.row}>
               <div className={styles.rowLabel}>
                 <div className={styles.label}>Tamanho do texto</div>
-                <div className={styles.hint}>Linha ativa no concerto</div>
+                <div className={styles.hint}>Tamanho da letra no concerto</div>
               </div>
               <div className={styles.sliderRow}>
                 <span style={{ fontSize: 12, color: 'var(--text3)' }}>A</span>
@@ -162,6 +162,22 @@ export default function SettingsPage() {
                 />
                 <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text3)' }}>A</span>
                 <span className={styles.sliderVal}>{theme.font_size}px</span>
+              </div>
+            </div>
+
+            <div className={styles.row}>
+              <div className={styles.rowLabel}>
+                <div className={styles.label}>Espaçamento</div>
+                <div className={styles.hint}>Espaço entre linhas da letra</div>
+              </div>
+              <div className={styles.sliderRow}>
+                <span style={{ fontSize: 11, color: 'var(--text3)' }}>↕</span>
+                <input
+                  type="range" min={10} max={30} step={1} value={Math.round((theme.line_height ?? 1.6) * 10)}
+                  onChange={e => pick('line_height', Number(e.target.value) / 10)}
+                  className={styles.slider}
+                />
+                <span className={styles.sliderVal}>{(theme.line_height ?? 1.6).toFixed(1)}</span>
               </div>
             </div>
           </div>
