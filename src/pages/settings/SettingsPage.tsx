@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
+import { getThemePref, applyThemePref, type ThemePref } from '../../lib/theme'
 import type { ConcertTheme } from '../../types'
 import styles from './SettingsPage.module.css'
 
@@ -16,6 +17,7 @@ const DEFAULT_THEME: ConcertTheme = {
 export default function SettingsPage() {
   const { user } = useAuth()
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_THEME)
+  const [appTheme, setAppTheme] = useState<ThemePref>(getThemePref())
   const [themeSaved, setThemeSaved] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [nameSaved, setNameSaved] = useState(false)
@@ -94,6 +96,30 @@ export default function SettingsPage() {
             </div>
           </div>
           <button className={styles.signOutBtn} onClick={signOut}>Sair da conta</button>
+        </section>
+
+        {/* Appearance */}
+        <section className={styles.section}>
+          <div className={styles.sectionTitle}>APARÊNCIA</div>
+          <div className={styles.card}>
+            <div className={styles.row}>
+              <div className={styles.rowLabel}>
+                <div className={styles.label}>Tema da app</div>
+                <div className={styles.hint}>Claro, escuro ou seguir o sistema</div>
+              </div>
+              <div className={styles.themeToggle}>
+                {([['light', '☀️ Claro'], ['dark', '🌙 Escuro'], ['system', '⚙ Sistema']] as [ThemePref, string][]).map(([v, label]) => (
+                  <button
+                    key={v}
+                    className={`${styles.themeOption} ${appTheme === v ? styles.themeOptionActive : ''}`}
+                    onClick={() => { setAppTheme(v); applyThemePref(v) }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* Concert theme */}

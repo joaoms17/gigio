@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../../components/Layout'
+import { useConfirm } from '../../components/ConfirmDialog'
 import LyricsView from '../../components/LyricsView'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
@@ -10,6 +11,7 @@ import styles from './LibraryPage.module.css'
 export default function LibraryPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const confirmDialog = useConfirm()
   const [songs, setSongs] = useState<Song[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Song | null>(null)
@@ -30,7 +32,7 @@ export default function LibraryPage() {
   }, [user])
 
   async function deleteSong(song: Song) {
-    if (!confirm(`Eliminar "${song.title}"? Será removida de todas as setlists.`)) return
+    if (!await confirmDialog({ title: 'Eliminar música', message: `Eliminar "${song.title}"? Será removida de todas as setlists.`, confirmLabel: 'Eliminar', danger: true })) return
     setDeleting(song.id)
     await supabase.from('songs').delete().eq('id', song.id)
     setSongs(prev => prev.filter(s => s.id !== song.id))
