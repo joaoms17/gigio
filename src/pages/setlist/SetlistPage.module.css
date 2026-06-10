@@ -11,11 +11,15 @@
 .metaRow { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
 .venueInput { padding: 4px 10px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--bg2); color: var(--text); font-size: 12px; min-width: 140px; font-family: inherit; transition: border-color 0.15s; }
 .venueInput:focus { outline: none; border-color: var(--gig); }
+.dateInput { padding: 4px 8px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--bg2); color: var(--text2); font-size: 12px; font-family: inherit; cursor: pointer; transition: border-color 0.15s; }
+.dateInput:focus { outline: none; border-color: var(--gig); }
 .statusSelect { padding: 4px 8px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--bg2); color: var(--text2); font-size: 12px; cursor: pointer; font-family: inherit; }
 .statusSelect:focus { outline: none; border-color: var(--gig); }
 .librarySearch { width: 100%; padding: 10px 12px; border-radius: 9px; border: 1.5px solid var(--border); background: var(--bg2); color: var(--text); font-size: 14px; margin-bottom: 12px; font-family: inherit; transition: border-color 0.15s; box-sizing: border-box; }
 .librarySearch:focus { outline: none; border-color: var(--gig); }
 .headerActions { display: flex; gap: 8px; flex-shrink: 0; }
+.deleteBtn { padding: 9px 14px; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--text3); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.deleteBtn:hover { border-color: #ef4444; color: #ef4444; }
 .dupBtn { padding: 9px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--text2); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .dupBtn:hover { border-color: var(--gig); color: var(--gig); }
 .concertBtn { padding: 9px 16px; border: none; border-radius: var(--radius); background: linear-gradient(135deg, var(--gig), var(--io)); color: white; font-size: 13px; font-weight: 700; white-space: nowrap; flex-shrink: 0; cursor: pointer; }
@@ -23,7 +27,7 @@
 @media (max-width: 640px) {
   .header { flex-direction: column; align-items: flex-start; }
   .headerActions { width: 100%; }
-  .dupBtn, .concertBtn { flex: 1; text-align: center; }
+  .deleteBtn, .dupBtn, .concertBtn { flex: 1; text-align: center; }
 }
 
 .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }

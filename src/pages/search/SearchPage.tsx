@@ -98,10 +98,7 @@ export default function SearchPage() {
     provider?: string
   }): Promise<string | null> {
     if (!user) return null
-    const VALID_SOURCES = ['lrclib', 'lyricsovh', 'manual']
-    const resolvedSource = VALID_SOURCES.includes(opts.source as string)
-      ? opts.source
-      : opts.provider ?? 'manual'
+    const resolvedSource = opts.source === 'lrclib' ? 'lrclib' : 'manual'
     const { data: song, error } = await supabase.from('songs').insert({
       owner_id: user.id,
       title: opts.title,
@@ -259,7 +256,7 @@ export default function SearchPage() {
                   )}
                   <button
                     className={isSaved ? styles.savedBtn : styles.addBtn}
-                    onClick={() => projectId ? doAdd(r, null, true) : setPicker(r)}
+                    onClick={() => projectId ? doAdd(r, setlistId, true) : setPicker(r)}
                     disabled={isSaved || !!saving}
                   >
                     {isSaving ? '...' : isSaved ? '✓ Guardado' : '+ Adicionar'}
@@ -273,7 +270,7 @@ export default function SearchPage() {
             <div className={styles.noResults}>
               <p>Não encontrei letra para "{query}".</p>
               <p className={styles.noResultsSub}>Tenta outro título/artista ou adiciona manualmente.</p>
-              <button className={styles.manualBtn} onClick={() => setManual({ title: query, artist: artistQuery, lyrics: '', setlistId: null })}>
+              <button className={styles.manualBtn} onClick={() => setManual({ title: query, artist: artistQuery, lyrics: '', setlistId })}>
                 Adicionar manualmente
               </button>
             </div>
@@ -283,7 +280,7 @@ export default function SearchPage() {
         {!searched && (
           <div className={styles.fallback}>
             <span className={styles.fallbackLabel}>Tens uma letra?</span>
-            <button className={styles.fallbackBtn} onClick={() => setManual({ title: '', artist: '', lyrics: '', setlistId: null })}>
+            <button className={styles.fallbackBtn} onClick={() => setManual({ title: '', artist: '', lyrics: '', setlistId })}>
               ✏ Escrever / colar manualmente
             </button>
           </div>
