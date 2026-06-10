@@ -227,6 +227,14 @@ export default function ProjectDashboardPage() {
     setTimeout(() => setInviteCopied(null), 1500)
   }
 
+  async function copyJoinLink() {
+    if (!project) return
+    const url = `${window.location.origin}/join?code=${project.invite_code}`
+    await navigator.clipboard.writeText(url)
+    setInviteCopied('link')
+    setTimeout(() => setInviteCopied(null), 1500)
+  }
+
   async function removeMember(userId: string, displayName: string) {
     if (!project) return
     if (!confirm(`Remover ${displayName} do projeto?`)) return
@@ -728,7 +736,10 @@ export default function ProjectDashboardPage() {
                     <div className={styles.codeRow}>
                       <code className={styles.inviteCode}>{project.invite_code}</code>
                       <button className={styles.copyCodeBtn} onClick={copyInviteCode}>
-                        {inviteCopied === 'code' ? '✓ Copiado' : 'Copiar'}
+                        {inviteCopied === 'code' ? '✓' : 'Copiar código'}
+                      </button>
+                      <button className={styles.copyCodeBtn} onClick={copyJoinLink}>
+                        {inviteCopied === 'link' ? '✓ Link copiado' : 'Copiar link'}
                       </button>
                     </div>
                   </div>

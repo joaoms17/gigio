@@ -7,6 +7,7 @@ import ProjectDashboardPage from './pages/projects/ProjectDashboardPage'
 import SetlistPage from './pages/setlist/SetlistPage'
 import SongPage from './pages/song/SongPage'
 import SearchPage from './pages/search/SearchPage'
+import InvitePage from './pages/invite/InvitePage'
 import ConcertPage from './pages/concert/ConcertPage'
 import LibraryPage from './pages/library/LibraryPage'
 import SetlistsPage from './pages/setlists/SetlistsPage'
@@ -41,6 +42,10 @@ function AppRoutes() {
 
       {/* Definições */}
       <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
+
+      {/* Convites */}
+      <Route path="/invite/:token" element={<InvitePage />} />
+      <Route path="/join" element={<InvitePage />} />
 
       {/* Compatibilidade com rotas antigas */}
       <Route path="/band/:id" element={<AuthGuard><BandRedirect /></AuthGuard>} />
