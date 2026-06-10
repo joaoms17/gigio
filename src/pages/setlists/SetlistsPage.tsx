@@ -82,7 +82,18 @@ export default function SetlistsPage() {
         )}
 
         {loading ? (
-          <p className={styles.empty}>A carregar...</p>
+          <div className={styles.grid}>
+            {[0, 1, 2].map(i => (
+              <div key={i} className={styles.card} style={{ pointerEvents: 'none' }}>
+                <div className="skeleton" style={{ height: 4, borderRadius: 0 }} />
+                <div className={styles.cardBody}>
+                  <div className="skeleton" style={{ height: 16, width: '65%', marginBottom: 8 }} />
+                  <div className="skeleton" style={{ height: 12, width: '45%', marginBottom: 12 }} />
+                  <div className="skeleton" style={{ height: 22, width: 90, borderRadius: 20 }} />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : filtered.length === 0 && !search ? (
           <div className={styles.emptyState}>
             <div className={styles.emptyIcon}>🎤</div>

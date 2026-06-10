@@ -197,7 +197,24 @@ export default function ProjectsPage() {
         </div>
 
         {loading ? (
-          <div className={styles.loadingState}>A carregar projetos...</div>
+          <div className={styles.grid}>
+            {[0, 1, 2].map(i => (
+              <div key={i} className={styles.card} style={{ pointerEvents: 'none' }}>
+                <div className="skeleton" style={{ height: 72, borderRadius: 0 }} />
+                <div className={styles.cardBody}>
+                  <div className={styles.cardTop}>
+                    <div className="skeleton" style={{ width: 56, height: 56, borderRadius: 16 }} />
+                    <div style={{ flex: 1 }}>
+                      <div className="skeleton" style={{ height: 16, width: '60%', marginBottom: 8 }} />
+                      <div className="skeleton" style={{ height: 12, width: '40%' }} />
+                    </div>
+                  </div>
+                  <div className="skeleton" style={{ height: 12, width: '50%', marginBottom: 14 }} />
+                  <div className="skeleton" style={{ height: 30, width: '100%' }} />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : projects.length === 0 ? (
           <div className={styles.emptyState}>
             <div className={styles.emptyIcon}>🎸</div>
