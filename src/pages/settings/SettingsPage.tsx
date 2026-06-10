@@ -184,16 +184,23 @@ export default function SettingsPage() {
 
           {/* Live preview */}
           <div className={styles.preview} style={{ background: theme.bg }}>
-            <div className={styles.previewPast} style={{ color: theme.active_color, opacity: 0.3, fontSize: theme.font_size * 0.72 }}>
-              Let me play among the stars
-            </div>
-            <div className={styles.previewActive} style={{ color: theme.active_color, fontSize: theme.font_size }}>
-              Let me see what spring is like
-            </div>
-            <div className={styles.previewFuture} style={{ color: theme.active_color, opacity: 0.4, fontSize: theme.font_size * 0.72 }}>
-              On Jupiter and Mars
-            </div>
-            <div className={styles.previewBar} style={{ background: theme.accent_color }} />
+            {['Meu Deus, que saudade', 'De tudo que a gente foi', 'Let me play among the stars', 'Let me see what spring is like', 'On Jupiter and Mars'].map((line, i) => {
+              const isActive = i === 2
+              return (
+                <div key={i} style={{
+                  color: theme.active_color,
+                  fontSize: isActive ? theme.font_size : theme.font_size * 0.72,
+                  lineHeight: theme.line_height ?? 1.6,
+                  opacity: isActive ? 1 : i < 2 ? 0.25 : 0.4,
+                  fontWeight: isActive ? 800 : 500,
+                  borderLeft: isActive ? `3px solid ${theme.accent_color}` : '3px solid transparent',
+                  paddingLeft: 10,
+                  transition: 'all 0.15s',
+                }}>
+                  {line}
+                </div>
+              )
+            })}
           </div>
 
           <button
