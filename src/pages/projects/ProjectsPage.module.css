@@ -438,7 +438,8 @@
 @media (max-width: 640px) {
   .page { padding: 16px 16px 12px; }
   .header { flex-direction: column; align-items: flex-start; gap: 12px; }
-  .createBtn { width: 100%; text-align: center; }
+  .headerBtns { width: 100%; flex-direction: row; }
+  .joinBtn, .createBtn { flex: 1; text-align: center; }
   .grid { grid-template-columns: 1fr; gap: 12px; }
   .addCard { min-height: 80px; flex-direction: row; border-radius: var(--radius); }
 }
@@ -489,7 +490,3 @@
 .joinHint { font-size: 13px; color: var(--text3); margin-bottom: 16px; }
 .codeInput { font-size: 20px !important; font-weight: 800 !important; text-align: center; letter-spacing: 0.08em; }
 .joinError { font-size: 13px; color: #ef4444; margin-top: 6px; }
-@media (max-width: 640px) {
-  .headerBtns { width: 100%; }
-  .joinBtn { flex: 1; text-align: center; }
-}

@@ -211,38 +211,49 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.playBtn {
-  border: none;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  font-size: 16px;
-  color: white;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-/* Sync controls — play + ±10s */
-.syncControls {
+/* Controls row (sync + semi) */
+.controls {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 8px 16px 4px;
+  gap: 10px;
+  padding: 10px 20px 6px;
   flex-shrink: 0;
 }
 .seekBtn {
-  background: rgba(255,255,255,0.08);
-  border: none;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 8px 14px;
-  border-radius: 10px;
+  flex: 1;
+  max-width: 120px;
+  height: 52px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid;
+  border-radius: 26px;
+  font-size: 13px;
+  font-weight: 800;
   cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: background 0.15s;
+  letter-spacing: 0.02em;
 }
-.seekBtn:hover { opacity: 1; }
+.seekBtn:hover { background: rgba(255,255,255,0.13); }
+.seekArrow { font-size: 15px; opacity: 0.6; line-height: 1; }
+.seekLabel { font-size: 14px; font-weight: 800; }
+.playBtn {
+  border: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  font-size: 22px;
+  color: white;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+  transition: transform 0.12s, opacity 0.12s;
+}
+.playBtn:hover { opacity: 0.88; transform: scale(1.06); }
+.playBtn:active { transform: scale(0.94); }
 
 /* Offset */
 .offsetRow {

@@ -26,7 +26,10 @@ export default function ConcertPage() {
   const [offset, setOffset] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [playing, setPlaying] = useState(false)
+  const [semiPlaying, setSemiPlaying] = useState(true)
   const [showSetlist, setShowSetlist] = useState(false)
+
+  const scrollPausedRef = useRef(false)
 
   const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null)
   const startRef    = useRef<number>(0)
@@ -53,6 +56,8 @@ export default function ConcertPage() {
     const song = songs[songIdx]?.song
     if (!song) return
     setLineIdx(0); setElapsed(0); stopTimer(); setPlaying(false)
+    scrollPausedRef.current = false; setSemiPlaying(true)
+    if (lyricsScrollRef.current) lyricsScrollRef.current.scrollTop = 0
     if (song.has_sync) {
       supabase.from('lyric_syncs').select('lines').eq('song_id', song.id).single()
         .then(({ data }) => {
@@ -76,7 +81,7 @@ export default function ConcertPage() {
     function tick(now: number) {
       const delta = now - lastTs
       lastTs = now
-      if (!userTouchingRef.current && lyricsScrollRef.current) {
+      if (!userTouchingRef.current && !scrollPausedRef.current && lyricsScrollRef.current) {
         lyricsScrollRef.current.scrollTop += (scrollSpeed * delta) / 16
       }
       animFrameRef.current = requestAnimationFrame(tick)
@@ -94,6 +99,10 @@ export default function ConcertPage() {
         if (e.key === ' ') { e.preventDefault(); togglePlay() }
         else if (e.key === 'ArrowLeft')  { e.preventDefault(); seekDelta(-5) }
         else if (e.key === 'ArrowRight') { e.preventDefault(); seekDelta(5) }
+      } else if (viewMode === 'semi') {
+        if (e.key === ' ') { e.preventDefault(); toggleSemiPlay() }
+        else if (e.key === 'ArrowLeft')  { e.preventDefault(); semiSeek(-1) }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); semiSeek(1) }
       } else {
         if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); advance() }
         else if (e.key === 'ArrowLeft') { e.preventDefault(); retreat() }
@@ -130,6 +139,18 @@ export default function ConcertPage() {
   }
 
   function togglePlay() { playing ? stopTimer() : startTimer() }
+
+  function toggleSemiPlay() {
+    scrollPausedRef.current = !scrollPausedRef.current
+    setSemiPlaying(!scrollPausedRef.current)
+  }
+
+  function semiSeek(dir: 1 | -1) {
+    if (lyricsScrollRef.current) {
+      const jump = (theme.font_size * (theme.line_height ?? 1.6)) * 5
+      lyricsScrollRef.current.scrollTop += dir * jump
+    }
+  }
 
   // ── Seek (sync mode) ─────────────────────────────────────────────────────
   function seekTo(time: number) {
@@ -385,26 +406,32 @@ export default function ConcertPage() {
         </div>
       )}
 
-      {/* ── Sync controls (play + seek buttons) ── */}
-      {viewMode === 'sync' && (
-        <div className={styles.syncControls}>
+      {/* ── Controls (sync + semi) ── */}
+      {(viewMode === 'sync' || viewMode === 'semi') && (
+        <div className={styles.controls}>
           <button
             className={styles.seekBtn}
-            style={{ color: theme.active_color }}
-            onClick={() => seekDelta(-5)}
-          >−5s</button>
+            style={{ color: theme.active_color, borderColor: `${theme.active_color}20` }}
+            onClick={() => viewMode === 'sync' ? seekDelta(-5) : semiSeek(-1)}
+          >
+            <span className={styles.seekArrow}>‹‹</span>
+            <span className={styles.seekLabel}>5</span>
+          </button>
           <button
             className={styles.playBtn}
             style={{ background: theme.accent_color }}
-            onClick={togglePlay}
+            onClick={viewMode === 'sync' ? togglePlay : toggleSemiPlay}
           >
-            {playing ? '⏸' : '▶'}
+            {(viewMode === 'sync' ? playing : semiPlaying) ? '⏸' : '▶'}
           </button>
           <button
             className={styles.seekBtn}
-            style={{ color: theme.active_color }}
-            onClick={() => seekDelta(5)}
-          >+5s</button>
+            style={{ color: theme.active_color, borderColor: `${theme.active_color}20` }}
+            onClick={() => viewMode === 'sync' ? seekDelta(5) : semiSeek(1)}
+          >
+            <span className={styles.seekLabel}>5</span>
+            <span className={styles.seekArrow}>››</span>
+          </button>
         </div>
       )}
 
