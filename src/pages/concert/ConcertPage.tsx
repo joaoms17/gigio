@@ -28,6 +28,7 @@ export default function ConcertPage() {
   const [showSetlist, setShowSetlist] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startRef = useRef<number>(0)
+  const saveThemeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!id || !user) return
@@ -90,6 +91,15 @@ export default function ConcertPage() {
   }
 
   function togglePlay() { playing ? stopTimer() : startTimer() }
+
+  function updateTheme(patch: Partial<ConcertTheme>) {
+    const next = { ...theme, ...patch }
+    setTheme(next)
+    if (saveThemeTimer.current) clearTimeout(saveThemeTimer.current)
+    saveThemeTimer.current = setTimeout(() => {
+      if (user) supabase.from('profiles').update({ concert_theme: next }).eq('id', user.id)
+    }, 1500)
+  }
 
   const currentRow = songs[songIdx]
   const currentSong = currentRow?.song
@@ -233,9 +243,9 @@ export default function ConcertPage() {
           <div className={styles.settingsRow}>
             <span style={{ color: theme.active_color, opacity: 0.5, fontSize: 12 }}>Tamanho</span>
             <div className={styles.settingsControls}>
-              <button className={styles.settingBtn} style={{ color: theme.active_color }} onClick={() => setTheme(t => ({ ...t, font_size: Math.max(16, t.font_size - 2) }))}>A−</button>
+              <button className={styles.settingBtn} style={{ color: theme.active_color }} onClick={() => updateTheme({ font_size: Math.max(16, theme.font_size - 2) })}>A−</button>
               <span style={{ color: theme.active_color, fontSize: 12, fontWeight: 700, minWidth: 30, textAlign: 'center' }}>{theme.font_size}</span>
-              <button className={styles.settingBtn} style={{ color: theme.active_color }} onClick={() => setTheme(t => ({ ...t, font_size: Math.min(52, t.font_size + 2) }))}>A+</button>
+              <button className={styles.settingBtn} style={{ color: theme.active_color }} onClick={() => updateTheme({ font_size: Math.min(52, theme.font_size + 2) })}>A+</button>
             </div>
           </div>
           <div className={styles.settingsRow}>
@@ -246,7 +256,7 @@ export default function ConcertPage() {
                   key={c}
                   className={styles.colorDot}
                   style={{ background: c, outline: theme.accent_color === c ? `2px solid ${c}` : 'none', outlineOffset: 2 }}
-                  onClick={() => setTheme(t => ({ ...t, accent_color: c }))}
+                  onClick={() => updateTheme({ accent_color: c })}
                 />
               ))}
             </div>
