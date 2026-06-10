@@ -357,7 +357,7 @@ export default function ConcertPage() {
               Sem letra disponível
             </div>
           ) : lines.map((line, i) => line.trim() === '' ? (
-            <div key={i} style={{ height: `${theme.font_size * (theme.line_height ?? 1.6) * 0.9}px`, flexShrink: 0 }} />
+            <div key={i} style={{ height: `${theme.font_size * (theme.line_height ?? 1.6) * 1.8}px`, flexShrink: 0 }} />
           ) : (
             <div
               key={i}
@@ -390,7 +390,7 @@ export default function ConcertPage() {
               Sem letra disponível
             </div>
           ) : lines.map((line, i) => line.trim() === '' ? (
-            <div key={i} style={{ height: `${theme.font_size * (theme.line_height ?? 1.6) * 0.9}px`, flexShrink: 0 }} />
+            <div key={i} style={{ height: `${theme.font_size * (theme.line_height ?? 1.6) * 1.8}px`, flexShrink: 0 }} />
           ) : (
             <div
               key={i}
