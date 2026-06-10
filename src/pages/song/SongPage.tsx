@@ -202,47 +202,46 @@ export default function SongPage() {
             <button
               key={t}
               className={`${styles.tab} ${tab === t ? styles.tabActive : ''}`}
-              onClick={() => setTab(t)}
+              onClick={() => { setTab(t); if (t !== 'lyrics') setPreview(false) }}
             >
               {{ lyrics: 'Letra', chords: 'Acordes', details: 'Detalhes' }[t]}
             </button>
           ))}
-          <button
-            className={`${styles.tab} ${preview ? styles.tabActive : ''}`}
-            onClick={() => setPreview(v => !v)}
-          >
-            Pré-ver
-          </button>
         </div>
 
         {/* Content */}
         <div className={styles.content}>
-          {tab === 'lyrics' && !preview && (
+          {tab === 'lyrics' && (
             <div className={styles.editorPane}>
-              {song.original_lyrics && song.is_user_edited && (
-                <div className={styles.editedBanner}>
-                  A editar uma versão personalizada. A letra original está preservada.
+              <div className={styles.editorToolbar}>
+                {song.original_lyrics && song.is_user_edited && (
                   <button
                     className={styles.resetBtn}
                     onClick={() => { setLyrics(song.original_lyrics!); scheduleSave() }}
                   >
                     Repor original
                   </button>
+                )}
+                <button
+                  className={`${styles.previewToggle} ${preview ? styles.previewToggleActive : ''}`}
+                  onClick={() => setPreview(v => !v)}
+                >
+                  {preview ? '✎ Editar' : '👁 Pré-ver'}
+                </button>
+              </div>
+              {preview ? (
+                <div className={styles.previewPane}>
+                  <LyricsView lyrics={lyrics} />
                 </div>
+              ) : (
+                <textarea
+                  className={styles.lyricsEditor}
+                  value={lyrics}
+                  onChange={e => { setLyrics(e.target.value); scheduleSave() }}
+                  placeholder="Cola ou escreve a letra aqui..."
+                  spellCheck={false}
+                />
               )}
-              <textarea
-                className={styles.lyricsEditor}
-                value={lyrics}
-                onChange={e => { setLyrics(e.target.value); scheduleSave() }}
-                placeholder="Cola ou escreve a letra aqui..."
-                spellCheck={false}
-              />
-            </div>
-          )}
-
-          {tab === 'lyrics' && preview && (
-            <div className={styles.previewPane}>
-              <LyricsView lyrics={lyrics} />
             </div>
           )}
 
@@ -365,10 +364,16 @@ export default function SongPage() {
           )}
         </div>
 
-        {/* Save button (manual) */}
-        <button className={styles.saveBtn} onClick={save} disabled={saving}>
-          {saving ? 'A guardar...' : 'Guardar'}
-        </button>
+        {/* Save button — fixed footer */}
+        <div className={styles.saveBar}>
+          <button
+            className={styles.saveBtn}
+            onClick={async () => { await save(); navigate(backPath()) }}
+            disabled={saving}
+          >
+            {saving ? 'A guardar...' : 'Guardar'}
+          </button>
+        </div>
       </div>
     </Layout>
   )

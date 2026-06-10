@@ -331,10 +331,39 @@
   margin-top: 8px;
 }
 
-/* Save button - fixed bottom */
-.saveBtn {
+/* Editor toolbar (preview toggle) */
+.editorToolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+.previewToggle {
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text3);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.previewToggle:hover { border-color: var(--gig); color: var(--gig); }
+.previewToggleActive { border-color: var(--gig); color: var(--gig); }
+
+/* Save bar — sticky footer */
+.saveBar {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  padding: 10px 20px 16px;
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
-  margin: 10px 20px 16px;
+}
+.saveBtn {
+  width: 100%;
   padding: 13px;
   background: linear-gradient(135deg, var(--gig), var(--io));
   color: #fff;
@@ -357,7 +386,7 @@
   .tabs { padding: 0 16px; }
   .editorPane { padding: 10px 16px 0; }
   .previewPane { padding: 12px 16px; }
-  .detailsPane { padding: 12px 16px 20px; }
-  .detailsGrid { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .saveBtn { margin: 8px 16px 12px; }
+  .detailsPane { padding: 12px 16px 80px; }
+  .detailsGrid { grid-template-columns: 1fr; gap: 10px; }
+  .saveBar { padding: 8px 16px 12px; }
 }

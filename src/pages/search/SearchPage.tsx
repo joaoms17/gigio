@@ -98,10 +98,7 @@ export default function SearchPage() {
     provider?: string
   }): Promise<string | null> {
     if (!user) return null
-    const VALID_SOURCES = ['lrclib', 'lyricsovh', 'manual']
-    const resolvedSource = VALID_SOURCES.includes(opts.source as string)
-      ? opts.source
-      : opts.provider ?? 'manual'
+    const resolvedSource = opts.source === 'lrclib' ? 'lrclib' : 'manual'
     const { data: song, error } = await supabase.from('songs').insert({
       owner_id: user.id,
       title: opts.title,
