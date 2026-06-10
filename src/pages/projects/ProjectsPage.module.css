@@ -67,35 +67,48 @@
 }
 .card:active { transform: translateY(-1px); }
 
-.cardAccent {
-  height: 4px;
+.cardBanner {
+  height: 72px;
   width: 100%;
-  opacity: 0.9;
+  overflow: hidden;
+  position: relative;
 }
+.cardBannerImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(1.05);
+  transition: transform 0.35s ease;
+}
+.card:hover .cardBannerImg { transform: scale(1.05); }
 
 .cardBody {
-  padding: 18px;
+  padding: 0 18px 18px;
 }
 
 .cardTop {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 14px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
+  margin-top: -23px;
+  position: relative;
 }
 
 .avatar {
-  width: 46px;
-  height: 46px;
-  border-radius: 13px;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
   color: #fff;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
+  border: 3px solid var(--bg);
+  box-shadow: var(--shadow-sm);
 }
 .avatarImg { width: 100%; height: 100%; object-fit: cover; }
 
@@ -490,3 +503,36 @@
 .joinHint { font-size: 13px; color: var(--text3); margin-bottom: 16px; }
 .codeInput { font-size: 20px !important; font-weight: 800 !important; text-align: center; letter-spacing: 0.08em; }
 .joinError { font-size: 13px; color: #ef4444; margin-top: 6px; }
+
+/* Image picker (create modal) */
+.imageRow { display: flex; align-items: center; gap: 14px; }
+.imagePicker {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 2px dashed rgba(255,255,255,0.5);
+  transition: transform 0.15s;
+}
+.imagePicker:hover { transform: scale(1.05); }
+.imagePickerIcon { font-size: 22px; }
+.imagePreview { width: 100%; height: 100%; object-fit: cover; }
+.imageHint { font-size: 12px; color: var(--text3); line-height: 1.5; }
+.imageRemove {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+.imageRemove:hover { text-decoration: underline; }
+
+.overlay { animation: overlayIn 0.18s ease-out; }
+.modal { animation: sheetIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }

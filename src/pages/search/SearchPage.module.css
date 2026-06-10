@@ -199,3 +199,6 @@
   cursor: pointer; margin-top: 6px;
 }
 .newSetlistRow:hover { border-color: var(--gig); }
+
+.overlay { animation: overlayIn 0.18s ease-out; }
+.modal { animation: sheetIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }

@@ -37,3 +37,6 @@
   padding: 10px 20px; background: var(--gig); color: #fff; border: none;
   border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
 }
+
+.overlay { animation: overlayIn 0.18s ease-out; }
+.modal { animation: sheetIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
