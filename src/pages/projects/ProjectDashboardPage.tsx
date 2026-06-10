@@ -427,35 +427,6 @@ export default function ProjectDashboardPage() {
                 </div>
               </div>
 
-              {/* Quick actions */}
-              <div className={styles.section}>
-                <div className={styles.sectionTitle}>AÇÕES RÁPIDAS</div>
-                <div className={styles.actions}>
-                  {canEdit && (
-                    <>
-                      <button className={styles.actionBtn} onClick={() => navigate(`/search?project=${project.id}`)}>
-                        <span className={styles.actionIcon}>🔍</span>
-                        <span>Pesquisar letra</span>
-                      </button>
-                      <button className={styles.actionBtn} onClick={createSetlist}>
-                        <span className={styles.actionIcon}>📋</span>
-                        <span>Criar setlist</span>
-                      </button>
-                    </>
-                  )}
-                  {canManage && (
-                    <button className={styles.actionBtn} onClick={() => setTab('members')}>
-                      <span className={styles.actionIcon}>👥</span>
-                      <span>Convidar membro</span>
-                    </button>
-                  )}
-                  <button className={styles.actionBtn} onClick={() => setTab('setlists')}>
-                    <span className={styles.actionIcon}>🎤</span>
-                    <span>Ver setlists</span>
-                  </button>
-                </div>
-              </div>
-
               {/* Recent setlists */}
               {setlists.length > 0 && (
                 <div className={styles.section}>

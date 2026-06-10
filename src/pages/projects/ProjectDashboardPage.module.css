@@ -628,3 +628,49 @@
 
 .modalOverlay { animation: overlayIn 0.18s ease-out; }
 .createModal { animation: sheetIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* ──────────────────────────────────────────
+   TABLET — bigger text and options
+────────────────────────────────────────── */
+@media (min-width: 768px) {
+  .projectName { font-size: 30px; }
+  .typeBadge { font-size: 13px; }
+  .metaText { font-size: 15px; }
+
+  .tab { font-size: 16px; padding: 13px 20px; }
+
+  .statNum { font-size: 38px; }
+  .statLabel { font-size: 14px; }
+  .sectionTitle { font-size: 12px; }
+
+  .recentName { font-size: 17px; }
+  .recentSub { font-size: 14px; }
+  .recentCount { font-size: 14px; }
+  .memberChipName { font-size: 13px; }
+  .memberAvatar { width: 38px; height: 38px; font-size: 14px; }
+  .description { font-size: 16px; }
+
+  .tabTitle { font-size: 23px; }
+  .tabSub { font-size: 15px; }
+  .addBtn, .addBtnSecondary { font-size: 15px; }
+  .songSearchInput { font-size: 16px; }
+  .songRow { padding: 14px 12px; }
+  .songTitle { font-size: 17px; }
+  .songArtist { font-size: 14px; }
+  .keyBadge, .bpmBadge, .tagBadge { font-size: 13px; }
+  .syncBadge2, .editedBadge { font-size: 12px; }
+  .songDeleteBtn { font-size: 17px; }
+
+  .setlistName { font-size: 18px; }
+  .setlistMeta { font-size: 14px; }
+  .setlistCount, .statusBadge, .sharedBadge { font-size: 13px; }
+
+  .memberName { font-size: 17px; }
+  .memberSub { font-size: 14px; }
+  .memberAvatar2 { width: 46px; height: 46px; font-size: 15px; }
+  .roleSelect, .roleBadge { font-size: 13px; }
+
+  .fieldLabel { font-size: 13px; }
+  .fieldInput, .fieldSelect, .fieldTextarea { font-size: 16px; }
+  .saveBtn { font-size: 16px; }
+}

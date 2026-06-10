@@ -390,3 +390,16 @@
   .detailsGrid { grid-template-columns: 1fr; gap: 10px; }
   .saveBar { padding: 8px 16px 12px; }
 }
+
+/* Tablet — bigger editor, tabs and fields */
+@media (min-width: 768px) {
+  .titleInput { font-size: 28px; }
+  .artistInput { font-size: 18px; }
+  .tab { font-size: 16px; padding: 13px 18px; }
+  .lyricsEditor { font-size: 19px; line-height: 1.9; }
+  .chordsEditor { font-size: 16px; }
+  .fieldLabel { font-size: 13px; }
+  .fieldInput { font-size: 16px; }
+  .previewToggle { font-size: 15px; }
+  .saveBtn { font-size: 16px; }
+}
