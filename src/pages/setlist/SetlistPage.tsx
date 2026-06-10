@@ -195,6 +195,13 @@ export default function SetlistPage() {
     setEditingName(false)
   }
 
+  async function deleteSetlist() {
+    if (!id || !window.confirm(`Apagar a setlist "${setlist?.name}"? Esta ação não pode ser desfeita.`)) return
+    await supabase.from('setlist_songs').delete().eq('setlist_id', id)
+    await supabase.from('setlists').delete().eq('id', id)
+    setlist?.band_id ? navigate(`/projects/${setlist.band_id}?tab=setlists`) : navigate('/')
+  }
+
   async function duplicateTo(projectId: string) {
     if (!user || !setlist) return
     setDuplicating(false)
@@ -262,6 +269,7 @@ export default function SetlistPage() {
             </div>
           </div>
           <div className={styles.headerActions}>
+            <button className={styles.deleteBtn} onClick={deleteSetlist}>🗑 Apagar</button>
             <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>⧉ Duplicar</button>
             <button className={styles.concertBtn} onClick={() => navigate(`/setlist/${id}/concert`)}>
               ▶ Iniciar Concerto
