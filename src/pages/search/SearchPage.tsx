@@ -7,7 +7,6 @@ import { searchGenius } from '../../lib/genius'
 import { getLyricsOvh } from '../../lib/lyricsovh'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import { extractLyricsFromPdf } from '../../lib/pdfLyrics'
 import type { SearchResult, LyricLine, Setlist } from '../../types'
 import styles from './SearchPage.module.css'
 
@@ -46,12 +45,15 @@ export default function SearchPage() {
   const [importingPdf, setImportingPdf] = useState(false)
   const [picker, setPicker] = useState<SearchResult | null>(null)
   const [setlists, setSetlists] = useState<Setlist[]>([])
+  const [owned, setOwned] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!user) return
     supabase.from('setlists').select('*').eq('owner_id', user.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => setSetlists(data ?? []))
+    supabase.from('songs').select('title, artist').eq('owner_id', user.id)
+      .then(({ data }) => setOwned(new Set((data ?? []).map(s => `${s.title}::${s.artist}`.toLowerCase()))))
     if (projectId) {
       supabase.from('bands').select('name').eq('id', projectId).single()
         .then(({ data }) => setProjectName(data?.name ?? null))
@@ -85,6 +87,10 @@ export default function SearchPage() {
   }
 
   function keyOf(r: SearchResult) { return `${r.source}-${r.external_id}` }
+
+  function alreadyOwned(r: SearchResult) {
+    return owned.has(`${r.title}::${r.artist}`.toLowerCase())
+  }
 
   async function openPreview(r: SearchResult) {
     setPreview({ result: r, lyrics: '', lines: null, loading: true })
@@ -246,6 +252,7 @@ export default function SearchPage() {
                       {r.source === 'lrclib' ? 'LRClib' : 'Texto'}
                     </span>
                     {r.has_sync && <span className={styles.syncBadge}>sync ✓</span>}
+                    {alreadyOwned(r) && <span className={styles.ownedBadge}>já tens</span>}
                   </div>
                   <div className={styles.resultArtist}>
                     {r.artist}
@@ -381,6 +388,7 @@ export default function SearchPage() {
                       if (!file) return
                       setImportingPdf(true)
                       try {
+                        const { extractLyricsFromPdf } = await import('../../lib/pdfLyrics')
                         const lyrics = await extractLyricsFromPdf(file)
                         setManual(m => m ? { ...m, lyrics } : m)
                       } catch {

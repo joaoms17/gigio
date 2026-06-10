@@ -16,6 +16,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Song | null>(null)
   const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<'title' | 'artist' | 'recent'>('title')
   const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => {
@@ -40,10 +41,16 @@ export default function LibraryPage() {
     setDeleting(null)
   }
 
-  const filtered = songs.filter(s =>
-    s.title.toLowerCase().includes(search.toLowerCase()) ||
-    s.artist.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = songs
+    .filter(s =>
+      s.title.toLowerCase().includes(search.toLowerCase()) ||
+      s.artist.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => {
+      if (sort === 'artist') return a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title)
+      if (sort === 'recent') return (b.updated_at ?? '').localeCompare(a.updated_at ?? '')
+      return a.title.localeCompare(b.title)
+    })
 
   return (
     <Layout>
@@ -54,12 +61,19 @@ export default function LibraryPage() {
           <button className={styles.searchBtn} onClick={() => navigate('/search')}>+ Buscar letras</button>
         </div>
 
-        <input
-          className={styles.searchInput}
-          placeholder="Filtrar por título ou artista..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+        <div className={styles.filterRow}>
+          <input
+            className={styles.searchInput}
+            placeholder="Filtrar por título ou artista..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <select className={styles.sortSelect} value={sort} onChange={e => setSort(e.target.value as any)}>
+            <option value="title">Título A–Z</option>
+            <option value="artist">Artista A–Z</option>
+            <option value="recent">Recentes</option>
+          </select>
+        </div>
 
         <div className={styles.layout}>
           <div className={styles.list}>
