@@ -356,7 +356,9 @@ export default function ConcertPage() {
             <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
               Sem letra disponível
             </div>
-          ) : lines.map((line, i) => (
+          ) : lines.map((line, i) => line.trim() === '' ? (
+            <div key={i} style={{ height: `${theme.font_size * (theme.line_height ?? 1.6) * 0.9}px`, flexShrink: 0 }} />
+          ) : (
             <div
               key={i}
               ref={i === lineIdx ? activeLineRef : null}
@@ -371,7 +373,7 @@ export default function ConcertPage() {
               }}
               onClick={() => setLineIdx(i)}
             >
-              {line || ' '}
+              {line}
             </div>
           ))}
           <div style={{ height: '50vh' }} />
@@ -387,7 +389,9 @@ export default function ConcertPage() {
             <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
               Sem letra disponível
             </div>
-          ) : lines.map((line, i) => (
+          ) : lines.map((line, i) => line.trim() === '' ? (
+            <div key={i} style={{ height: `${theme.font_size * (theme.line_height ?? 1.6) * 0.9}px`, flexShrink: 0 }} />
+          ) : (
             <div
               key={i}
               className={styles.lyricLineManual}
@@ -400,7 +404,7 @@ export default function ConcertPage() {
                 borderLeftColor: 'transparent',
               }}
             >
-              {line || ' '}
+              {line}
             </div>
           ))}
         </div>
