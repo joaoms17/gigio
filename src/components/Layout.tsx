@@ -7,25 +7,27 @@ import styles from './Layout.module.css'
 
 interface Props { children: React.ReactNode }
 
-const DOT_PALETTE = ['#FF4D6D', '#7C3AED', '#2563EB', '#059669', '#D97706', '#DB2777', '#0891B2']
+const DOT_PALETTE = ['#7C3AED', '#FF4D6D', '#2563EB', '#059669', '#D97706', '#DB2777', '#0891B2', '#9333EA']
 function colorFor(s: string) {
   let h = 0
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
   return DOT_PALETTE[h % DOT_PALETTE.length]
 }
 
+interface Project { id: string; name: string; color?: string }
+
 export default function Layout({ children }: Props) {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [bands, setBands] = useState<{ id: string; name: string }[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
 
   useEffect(() => {
     if (!user) return
     supabase
       .from('band_members')
-      .select('bands(id, name)')
+      .select('bands(id, name, color)')
       .eq('user_id', user.id)
-      .then(({ data }) => setBands((data ?? []).map((r: any) => r.bands).filter(Boolean)))
+      .then(({ data }) => setProjects((data ?? []).map((r: any) => r.bands).filter(Boolean)))
   }, [user])
 
   async function handleSignOut() {
@@ -42,7 +44,7 @@ export default function Layout({ children }: Props) {
 
         <nav className={styles.nav}>
           <NavLink to="/" end className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
-            <span className={styles.icon}>🏠</span> Home
+            <span className={styles.icon}>🎸</span> Projetos
           </NavLink>
           <NavLink to="/library" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
             <span className={styles.icon}>🎵</span> Músicas
@@ -54,27 +56,29 @@ export default function Layout({ children }: Props) {
             <span className={styles.icon}>🔍</span> Buscar
           </NavLink>
 
-          <div className={styles.bandsSection}>
-            <div className={styles.bandsLabel}>PROJETOS</div>
-            {bands.map(b => (
-              <NavLink
-                key={b.id}
-                to={`/band/${b.id}`}
-                className={({ isActive }) => isActive ? styles.bandLinkActive : styles.bandLink}
-              >
-                <span className={styles.dot} style={{ background: colorFor(b.id) }} />
-                <span className={styles.bandName}>{b.name}</span>
-              </NavLink>
-            ))}
-            <button className={styles.newBand} onClick={() => navigate('/bands')}>
-              <span className={styles.plus}>+</span> Novo projeto
-            </button>
-          </div>
+          {projects.length > 0 && (
+            <div className={styles.bandsSection}>
+              <div className={styles.bandsLabel}>OS MEUS PROJETOS</div>
+              {projects.map(p => (
+                <NavLink
+                  key={p.id}
+                  to={`/projects/${p.id}`}
+                  className={({ isActive }) => isActive ? styles.bandLinkActive : styles.bandLink}
+                >
+                  <span className={styles.dot} style={{ background: p.color ?? colorFor(p.id) }} />
+                  <span className={styles.bandName}>{p.name}</span>
+                </NavLink>
+              ))}
+              <button className={styles.newBand} onClick={() => navigate('/')}>
+                <span className={styles.plus}>+</span> Novo projeto
+              </button>
+            </div>
+          )}
         </nav>
 
         <div className={styles.bottom}>
           <NavLink to="/settings" className={({ isActive }) => isActive ? styles.linkActive : styles.link}>
-            <span className={styles.icon}>⚙️</span> Perfil
+            <span className={styles.icon}>⚙️</span> Definições
           </NavLink>
           <button className={styles.signOut} onClick={handleSignOut}>↪ Sair</button>
         </div>
