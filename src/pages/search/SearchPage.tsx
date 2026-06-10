@@ -95,6 +95,10 @@ export default function SearchPage() {
     provider?: string
   }): Promise<string | null> {
     if (!user) return null
+    const VALID_SOURCES = ['lrclib', 'lyricsovh', 'manual']
+    const resolvedSource = VALID_SOURCES.includes(opts.source as string)
+      ? opts.source
+      : opts.provider ?? 'manual'
     const { data: song, error } = await supabase.from('songs').insert({
       owner_id: user.id,
       title: opts.title,
@@ -102,7 +106,7 @@ export default function SearchPage() {
       lyrics: opts.lyrics,
       original_lyrics: opts.lyrics,
       edited_lyrics: opts.lyrics,
-      source: opts.source,
+      source: resolvedSource,
       source_provider: opts.provider ?? opts.source ?? 'manual',
       has_sync: opts.has_sync,
       duration_sec: opts.duration_sec,
@@ -235,15 +239,17 @@ export default function SearchPage() {
                   </div>
                 </div>
                 <div className={styles.rowActions}>
-                  <button className={styles.previewBtn} onClick={() => openPreview(r)} disabled={isSaving}>
-                    Pré-ver
-                  </button>
+                  {!isSaved && (
+                    <button className={styles.previewBtn} onClick={() => openPreview(r)} disabled={isSaving}>
+                      Pré-ver
+                    </button>
+                  )}
                   <button
                     className={isSaved ? styles.savedBtn : styles.addBtn}
                     onClick={() => projectId ? doAdd(r, null, true) : setPicker(r)}
                     disabled={isSaved || !!saving}
                   >
-                    {isSaving ? '...' : isSaved ? '✓ Guardado' : projectId ? '+ Adicionar' : '+ Adicionar'}
+                    {isSaving ? '...' : isSaved ? '✓ Guardado' : '+ Adicionar'}
                   </button>
                 </div>
               </div>

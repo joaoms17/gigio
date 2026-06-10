@@ -109,16 +109,15 @@ export default function SetlistPage() {
   async function loadLibrary() {
     if (!user) return
     const existingIds = songs.map(s => s.song_id)
-    const [ownRes, projRes] = await Promise.all([
-      supabase.from('songs').select('*').eq('owner_id', user.id).order('title'),
-      setlist?.band_id
-        ? supabase.from('songs').select('*').eq('project_id', setlist.band_id).order('title')
-        : Promise.resolve({ data: [] }),
-    ])
-    const all: Song[] = [...(ownRes.data ?? []), ...(projRes.data ?? [])]
-    const seen = new Set<string>()
-    const unique = all.filter(s => { if (seen.has(s.id)) return false; seen.add(s.id); return true })
-    setLibrary(unique.filter(s => !existingIds.includes(s.id)))
+    let all: Song[]
+    if (setlist?.band_id) {
+      const { data } = await supabase.from('songs').select('*').eq('project_id', setlist.band_id).order('title')
+      all = data ?? []
+    } else {
+      const { data } = await supabase.from('songs').select('*').eq('owner_id', user.id).order('title')
+      all = data ?? []
+    }
+    setLibrary(all.filter(s => !existingIds.includes(s.id)))
     setShowLibrary(true)
   }
 

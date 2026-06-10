@@ -542,6 +542,54 @@
 }
 .dangerBtn:hover { background: #ef444412; }
 
+/* Create setlist modal */
+.modalOverlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  z-index: 300; display: flex; align-items: flex-end; justify-content: center;
+  padding: 16px;
+}
+@media (min-width: 600px) { .modalOverlay { align-items: center; } }
+.createModal {
+  background: var(--bg); border-radius: 20px 20px 16px 16px;
+  width: 100%; max-width: 440px; padding: 22px;
+  border: 1px solid var(--border);
+}
+@media (min-width: 600px) { .createModal { border-radius: 20px; } }
+.modalHeader {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;
+}
+.modalTitle { font-size: 17px; font-weight: 800; color: var(--text); }
+.modalClose {
+  background: none; border: none; font-size: 17px; color: var(--text3); cursor: pointer;
+  width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  transition: background 0.12s;
+}
+.modalClose:hover { background: var(--bg3); }
+.modalBody { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
+.modalField { display: flex; flex-direction: column; gap: 6px; }
+.modalLabel {
+  font-size: 11px; font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.modalInput {
+  padding: 11px 14px; border-radius: 12px; border: 1.5px solid var(--border);
+  background: var(--bg2); color: var(--text); font-size: 15px;
+  transition: border-color 0.15s; width: 100%;
+}
+.modalInput:focus { outline: none; border-color: var(--gig); background: var(--bg); }
+.modalFooter { display: flex; gap: 10px; justify-content: flex-end; }
+.modalCancel {
+  padding: 10px 18px; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; font-size: 14px; font-weight: 600; color: var(--text2); cursor: pointer;
+}
+.modalCancel:hover { border-color: var(--border2); }
+.modalConfirm {
+  padding: 10px 22px; color: #fff; border: none; border-radius: 10px;
+  font-size: 14px; font-weight: 700; cursor: pointer; transition: opacity 0.15s;
+}
+.modalConfirm:hover { opacity: 0.88; }
+.modalConfirm:disabled { opacity: 0.45; cursor: not-allowed; }
+
 /* Mobile */
 @media (max-width: 640px) {
   .page { padding: 12px 16px 28px; }

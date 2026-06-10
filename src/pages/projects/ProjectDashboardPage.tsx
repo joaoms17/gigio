@@ -94,6 +94,12 @@ export default function ProjectDashboardPage() {
   const [editingInstrument, setEditingInstrument] = useState(false)
   const [instrumentInput, setInstrumentInput] = useState('')
 
+  // New setlist modal
+  const [showCreateSetlist, setShowCreateSetlist] = useState(false)
+  const [newSetlistName, setNewSetlistName] = useState('')
+  const [newSetlistVenue, setNewSetlistVenue] = useState('')
+  const [creatingSetlist, setCreatingSetlist] = useState(false)
+
   const setTab = (tab: Tab) => setSearchParams({ tab })
 
   const canEdit = myRole === 'owner' || myRole === 'admin' || myRole === 'editor'
@@ -263,13 +269,29 @@ export default function ProjectDashboardPage() {
     setDeletingSong(null)
   }
 
-  async function createSetlist() {
-    if (!project || !user) return
+  function createSetlist() {
+    setNewSetlistName('')
+    setNewSetlistVenue('')
+    setShowCreateSetlist(true)
+  }
+
+  async function doCreateSetlist() {
+    if (!project || !user || !newSetlistName.trim()) return
+    setCreatingSetlist(true)
     const { data } = await supabase
       .from('setlists')
-      .insert({ name: 'Nova Setlist', owner_id: user.id, band_id: project.id, is_shared: true, status: 'draft' })
+      .insert({
+        name: newSetlistName.trim(),
+        venue: newSetlistVenue.trim() || null,
+        owner_id: user.id,
+        band_id: project.id,
+        is_shared: true,
+        status: 'draft',
+      })
       .select()
       .single()
+    setCreatingSetlist(false)
+    setShowCreateSetlist(false)
     if (data) navigate(`/setlist/${data.id}`)
   }
 
@@ -832,6 +854,50 @@ export default function ProjectDashboardPage() {
           )}
         </div>
       </div>
+      {showCreateSetlist && (
+        <div className={styles.modalOverlay} onClick={() => setShowCreateSetlist(false)}>
+          <div className={styles.createModal} onClick={e => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div className={styles.modalTitle}>Nova Setlist</div>
+              <button className={styles.modalClose} onClick={() => setShowCreateSetlist(false)}>✕</button>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.modalField}>
+                <label className={styles.modalLabel}>Nome *</label>
+                <input
+                  className={styles.modalInput}
+                  placeholder="Nome da setlist..."
+                  value={newSetlistName}
+                  onChange={e => setNewSetlistName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && newSetlistVenue === '' && doCreateSetlist()}
+                  autoFocus
+                />
+              </div>
+              <div className={styles.modalField}>
+                <label className={styles.modalLabel}>Local (opcional)</label>
+                <input
+                  className={styles.modalInput}
+                  placeholder="Ex: Hard Club, Sala Principal..."
+                  value={newSetlistVenue}
+                  onChange={e => setNewSetlistVenue(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && doCreateSetlist()}
+                />
+              </div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.modalCancel} onClick={() => setShowCreateSetlist(false)}>Cancelar</button>
+              <button
+                className={styles.modalConfirm}
+                style={{ background: projectColor }}
+                onClick={doCreateSetlist}
+                disabled={creatingSetlist || !newSetlistName.trim()}
+              >
+                {creatingSetlist ? 'A criar...' : 'Criar setlist'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   )
 }
