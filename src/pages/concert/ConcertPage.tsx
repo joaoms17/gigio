@@ -132,6 +132,20 @@ export default function ConcertPage() {
     recenterActiveLine()
   }, [lineIdx, viewMode, scrollFollowing])
 
+  // Returning from chords/annotations → restore scroll-follow and snap to active line
+  useEffect(() => {
+    if (contentView !== 'lyrics') return
+    setScrollFollowing(true)
+    requestAnimationFrame(() => {
+      if (viewMode === 'semi' && activeLineRef.current) {
+        programmaticScrollRef.current = true
+        activeLineRef.current.scrollIntoView({ behavior: 'auto', block: 'center' })
+        if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+        scrollTimerRef.current = setTimeout(() => { programmaticScrollRef.current = false }, 800)
+      }
+    })
+  }, [contentView])
+
   // Re-center when the tablet rotates / viewport resizes
   useEffect(() => {
     function onResize() {
