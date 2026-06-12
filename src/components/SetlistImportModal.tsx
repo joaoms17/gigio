@@ -31,6 +31,21 @@ interface LyricsPreview {
 
 type Step = 'upload' | 'review' | 'done' | 'search' | 'bulk'
 
+function matchScore(pdfName: string, result: SearchResult): number {
+  const q = normalizeTitle(pdfName)
+  const combined = normalizeTitle(`${result.title} ${result.artist}`)
+  const titleOnly = normalizeTitle(result.title)
+  if (!q) return 0
+  if (q === titleOnly || q === combined) return 100
+  if (titleOnly.length > 3 && (q.includes(titleOnly) || titleOnly.includes(q)))
+    return Math.round(Math.min(q.length, titleOnly.length) / Math.max(q.length, titleOnly.length) * 100)
+  const qWords = q.split(/\s+/).filter(w => w.length >= 3)
+  const tWords = new Set(combined.split(/\s+/).filter(w => w.length >= 3))
+  if (qWords.length === 0) return 0
+  const matching = qWords.filter(w => tWords.has(w)).length
+  return Math.round(matching / Math.max(qWords.length, tWords.size) * 100)
+}
+
 function findMatch(query: string, library: Song[]): Song | null {
   const q = normalizeTitle(query)
   if (!q) return null
@@ -488,9 +503,21 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
         {step === 'bulk' && (
           <div className={styles.searchStep}>
             <div className={styles.bulkSummary}>
-              {missed.filter(n => bulkChecked[n] !== false).length} de {missed.length} selecionadas
-              {!isPreloadingDone && preloadTotal.current > 0 && (
-                <span className={styles.preloadProgress}> · A carregar {preloadDone}/{preloadTotal.current}</span>
+              <div className={styles.bulkSummaryRow}>
+                <span>{missed.filter(n => bulkChecked[n] !== false).length} de {missed.length} selecionadas</span>
+                {preloadTotal.current > 0 && (
+                  <span className={styles.preloadProgress}>
+                    {isPreloadingDone
+                      ? `${missed.filter(n => (preloaded[n]?.length ?? 0) > 0).length} com resultado`
+                      : `A carregar... ${preloadDone}/${preloadTotal.current}`}
+                  </span>
+                )}
+              </div>
+              {preloadTotal.current > 0 && !isPreloadingDone && (
+                <div className={styles.bulkProgressBar}>
+                  <div className={styles.bulkProgressFill}
+                    style={{ width: `${Math.round(preloadDone / preloadTotal.current * 100)}%` }} />
+                </div>
               )}
             </div>
             <div className={styles.bulkList}>
@@ -512,6 +539,9 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
                             <span className={styles.bulkMatchTitle}>{topResult.title}</span>
                             <span className={styles.bulkMatchArtist}> · {topResult.artist}</span>
                             {topResult.has_sync && <span className={styles.syncBadge}>sync</span>}
+                            {(() => { const s = matchScore(name, topResult); return (
+                              <span className={`${styles.confBadge} ${s >= 80 ? styles.confHigh : s >= 50 ? styles.confMid : styles.confLow}`}>{s}%</span>
+                            )})()}
                           </div>
                         ) : results === undefined ? (
                           <div className={styles.bulkLoading}>A carregar...</div>

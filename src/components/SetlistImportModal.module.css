@@ -494,6 +494,39 @@
   flex-shrink: 0;
 }
 
+.bulkSummaryRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.bulkProgressBar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bulkProgressFill {
+  height: 100%;
+  background: var(--gig);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.confBadge {
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+
+.confHigh { background: rgba(5,150,105,.12); color: #059669; }
+.confMid  { background: rgba(245,158,11,.12); color: #d97706; }
+.confLow  { background: rgba(239,68,68,.1);   color: #dc2626; }
+
 .bulkList {
   flex: 1;
   overflow-y: auto;
