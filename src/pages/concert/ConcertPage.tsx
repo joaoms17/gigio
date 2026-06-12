@@ -298,6 +298,27 @@ export default function ConcertPage() {
   const hasAnnotations = annAvailable
   const bpm = currentSong?.bpm ?? null
 
+  // Map the active sync line onto the plain-lyrics line shown in the
+  // annotations view (occurrence-aware so repeated chorus lines resolve
+  // to the right verse).
+  let annActiveLine = -1
+  if (contentView === 'annotations' && viewMode === 'semi' && syncLines) {
+    const target = syncLines[lineIdx]?.text.trim()
+    if (target) {
+      let occ = 0
+      for (let i = 0; i < lineIdx; i++) {
+        if (syncLines[i].text.trim() === target) occ++
+      }
+      let seen = 0
+      for (let i = 0; i < plainLines.length; i++) {
+        if (plainLines[i].trim() === target) {
+          if (seen === occ) { annActiveLine = i; break }
+          seen++
+        }
+      }
+    }
+  }
+
   return (
     <div className={styles.page} style={{ background: theme.bg }}>
 
@@ -410,6 +431,8 @@ export default function ConcertPage() {
                 lyrics={currentSong.edited_lyrics ?? currentSong.lyrics ?? ''}
                 bgColor={theme.bg}
                 textColor={theme.active_color}
+                activeLine={annActiveLine >= 0 ? annActiveLine : undefined}
+                accentColor={theme.accent_color}
               />
             )}
           </div>
@@ -496,7 +519,7 @@ export default function ConcertPage() {
       )}
 
       {/* ── Controls (semi + syncLines only) ── */}
-      {contentView === 'lyrics' && viewMode === 'semi' && syncLines && (
+      {contentView !== 'chords' && viewMode === 'semi' && syncLines && (
         <div className={styles.controls}>
           <button
             className={styles.seekBtn}

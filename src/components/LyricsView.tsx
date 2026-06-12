@@ -24,7 +24,7 @@ function fmtSection(raw: string) {
   return label + num
 }
 
-export default function LyricsView({ lyrics }: { lyrics: string }) {
+export default function LyricsView({ lyrics, activeLine, accent }: { lyrics: string; activeLine?: number; accent?: string }) {
   if (!lyrics?.trim()) return <span className={styles.hint}>Sem letra</span>
   return (
     <>
@@ -33,7 +33,19 @@ export default function LyricsView({ lyrics }: { lyrics: string }) {
         const sec = t.match(/^\[(.+?)\]$/)
         if (sec) return <div key={i} className={styles.section}>{fmtSection(sec[1])}</div>
         if (t === '') return <div key={i} className={styles.break} />
-        return <div key={i} className={styles.line}>{line}</div>
+        const active = i === activeLine
+        return (
+          <div
+            key={i}
+            data-activeline={active || undefined}
+            className={styles.line}
+            // Background-only highlight: bolding would reflow the text and
+            // misalign the annotation strokes drawn over it
+            style={active ? { background: (accent ?? '#FF4D6D') + '33', borderRadius: 8 } : undefined}
+          >
+            {line}
+          </div>
+        )
       })}
     </>
   )

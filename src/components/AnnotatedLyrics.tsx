@@ -11,10 +11,11 @@ const PAD_H = 20
  * applies a CSS transform so the drawing stays pixel-aligned with the text.
  */
 export default function AnnotatedLyrics({
-  songId, lyrics, userId, bgColor, textColor,
+  songId, lyrics, userId, bgColor, textColor, activeLine, accentColor,
 }: {
   songId: string; lyrics: string; userId?: string
   bgColor?: string; textColor?: string
+  activeLine?: number; accentColor?: string
 }) {
   const outerRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
@@ -48,6 +49,13 @@ export default function AnnotatedLyrics({
     return () => obs.disconnect()
   }, [data])
 
+  // Follow the active line (semi mode in concert)
+  useEffect(() => {
+    if (activeLine == null || activeLine < 0) return
+    const el = innerRef.current?.querySelector('[data-activeline]')
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [activeLine])
+
   // Width of the drawing area (inside padding)
   const contentW = Math.max(0, outerW - PAD_H * 2)
   const baseW = data?.w && data.w > 0 ? data.w : contentW
@@ -79,7 +87,7 @@ export default function AnnotatedLyrics({
           transformOrigin: 'top left',
         }}
       >
-        <LyricsView lyrics={lyrics} />
+        <LyricsView lyrics={lyrics} activeLine={activeLine} accent={accentColor} />
         {data && data.strokes.length > 0 && (
           <svg
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
