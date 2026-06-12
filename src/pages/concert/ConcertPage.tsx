@@ -394,6 +394,8 @@ export default function ConcertPage() {
                 songId={currentSong.id}
                 userId={user?.id}
                 lyrics={currentSong.edited_lyrics ?? currentSong.lyrics ?? ''}
+                bgColor={theme.bg}
+                textColor={theme.active_color}
               />
             )}
           </div>

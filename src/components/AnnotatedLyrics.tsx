@@ -10,7 +10,12 @@ const PAD_H = 20
  * available width. Renders at the width the strokes were drawn at and
  * applies a CSS transform so the drawing stays pixel-aligned with the text.
  */
-export default function AnnotatedLyrics({ songId, lyrics, userId }: { songId: string; lyrics: string; userId?: string }) {
+export default function AnnotatedLyrics({
+  songId, lyrics, userId, bgColor, textColor,
+}: {
+  songId: string; lyrics: string; userId?: string
+  bgColor?: string; textColor?: string
+}) {
   const outerRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
   const [data, setData] = useState<SavedAnnotations | null>(null)
@@ -48,19 +53,21 @@ export default function AnnotatedLyrics({ songId, lyrics, userId }: { songId: st
   const baseW = data?.w && data.w > 0 ? data.w : contentW
   const scale = contentW > 0 && baseW > 0 ? contentW / baseW : 1
 
+  const isDark = !!bgColor
+
   return (
     <div
       ref={outerRef}
       style={{
-        background: '#ffffff',
-        borderRadius: 12,
+        background: bgColor ?? '#ffffff',
+        borderRadius: isDark ? 0 : 12,
         overflow: 'hidden',
         padding: `${PAD_V}px ${PAD_H}px`,
         height: innerH > 0 ? innerH * scale + PAD_V * 2 : undefined,
-        // Light-mode vars so the lyrics are readable regardless of app theme
-        ['--text' as any]: '#0f0f14',
-        ['--text2' as any]: '#5c5c78',
-        ['--text3' as any]: '#9898b4',
+        color: textColor ?? '#0f0f14',
+        ['--text' as any]: textColor ?? '#0f0f14',
+        ['--text2' as any]: isDark ? 'rgba(255,255,255,0.55)' : '#5c5c78',
+        ['--text3' as any]: isDark ? 'rgba(255,255,255,0.30)' : '#9898b4',
       }}
     >
       <div
