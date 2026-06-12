@@ -72,11 +72,22 @@ export default function InvitePage() {
   async function acceptInvite() {
     if (!invite || !user) return
     setAccepting(true)
-    const { error: upsertErr } = await supabase
-      .from('band_members')
-      .upsert({ band_id: invite.project_id, user_id: user.id, role: invite.role }, { onConflict: 'band_id,user_id' })
 
-    if (upsertErr) { alert('Erro ao entrar no projeto: ' + upsertErr.message); setAccepting(false); return }
+    // Already a member? Don't touch the existing role (re-accepting an old
+    // invite must never downgrade an admin back to the invited role).
+    const { data: existing } = await supabase
+      .from('band_members')
+      .select('role')
+      .eq('band_id', invite.project_id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (!existing) {
+      const { error: insertErr } = await supabase
+        .from('band_members')
+        .insert({ band_id: invite.project_id, user_id: user.id, role: invite.role })
+      if (insertErr) { alert('Erro ao entrar no projeto: ' + insertErr.message); setAccepting(false); return }
+    }
 
     await supabase.from('project_invites').update({ status: 'accepted' }).eq('id', invite.id)
 
@@ -107,9 +118,28 @@ export default function InvitePage() {
       return
     }
 
+    // Already a member? Just go in — don't reset the role.
+    const { data: existing } = await supabase
+      .from('band_members')
+      .select('role')
+      .eq('band_id', band.id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (existing) {
+      navigate(`/projects/${band.id}`)
+      return
+    }
+
+    // Confirm before joining — entering a code shouldn't auto-commit
+    if (!window.confirm(`Entrar no projeto "${band.name}" como editor?`)) {
+      setJoiningByCode(false)
+      return
+    }
+
     const { error: joinErr } = await supabase
       .from('band_members')
-      .upsert({ band_id: band.id, user_id: user.id, role: 'editor' }, { onConflict: 'band_id,user_id' })
+      .insert({ band_id: band.id, user_id: user.id, role: 'editor' })
 
     if (joinErr) { setCodeError('Erro ao entrar: ' + joinErr.message); setJoiningByCode(false); return }
 

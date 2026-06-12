@@ -136,6 +136,34 @@ export default function SearchPage() {
   async function doAdd(r: SearchResult, setlistId: string | null, toProject = false) {
     if (!user || saving) return
     setPicker(null)
+
+    // Duplicate guard: same title+artist already in the library → reuse it
+    if (alreadyOwned(r)) {
+      const useExisting = window.confirm(
+        `Já tens "${r.title}" de ${r.artist} na biblioteca.\n\nOK = usar a existente · Cancelar = importar de novo (duplicado)`
+      )
+      if (useExisting) {
+        const { data: existing } = await supabase
+          .from('songs')
+          .select('id')
+          .eq('owner_id', user.id)
+          .ilike('title', r.title)
+          .ilike('artist', r.artist)
+          .limit(1)
+          .maybeSingle()
+        if (existing) {
+          if (setlistId) {
+            await addToSetlist(setlistId, existing.id)
+            navigate(`/setlist/${setlistId}`)
+          } else {
+            navigate(`/songs/${existing.id}${projectId ? `?project=${projectId}` : ''}`)
+          }
+          return
+        }
+        // couldn't find it (odd) — fall through to normal import
+      }
+    }
+
     setSaving(keyOf(r))
     try {
       const { lyrics, lines, provider } = await fetchLyrics(r)

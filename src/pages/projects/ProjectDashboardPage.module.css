@@ -674,3 +674,23 @@
   .fieldInput, .fieldSelect, .fieldTextarea { font-size: 16px; }
   .saveBtn { font-size: 16px; }
 }
+
+/* Image position (crop) control */
+.imagePosPreview {
+  width: 100%;
+  height: 90px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1.5px solid var(--border);
+  margin-bottom: 10px;
+  background: var(--bg2);
+}
+.imagePosSlider {
+  width: 100%;
+  accent-color: var(--gig);
+}
+.imagePosHint {
+  font-size: 11.5px;
+  color: var(--text3);
+  margin-top: 4px;
+}

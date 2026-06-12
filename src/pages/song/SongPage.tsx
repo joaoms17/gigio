@@ -77,6 +77,8 @@ export default function SongPage() {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isDirtyRef = useRef(false)
+  // Conflict detection: updated_at as seen at load/last save
+  const baseUpdatedAtRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!id || !user) return
@@ -101,6 +103,7 @@ export default function SongPage() {
     if (!data) { setLoading(false); return }
     const s = data as unknown as Song
     setSong(s)
+    baseUpdatedAtRef.current = (s as any).updated_at ?? null
     setTitle(s.title)
     setArtist(s.artist)
     setLyrics(s.edited_lyrics ?? s.lyrics ?? '')
@@ -123,9 +126,30 @@ export default function SongPage() {
 
   async function save() {
     if (!song || !user || !isDirtyRef.current) return
+
+    // Conflict check: did someone else save since we loaded?
+    const { data: remote } = await supabase
+      .from('songs')
+      .select('updated_at, updated_by')
+      .eq('id', song.id)
+      .single()
+    if (
+      remote?.updated_at &&
+      baseUpdatedAtRef.current &&
+      remote.updated_at !== baseUpdatedAtRef.current &&
+      remote.updated_by !== user.id
+    ) {
+      const overwrite = window.confirm(
+        'Atenção: esta música foi alterada por outro membro enquanto editavas.\n\n' +
+        'OK = guardar por cima das alterações deles · Cancelar = manter as alterações deles (as tuas edições ficam no editor)'
+      )
+      if (!overwrite) return
+    }
+
     isDirtyRef.current = false
     setSaving(true)
     const hasEdited = lyrics !== (song.original_lyrics ?? song.lyrics ?? '')
+    const newUpdatedAt = new Date().toISOString()
     await supabase.from('songs').update({
       title: title.trim(),
       artist: artist.trim(),
@@ -141,8 +165,9 @@ export default function SongPage() {
       tags: tags.length ? tags : null,
       notes: notes.trim() || null,
       updated_by: user.id,
-      updated_at: new Date().toISOString(),
+      updated_at: newUpdatedAt,
     }).eq('id', song.id)
+    baseUpdatedAtRef.current = newUpdatedAt
     setSaving(false)
     setSavedAt(new Date())
   }

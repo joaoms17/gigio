@@ -257,6 +257,52 @@ export default function SetlistPage() {
     if (newSl) navigate(`/setlist/${newSl.id}`)
   }
 
+  function exportPdf() {
+    if (!setlist) return
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const dur = (sec?: number) => sec ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : ''
+    const rows = songs.map((ss, i) => `
+      <tr>
+        <td class="num">${i + 1}</td>
+        <td>
+          <div class="t">${esc(ss.song?.title ?? '')}</div>
+          <div class="a">${esc(ss.song?.artist ?? '')}${ss.custom_intro ? ` — Intro: ${esc(ss.custom_intro)}` : ''}${ss.notes ? ` — ${esc(ss.notes)}` : ''}</div>
+        </td>
+        <td class="key">${esc(ss.performance_key ?? ss.song?.performance_key ?? ss.song?.original_key ?? '')}</td>
+        <td class="dur">${dur(ss.song?.duration_sec)}</td>
+      </tr>`).join('')
+    const meta = [
+      projectName,
+      venue,
+      date ? new Date(date + 'T00:00').toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' }) : null,
+    ].filter(Boolean).join(' · ')
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(setlist.name)}</title>
+      <style>
+        body { font-family: -apple-system, 'Segoe UI', sans-serif; color: #111; margin: 32px; }
+        h1 { font-size: 26px; margin: 0 0 4px; }
+        .meta { color: #666; font-size: 13px; margin-bottom: 6px; }
+        .total { color: #666; font-size: 12px; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        td { padding: 9px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+        .num { width: 30px; color: #999; font-weight: 700; }
+        .t { font-weight: 700; font-size: 15px; }
+        .a { color: #666; font-size: 12px; margin-top: 2px; }
+        .key { width: 50px; font-weight: 700; color: #FF4D6D; text-align: center; }
+        .dur { width: 50px; color: #666; text-align: right; font-variant-numeric: tabular-nums; }
+        @media print { body { margin: 12mm; } }
+      </style></head><body>
+      <h1>${esc(setlist.name)}</h1>
+      ${meta ? `<div class="meta">${esc(meta)}</div>` : ''}
+      <div class="total">${songs.length} músicas${totalMin > 0 ? ` · duração total ≈ ${durationLabel}` : ''}</div>
+      <table>${rows}</table>
+      <script>window.onload = () => { window.print() }<\/script>
+      </body></html>`
+    const w = window.open('', '_blank')
+    if (!w) { alert('Permite pop-ups para exportar o PDF.'); return }
+    w.document.write(html)
+    w.document.close()
+  }
+
   const totalSec = songs.reduce((acc, s) => acc + (s.song?.duration_sec ?? 0), 0)
   const totalMin = Math.floor(totalSec / 60)
   const durationLabel = totalMin >= 60
@@ -341,6 +387,7 @@ export default function SetlistPage() {
               ▶ Iniciar Concerto
             </button>
             <div className={styles.secondaryActions}>
+              <button className={styles.dupBtn} onClick={exportPdf}>🖨 PDF</button>
               <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>⧉ Duplicar</button>
               <button className={styles.deleteBtn} onClick={deleteSetlist}>🗑 Apagar</button>
             </div>

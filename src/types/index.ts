@@ -28,6 +28,7 @@ export interface Project {
   type: ProjectType
   color: string
   image_url?: string
+  image_position?: number  // 0-100 vertical crop position for the card banner
   owner_id: string
   invite_code: string
   invite_expires_at?: string

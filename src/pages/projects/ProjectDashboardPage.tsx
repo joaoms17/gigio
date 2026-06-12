@@ -86,6 +86,7 @@ export default function ProjectDashboardPage() {
   const [settingsDesc, setSettingsDesc] = useState('')
   const [settingsType, setSettingsType] = useState<ProjectType>('band')
   const [settingsColor, setSettingsColor] = useState(PROJECT_COLORS[0])
+  const [settingsImagePos, setSettingsImagePos] = useState(50)
   const [savingSettings, setSavingSettings] = useState(false)
   const [settingsSaved, setSettingsSaved] = useState(false)
 
@@ -118,7 +119,7 @@ export default function ProjectDashboardPage() {
 
     const { data: membership } = await supabase
       .from('band_members')
-      .select('role, bands(id, name, description, type, color, image_url, owner_id, invite_code, invite_expires_at, created_at)')
+      .select('role, bands(*)')
       .eq('band_id', projectId)
       .eq('user_id', user.id)
       .single()
@@ -136,6 +137,7 @@ export default function ProjectDashboardPage() {
     setSettingsDesc(proj.description ?? '')
     setSettingsType((proj.type as ProjectType) ?? 'band')
     setSettingsColor(proj.color ?? PROJECT_COLORS[0])
+    setSettingsImagePos((proj as any).image_position ?? 50)
 
     const [membersRes, setlistsRes, songsRes, invitesRes] = await Promise.all([
       supabase
@@ -182,18 +184,23 @@ export default function ProjectDashboardPage() {
   async function saveSettings() {
     if (!project || !settingsName.trim()) return
     setSavingSettings(true)
-    const { error } = await supabase
+    const base = {
+      name: settingsName.trim(),
+      description: settingsDesc.trim() || null,
+      type: settingsType,
+      color: settingsColor,
+    }
+    // image_position needs a DB column — retry without it if missing
+    let { error } = await supabase
       .from('bands')
-      .update({
-        name: settingsName.trim(),
-        description: settingsDesc.trim() || null,
-        type: settingsType,
-        color: settingsColor,
-      })
+      .update({ ...base, image_position: settingsImagePos })
       .eq('id', project.id)
+    if (error) {
+      ;({ error } = await supabase.from('bands').update(base).eq('id', project.id))
+    }
     setSavingSettings(false)
     if (error) { alert('Erro ao guardar: ' + error.message); return }
-    setProject(p => p ? { ...p, name: settingsName.trim(), description: settingsDesc.trim() || undefined, type: settingsType, color: settingsColor } : p)
+    setProject(p => p ? { ...p, ...base, description: base.description ?? undefined, image_position: settingsImagePos } as any : p)
     setSettingsSaved(true)
     setTimeout(() => setSettingsSaved(false), 2000)
   }
@@ -835,6 +842,28 @@ export default function ProjectDashboardPage() {
                       ))}
                     </div>
                   </div>
+
+                  {project.image_url && (
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel}>Enquadramento da imagem</label>
+                      <div className={styles.imagePosPreview}>
+                        <img
+                          src={project.image_url}
+                          alt=""
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `50% ${settingsImagePos}%` }}
+                        />
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={settingsImagePos}
+                        onChange={e => setSettingsImagePos(Number(e.target.value))}
+                        className={styles.imagePosSlider}
+                      />
+                      <div className={styles.imagePosHint}>Arrasta para escolher que parte da imagem aparece no cartão</div>
+                    </div>
+                  )}
 
                   <button
                     className={styles.saveBtn}

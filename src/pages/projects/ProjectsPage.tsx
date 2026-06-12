@@ -72,7 +72,7 @@ export default function ProjectsPage() {
 
     const { data: memberships } = await supabase
       .from('band_members')
-      .select('band_id, role, bands(id, name, description, type, color, image_url, owner_id, invite_code, invite_expires_at, created_at)')
+      .select('band_id, role, bands(*)')
       .eq('user_id', user.id)
       .order('joined_at', { ascending: false })
 
@@ -161,10 +161,23 @@ export default function ProjectsPage() {
     if (band.invite_expires_at && new Date(band.invite_expires_at) < new Date()) {
       setJoinError('Este código expirou.'); setJoining(false); return
     }
-    const { error: joinErr } = await supabase
+    // Already a member? Just navigate — never reset the existing role.
+    const { data: existing } = await supabase
       .from('band_members')
-      .upsert({ band_id: band.id, user_id: user.id, role: 'editor' }, { onConflict: 'band_id,user_id' })
-    if (joinErr) { setJoinError('Erro ao entrar: ' + joinErr.message); setJoining(false); return }
+      .select('role')
+      .eq('band_id', band.id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (!existing) {
+      if (!window.confirm(`Entrar no projeto "${band.name}" como editor?`)) {
+        setJoining(false)
+        return
+      }
+      const { error: joinErr } = await supabase
+        .from('band_members')
+        .insert({ band_id: band.id, user_id: user.id, role: 'editor' })
+      if (joinErr) { setJoinError('Erro ao entrar: ' + joinErr.message); setJoining(false); return }
+    }
     setShowJoin(false)
     setJoinCode('')
     navigate(`/projects/${band.id}`)
@@ -242,7 +255,14 @@ export default function ProjectsPage() {
                     : { background: `linear-gradient(120deg, ${p.color}, ${p.color}88)` }
                   }
                 >
-                  {p.image_url && <img src={p.image_url} alt="" className={styles.cardBannerImg} />}
+                  {p.image_url && (
+                    <img
+                      src={p.image_url}
+                      alt=""
+                      className={styles.cardBannerImg}
+                      style={{ objectPosition: `50% ${p.image_position ?? 50}%` }}
+                    />
+                  )}
                 </div>
                 <div className={styles.cardBody}>
                   <div className={styles.cardTop}>
