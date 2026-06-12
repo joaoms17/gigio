@@ -1,31 +1,10 @@
-// Legacy build: works on older Safari/iOS (the modern build needs
-// Promise.withResolvers, which only exists in Safari 17.4+)
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
-// Use Vite's ?worker bundling so Safari doesn't need ES-module worker support
-import PdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?worker'
+// pdfjs-dist v3 legacy build: last version whose legacy bundle supports
+// older Safari/iPadOS (v4+ legacy requires Safari 16.4+ even on the worker,
+// which crashed with "undefined is not a function" on older tablets).
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf'
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.js?url'
 
-// Polyfill for browsers that still miss it (pdf.js touches it in a few paths)
-if (typeof (Promise as any).withResolvers !== 'function') {
-  ;(Promise as any).withResolvers = function () {
-    let resolve: any, reject: any
-    const promise = new Promise((res, rej) => { resolve = res; reject = rej })
-    return { promise, resolve, reject }
-  }
-}
-
-// Create the worker once and reuse
-let workerInstance: Worker | null = null
-function getWorker() {
-  if (!workerInstance) workerInstance = new PdfWorker()
-  return workerInstance
-}
-
-try {
-  pdfjsLib.GlobalWorkerOptions.workerPort = getWorker() as any
-} catch {
-  // Fallback: run on main thread (slower but safe)
-  ;(pdfjsLib.GlobalWorkerOptions as any).workerSrc = ''
-}
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
 async function openPdf(data: ArrayBuffer) {
   try {
