@@ -17,12 +17,6 @@ interface Row {
   setlist_songs: { count: number }[]
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: 'Rascunho',
-  preparing: 'A preparar',
-  final: 'Final',
-  archived: 'Arquivada',
-}
 
 export default function SetlistsPage() {
   const { user } = useAuth()
@@ -66,16 +60,16 @@ export default function SetlistsPage() {
       <div className={styles.page}>
         <div className={styles.header}>
           <div>
-            <h1 className={styles.title}>Setlists</h1>
-            <p className={styles.sub}>{setlists.length} setlist{setlists.length !== 1 ? 's' : ''}</p>
+            <h1 className={styles.title}>Concertos</h1>
+            <p className={styles.sub}>{setlists.length} concerto{setlists.length !== 1 ? 's' : ''}</p>
           </div>
-          <button className={styles.newBtn} onClick={() => setPicking(true)}>+ Nova setlist</button>
+          <button className={styles.newBtn} onClick={() => setPicking(true)}>+ Novo concerto</button>
         </div>
 
         {setlists.length > 3 && (
           <input
             className={styles.searchInput}
-            placeholder="Filtrar setlists..."
+            placeholder="Filtrar concertos..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -97,9 +91,9 @@ export default function SetlistsPage() {
         ) : filtered.length === 0 && !search ? (
           <div className={styles.emptyState}>
             <div className={styles.emptyIcon}>🎤</div>
-            <p className={styles.emptyTitle}>Ainda sem setlists</p>
-            <p className={styles.emptySub}>Cria a primeira setlist num projeto para começar.</p>
-            <button className={styles.newBtn} onClick={() => setPicking(true)}>Criar setlist</button>
+            <p className={styles.emptyTitle}>Ainda sem concertos</p>
+            <p className={styles.emptySub}>Cria o primeiro concerto num projeto para começar.</p>
+            <button className={styles.newBtn} onClick={() => setPicking(true)}>Criar concerto</button>
           </div>
         ) : (
           <div className={styles.grid}>
@@ -121,11 +115,6 @@ export default function SetlistsPage() {
                     )}
                     <div className={styles.cardTags}>
                       <span className={styles.tag}>{s.setlist_songs?.[0]?.count ?? 0} músicas</span>
-                      {s.status && s.status !== 'draft' && (
-                        <span className={styles.statusBadge} data-status={s.status}>
-                          {STATUS_LABELS[s.status] ?? s.status}
-                        </span>
-                      )}
                       {s.is_shared && <span className={styles.tagShared}>partilhada</span>}
                     </div>
                   </div>
@@ -134,7 +123,7 @@ export default function SetlistsPage() {
             })}
             <div className={styles.addCard} onClick={() => setPicking(true)}>
               <span className={styles.plusBig}>+</span>
-              <span>Nova setlist</span>
+              <span>Novo concerto</span>
             </div>
           </div>
         )}
@@ -142,7 +131,7 @@ export default function SetlistsPage() {
 
       {picking && (
         <ProjectPickerModal
-          title="Em que projeto criar a setlist?"
+          title="Em que projeto criar o concerto?"
           onPick={(id) => { setPicking(false); createInProject(id) }}
           onClose={() => setPicking(false)}
         />

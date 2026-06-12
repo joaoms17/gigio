@@ -76,7 +76,7 @@ export default function HomePage() {
     if (!user) return
     const { data } = await supabase
       .from('setlists')
-      .insert({ name: 'Nova Setlist', owner_id: user.id, band_id: projectId, is_shared: true })
+      .insert({ name: 'Novo Concerto', owner_id: user.id, band_id: projectId, is_shared: true })
       .select()
       .single()
     if (data) navigate(`/setlist/${data.id}`)
@@ -113,7 +113,7 @@ export default function HomePage() {
 
         <div className={styles.stats}>
           <div className={styles.statCard}>
-            <div className={styles.statLabel}>Setlists</div>
+            <div className={styles.statLabel}>Concertos</div>
             <div className={styles.statNum}>{stats.setlistsTotal}</div>
             <div className={styles.statSub}>{stats.setlistsShared} partilhada{stats.setlistsShared !== 1 ? 's' : ''}</div>
           </div>
@@ -129,15 +129,15 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className={styles.sectionLabel}>SETLISTS RECENTES</div>
+        <div className={styles.sectionLabel}>CONCERTOS RECENTES</div>
         {loading ? (
           <p className={styles.empty}>A carregar...</p>
         ) : setlists.length === 0 ? (
           <div className={styles.emptyState}>
             <div className={styles.emptyIcon}>🎤</div>
-            <p className={styles.emptyTitle}>Ainda sem setlists</p>
-            <p className={styles.emptySub}>Cria a tua primeira para começar</p>
-            <button className={styles.newBtn} onClick={createSetlist}>Criar setlist</button>
+            <p className={styles.emptyTitle}>Ainda sem concertos</p>
+            <p className={styles.emptySub}>Cria o teu primeiro para começar</p>
+            <button className={styles.newBtn} onClick={createSetlist}>Criar concerto</button>
           </div>
         ) : (
           <div className={styles.grid}>
@@ -161,7 +161,7 @@ export default function HomePage() {
             })}
             <div className={styles.addCard} onClick={createSetlist}>
               <span className={styles.plusBig}>+</span>
-              <span>Nova Setlist</span>
+              <span>Novo Concerto</span>
             </div>
           </div>
         )}
@@ -169,7 +169,7 @@ export default function HomePage() {
 
       {picking && (
         <ProjectPickerModal
-          title="Em que projeto criar a setlist?"
+          title="Em que projeto criar o concerto?"
           onPick={(id) => { setPicking(false); createInProject(id) }}
           onClose={() => setPicking(false)}
         />

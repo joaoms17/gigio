@@ -158,7 +158,7 @@ export default function BandPage() {
 
   async function createBandSetlist() {
     if (!activeBand || !user) return
-    const { data } = await supabase.from('setlists').insert({ name: 'Nova Setlist', owner_id: user.id, band_id: activeBand.id, is_shared: true }).select().single()
+    const { data } = await supabase.from('setlists').insert({ name: 'Novo Concerto', owner_id: user.id, band_id: activeBand.id, is_shared: true }).select().single()
     if (data) navigate(`/setlist/${data.id}`)
   }
 
@@ -194,7 +194,7 @@ export default function BandPage() {
             <div className={styles.detailTitleRow}>
               <div>
                 <h1 className={styles.bandName}>{activeBand.name}</h1>
-                <p className={styles.bandMeta}>{members.length} membros · {setlists.length} setlist{setlists.length !== 1 ? 's' : ''}</p>
+                <p className={styles.bandMeta}>{members.length} membros · {setlists.length} concerto{setlists.length !== 1 ? 's' : ''}</p>
               </div>
               <button className={styles.settingsBtn} onClick={() => setShowSettings(true)}>⚙ Definições</button>
             </div>
@@ -279,10 +279,10 @@ export default function BandPage() {
                 ))}
                 <button className={styles.newSetlistCard} onClick={createBandSetlist}>
                   <span className={styles.plusBig}>+</span>
-                  <span>Nova setlist</span>
+                  <span>Novo concerto</span>
                 </button>
               </div>
-              {setlists.length === 0 && <p className={styles.hint}>Cria a primeira setlist deste projeto. Fica partilhada com todos os membros.</p>}
+              {setlists.length === 0 && <p className={styles.hint}>Cria o primeiro concerto deste projeto. Fica partilhado com todos os membros.</p>}
             </div>
           </div>
         </div>

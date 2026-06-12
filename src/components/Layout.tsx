@@ -79,7 +79,7 @@ export default function Layout({ children }: Props) {
     { to: '/projects', icon: '⊞', label: 'Projetos' },
     { to: '/', end: true, icon: '⊟', label: 'Calendário' },
     { to: '/library', icon: '♪', label: 'Músicas' },
-    { to: '/setlists', icon: '≡', label: 'Setlists' },
+    { to: '/setlists', icon: '≡', label: 'Concertos' },
     { to: '/search', icon: '⌕', label: 'Buscar' },
   ]
 

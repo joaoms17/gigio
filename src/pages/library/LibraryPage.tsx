@@ -51,7 +51,7 @@ export default function LibraryPage() {
   async function deleteSong(song: Song) {
     const used = await setlistsUsing([song.id])
     const usageMsg = used.length
-      ? ` Está em ${used.length} setlist${used.length !== 1 ? 's' : ''}: ${used.slice(0, 4).join(', ')}${used.length > 4 ? '…' : ''}.`
+      ? ` Está em ${used.length} concerto${used.length !== 1 ? 's' : ''}: ${used.slice(0, 4).join(', ')}${used.length > 4 ? '…' : ''}.`
       : ''
     if (!await confirmDialog({
       title: 'Eliminar música',

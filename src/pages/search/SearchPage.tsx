@@ -370,7 +370,7 @@ export default function SearchPage() {
               <span className={styles.targetIcon}>📚</span>
               <span>Só na biblioteca</span>
             </button>
-            {setlists.length > 0 && <div className={styles.targetDivider}>Ou directo para uma setlist</div>}
+            {setlists.length > 0 && <div className={styles.targetDivider}>Ou directo para um concerto</div>}
             <div className={styles.targetList}>
               {setlists.map(s => (
                 <button key={s.id} className={styles.targetRow} onClick={() => doAdd(picker, s.id)}>
