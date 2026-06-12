@@ -3,10 +3,24 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import LyricsView from '../../components/LyricsView'
+import AnnotationLayer from '../../components/AnnotationLayer'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import type { Song } from '../../types'
 import styles from './SongPage.module.css'
+
+const ANN_COLORS = [
+  { id: 'red',    value: '#FF4D6D' },
+  { id: 'blue',   value: '#2563EB' },
+  { id: 'green',  value: '#16A34A' },
+  { id: 'orange', value: '#F59E0B' },
+  { id: 'dark',   value: '#1e1e2e' },
+]
+const ANN_WIDTHS = [
+  { id: 'thin',   value: 2,  size: 4 },
+  { id: 'mid',    value: 4,  size: 7 },
+  { id: 'thick',  value: 8,  size: 11 },
+]
 
 type Tab = 'lyrics' | 'chords' | 'details'
 
@@ -51,6 +65,13 @@ export default function SongPage() {
   const [tags, setTags] = useState<string[]>([])
   const [notes, setNotes] = useState('')
   const [tagInput, setTagInput] = useState('')
+
+  // Rehearsal / annotation state
+  const [rehearsal, setRehearsal] = useState(false)
+  const [annTool, setAnnTool] = useState<'pen' | 'eraser'>('pen')
+  const [annColor, setAnnColor] = useState(ANN_COLORS[0].value)
+  const [annWidth, setAnnWidth] = useState(ANN_WIDTHS[0].value)
+  const [annClear, setAnnClear] = useState(0)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isDirtyRef = useRef(false)
@@ -240,17 +261,98 @@ export default function SongPage() {
                     Repor original
                   </button>
                 )}
+                {preview && (
+                  <button
+                    className={`${styles.rehearsalBtn} ${rehearsal ? styles.rehearsalBtnActive : ''}`}
+                    onClick={() => setRehearsal(v => !v)}
+                    title="Modo ensaio — anotações sobre a letra"
+                  >
+                    ✏ Ensaio
+                  </button>
+                )}
                 <button
                   className={`${styles.previewToggle} ${preview ? styles.previewToggleActive : ''}`}
-                  onClick={() => setPreview(v => !v)}
+                  onClick={() => { setPreview(v => !v); if (rehearsal) setRehearsal(false) }}
                 >
                   {preview ? '✎ Editar' : '👁 Pré-ver'}
                 </button>
               </div>
               {preview ? (
-                <div className={styles.previewPane}>
-                  <LyricsView lyrics={lyrics} />
-                </div>
+                <>
+                  {rehearsal && (
+                    <div className={styles.rehearsalBar}>
+                      <span className={styles.rehearsalLabel}>Ensaio</span>
+
+                      {/* Colors */}
+                      <div className={styles.annColors}>
+                        {ANN_COLORS.map(c => (
+                          <button
+                            key={c.id}
+                            className={`${styles.annColor} ${annTool === 'pen' && annColor === c.value ? styles.annColorActive : ''}`}
+                            style={{ background: c.value, borderColor: annTool === 'pen' && annColor === c.value ? '#fff' : 'transparent' }}
+                            onClick={() => { setAnnColor(c.value); setAnnTool('pen') }}
+                            title={c.id}
+                          />
+                        ))}
+                      </div>
+
+                      <div className={styles.annDivider} />
+
+                      {/* Stroke widths */}
+                      <div className={styles.annWidths}>
+                        {ANN_WIDTHS.map(w => (
+                          <button
+                            key={w.id}
+                            className={`${styles.annWidth} ${annWidth === w.value && annTool === 'pen' ? styles.annWidthActive : ''}`}
+                            onClick={() => { setAnnWidth(w.value); setAnnTool('pen') }}
+                            title={w.id}
+                          >
+                            <span className={styles.annWidthDot} style={{ width: w.size, height: w.size }} />
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className={styles.annDivider} />
+
+                      {/* Eraser */}
+                      <button
+                        className={`${styles.annTool} ${annTool === 'eraser' ? styles.annToolActive : ''}`}
+                        onClick={() => setAnnTool(t => t === 'eraser' ? 'pen' : 'eraser')}
+                        title="Borracha"
+                      >
+                        ◌
+                      </button>
+
+                      {/* Clear */}
+                      <button
+                        className={styles.annClear}
+                        onClick={() => { if (window.confirm('Limpar todas as anotações desta música?')) setAnnClear(c => c + 1) }}
+                        title="Limpar tudo"
+                      >
+                        ✕ Limpar
+                      </button>
+
+                      {/* Exit */}
+                      <button className={styles.annExit} onClick={() => setRehearsal(false)}>
+                        Sair
+                      </button>
+                    </div>
+                  )}
+                  <div className={styles.previewPane}>
+                    <div className={styles.previewInner}>
+                      <LyricsView lyrics={lyrics} />
+                      {rehearsal && song && (
+                        <AnnotationLayer
+                          songId={song.id}
+                          tool={annTool}
+                          color={annColor}
+                          strokeWidth={annWidth}
+                          clearTrigger={annClear}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </>
               ) : (
                 <textarea
                   className={styles.lyricsEditor}
