@@ -1,8 +1,10 @@
 .page {
-  padding: 20px 16px 40px;
+  padding: 28px 24px 40px;
   max-width: 600px;
+  margin: 0 auto;
   animation: pageIn 0.25s ease-out;
 }
+@media (max-width: 640px) { .page { padding: 16px 16px 40px; } }
 
 /* ── Month nav ── */
 .monthNav {
@@ -14,7 +16,7 @@
 }
 
 .monthTitle {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 800;
   color: var(--text);
   letter-spacing: -0.4px;

@@ -2,7 +2,9 @@
   padding: 20px 24px 32px;
   max-width: 900px;
   margin: 0 auto;
+  animation: pageIn 0.25s ease-out;
 }
+@media (max-width: 640px) { .page { padding: 16px 16px 32px; } }
 
 .loading {
   display: flex;
@@ -245,10 +247,10 @@
 
 .addBtn {
   padding: 9px 18px;
-  background: var(--gig);
+  background: linear-gradient(135deg, var(--gig), var(--io));
   color: #fff;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;

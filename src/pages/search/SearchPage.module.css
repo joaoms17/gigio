@@ -1,5 +1,5 @@
-.page { padding: 28px 24px; max-width: 800px; margin: 0 auto; }
-@media (max-width: 640px) { .page { padding: 16px 16px; } }
+.page { padding: 28px 24px; max-width: 800px; margin: 0 auto; animation: pageIn 0.25s ease-out; }
+@media (max-width: 640px) { .page { padding: 16px; } }
 
 .pageHeader { margin-bottom: 20px; }
 .backBtn {
@@ -8,7 +8,7 @@
   transition: color 0.12s;
 }
 .backBtn:hover { color: var(--gig); }
-.title { font-size: 24px; font-weight: 800; letter-spacing: -0.3px; margin: 0 0 4px; }
+.title { font-size: 24px; font-weight: 800; letter-spacing: -0.4px; margin: 0 0 4px; }
 .projectCtx { font-size: 13px; color: var(--text3); margin: 0 0 4px; }
 .sub { font-size: 13px; color: var(--text3); margin: 0; }
 
@@ -23,7 +23,7 @@
 .artistInput { flex: 1; min-width: 100px; }
 .searchInput:focus, .artistInput:focus { border-color: var(--gig); }
 .searchBtn {
-  padding: 12px 20px; border: none; border-radius: var(--radius);
+  padding: 12px 20px; border: none; border-radius: 12px;
   background: linear-gradient(135deg, var(--gig), var(--io));
   color: white; font-size: 13px; font-weight: 700; white-space: nowrap;
 }

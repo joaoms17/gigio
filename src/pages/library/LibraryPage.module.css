@@ -1,9 +1,13 @@
 .page {
-  padding: 24px;
+  padding: 28px 24px;
   height: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: pageIn 0.25s ease-out;
 }
 
 @media (max-width: 640px) {
@@ -20,7 +24,8 @@
 
 .title {
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: -0.4px;
   color: var(--text);
   margin: 0;
 }
@@ -32,26 +37,27 @@
 }
 
 .searchBtn {
-  padding: 8px 16px;
-  background: var(--gig);
+  padding: 9px 18px;
+  background: linear-gradient(135deg, var(--gig), var(--io));
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
 }
 
 .searchInput {
   width: 100%;
   padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
   background: var(--bg2);
   color: var(--text);
   font-size: 14px;
   margin-bottom: 16px;
   box-sizing: border-box;
+  transition: border-color 0.15s;
 }
 
 .searchInput:focus {
@@ -157,13 +163,13 @@
 
 .emptyState {
   text-align: center;
-  padding: 40px 16px;
+  padding: 60px 20px;
   color: var(--text2);
 }
 
 .emptyIcon {
-  font-size: 40px;
-  margin-bottom: 8px;
+  font-size: 48px;
+  margin-bottom: 16px;
 }
 
 .goSearch {

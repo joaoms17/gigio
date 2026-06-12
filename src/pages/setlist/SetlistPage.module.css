@@ -1,4 +1,4 @@
-.page { padding: 28px 24px; max-width: 1000px; margin: 0 auto; }
+.page { padding: 28px 24px; max-width: 1000px; margin: 0 auto; animation: pageIn 0.25s ease-out; }
 @media (max-width: 640px) { .page { padding: 16px; } }
 .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; gap: 12px; }
 .headerLeft { flex: 1; }

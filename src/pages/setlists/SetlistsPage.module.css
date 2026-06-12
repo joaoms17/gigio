@@ -1,4 +1,4 @@
-.page { padding: 28px 24px; max-width: 900px; margin: 0 auto; }
+.page { padding: 28px 24px; max-width: 900px; margin: 0 auto; animation: pageIn 0.25s ease-out; }
 @media (max-width: 640px) { .page { padding: 16px; } }
 
 .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; gap: 12px; }
@@ -6,7 +6,7 @@
 .sub { font-size: 13px; color: var(--text3); margin: 0; }
 
 .newBtn {
-  padding: 10px 18px; border: none; border-radius: var(--radius);
+  padding: 10px 18px; border: none; border-radius: 12px;
   background: linear-gradient(135deg, var(--gig), var(--io));
   color: white; font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer;
   flex-shrink: 0;
