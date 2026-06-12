@@ -11,11 +11,12 @@ const PAD_H = 20
  * applies a CSS transform so the drawing stays pixel-aligned with the text.
  */
 export default function AnnotatedLyrics({
-  songId, lyrics, userId, bgColor, textColor, activeLine, accentColor,
+  songId, lyrics, userId, bgColor, textColor, activeLine, accentColor, fontSize, lineHeight,
 }: {
   songId: string; lyrics: string; userId?: string
   bgColor?: string; textColor?: string
   activeLine?: number; accentColor?: string
+  fontSize?: number; lineHeight?: number
 }) {
   const outerRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
@@ -80,7 +81,7 @@ export default function AnnotatedLyrics({
           transformOrigin: 'top left',
         }}
       >
-        <LyricsView lyrics={lyrics} activeLine={activeLine} accent={accentColor} />
+        <LyricsView lyrics={lyrics} activeLine={activeLine} accent={accentColor} fontSize={fontSize} lineHeight={lineHeight} />
         {data && data.strokes.length > 0 && (
           <svg
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}

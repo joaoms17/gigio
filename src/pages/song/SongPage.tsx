@@ -380,7 +380,7 @@ export default function SongPage() {
 
                   <div className={styles.previewPane}>
                     <div className={styles.previewInner}>
-                      <LyricsView lyrics={lyrics} />
+                      <LyricsView lyrics={lyrics} fontSize={32} lineHeight={1.6} />
                       {song && (
                         <AnnotationLayer
                           songId={song.id}

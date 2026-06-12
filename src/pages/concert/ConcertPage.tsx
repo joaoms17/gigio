@@ -447,6 +447,8 @@ export default function ConcertPage() {
                 textColor={theme.active_color}
                 activeLine={annActiveLine >= 0 ? annActiveLine : undefined}
                 accentColor={theme.accent_color}
+                fontSize={theme.font_size}
+                lineHeight={theme.line_height}
               />
             )}
           </div>

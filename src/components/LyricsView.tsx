@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import styles from './LyricsView.module.css'
 
 const SECTION_MAP: Record<string, string> = {
@@ -24,10 +25,16 @@ function fmtSection(raw: string) {
   return label + num
 }
 
-export default function LyricsView({ lyrics, activeLine, accent }: { lyrics: string; activeLine?: number; accent?: string }) {
+export default function LyricsView({ lyrics, activeLine, accent, fontSize, lineHeight }: {
+  lyrics: string; activeLine?: number; accent?: string
+  fontSize?: number; lineHeight?: number
+}) {
   if (!lyrics?.trim()) return <span className={styles.hint}>Sem letra</span>
+  const rootStyle: CSSProperties = {}
+  if (fontSize) (rootStyle as any)['--lyric-size'] = `${fontSize}px`
+  if (lineHeight) (rootStyle as any)['--lyric-lh'] = lineHeight
   return (
-    <>
+    <div className={styles.root} style={Object.keys(rootStyle).length ? rootStyle : undefined}>
       {lyrics.split('\n').map((line, i) => {
         const t = line.trim()
         const sec = t.match(/^\[(.+?)\]$/)
@@ -47,6 +54,6 @@ export default function LyricsView({ lyrics, activeLine, accent }: { lyrics: str
           </div>
         )
       })}
-    </>
+    </div>
   )
 }
