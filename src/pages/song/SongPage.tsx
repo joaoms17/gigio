@@ -346,6 +346,7 @@ export default function SongPage() {
                       {song && (
                         <AnnotationLayer
                           songId={song.id}
+                          userId={user?.id}
                           tool={annTool}
                           color={annColor}
                           strokeWidth={annWidth}

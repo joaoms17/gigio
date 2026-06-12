@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { supabase } from '../lib/supabase'
 import styles from './AnnotationLayer.module.css'
 
 export interface Stroke {
@@ -10,6 +11,7 @@ export interface Stroke {
 
 interface Props {
   songId: string
+  userId?: string        // when set, annotations sync to Supabase
   tool: 'pen' | 'eraser'
   color: string
   strokeWidth: number
@@ -32,6 +34,33 @@ export function loadAnnotations(songId: string): SavedAnnotations | null {
     if (Array.isArray(parsed)) return { w: 0, strokes: parsed }
     return parsed
   } catch { return null }
+}
+
+/**
+ * Sync annotations with Supabase (song_annotations table). Remote wins if
+ * newer; local is pushed otherwise. Silently no-ops if the table doesn't
+ * exist yet — localStorage keeps working as the source of truth.
+ */
+export async function pullAnnotations(songId: string, userId: string): Promise<SavedAnnotations | null> {
+  try {
+    const { data, error } = await supabase
+      .from('song_annotations')
+      .select('data, updated_at')
+      .eq('song_id', songId)
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (error || !data) return null
+    return data.data as SavedAnnotations
+  } catch { return null }
+}
+
+export async function pushAnnotations(songId: string, userId: string, payload: SavedAnnotations) {
+  try {
+    await supabase.from('song_annotations').upsert(
+      { song_id: songId, user_id: userId, data: payload, updated_at: new Date().toISOString() },
+      { onConflict: 'song_id,user_id' }
+    )
+  } catch { /* table may not exist yet — localStorage still has the data */ }
 }
 
 export function annotationPath(pts: number[]): string {
@@ -64,7 +93,7 @@ function dist(x1: number, y1: number, x2: number, y2: number) {
   return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 }
 
-export default function AnnotationLayer({ songId, tool, color, strokeWidth, clearTrigger }: Props) {
+export default function AnnotationLayer({ songId, userId, tool, color, strokeWidth, clearTrigger }: Props) {
   const layerRef = useRef<HTMLDivElement>(null)
   const [strokes, setStrokes] = useState<Stroke[]>([])
   const [current, setCurrent] = useState<Stroke | null>(null)
@@ -75,19 +104,39 @@ export default function AnnotationLayer({ songId, tool, color, strokeWidth, clea
   const currentRef = useRef<Stroke | null>(null)
   const prevClearRef = useRef(clearTrigger)
 
-  // Load from localStorage
-  useEffect(() => {
-    const saved = loadAnnotations(songId)
-    setStrokes(saved?.strokes ?? [])
-  }, [songId])
+  const loadedRef = useRef(false)
+  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Save to localStorage (with container width so other views can scale)
+  // Load: localStorage first (instant), then merge remote if it has more
   useEffect(() => {
-    try {
-      const w = layerRef.current?.offsetWidth ?? svgW
-      localStorage.setItem(ANN_STORAGE_KEY(songId), JSON.stringify({ w, strokes }))
-    } catch {}
-  }, [strokes, songId])
+    loadedRef.current = false
+    const local = loadAnnotations(songId)
+    setStrokes(local?.strokes ?? [])
+    loadedRef.current = true
+    if (userId) {
+      pullAnnotations(songId, userId).then(remote => {
+        if (!remote) return
+        // Remote replaces local only when local is empty (fresh device)
+        const localNow = loadAnnotations(songId)
+        if (!localNow || localNow.strokes.length === 0) {
+          setStrokes(remote.strokes)
+          try { localStorage.setItem(ANN_STORAGE_KEY(songId), JSON.stringify(remote)) } catch {}
+        }
+      })
+    }
+  }, [songId, userId])
+
+  // Save to localStorage + debounced push to Supabase
+  useEffect(() => {
+    if (!loadedRef.current) return
+    const w = layerRef.current?.offsetWidth ?? svgW
+    const payload: SavedAnnotations = { w, strokes }
+    try { localStorage.setItem(ANN_STORAGE_KEY(songId), JSON.stringify(payload)) } catch {}
+    if (userId) {
+      if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
+      pushTimerRef.current = setTimeout(() => pushAnnotations(songId, userId, payload), 1500)
+    }
+  }, [strokes, songId, userId])
 
   // Clear trigger
   useEffect(() => {

@@ -9,7 +9,7 @@ import {
   cacheTheme, getCachedTheme,
 } from '../../lib/concertCache'
 import AnnotatedLyrics from '../../components/AnnotatedLyrics'
-import { loadAnnotations } from '../../components/AnnotationLayer'
+import { loadAnnotations, pullAnnotations } from '../../components/AnnotationLayer'
 import type { SetlistSong, Song, ConcertTheme, LyricLine } from '../../types'
 import styles from './ConcertPage.module.css'
 
@@ -37,6 +37,7 @@ export default function ConcertPage() {
   const [scrollFollowing, setScrollFollowing] = useState(true)
   const [contentView, setContentView] = useState<ContentView>('lyrics')
   const [metronomeOn, setMetronomeOn] = useState(false)
+  const [annAvailable, setAnnAvailable] = useState(false)
 
   const timerRef              = useRef<ReturnType<typeof setInterval> | null>(null)
   const startRef              = useRef<number>(0)
@@ -89,6 +90,15 @@ export default function ConcertPage() {
     setLineIdx(0); setElapsed(0); stopTimer(); setPlaying(false)
     setScrollFollowing(true)
     setContentView('lyrics')
+    // Annotation availability: local first, remote as fallback
+    const local = loadAnnotations(song.id)
+    if (local && local.strokes.length > 0) setAnnAvailable(true)
+    else {
+      setAnnAvailable(false)
+      if (user) pullAnnotations(song.id, user.id).then(r => {
+        if (r && r.strokes.length > 0) setAnnAvailable(true)
+      })
+    }
     if (lyricsScrollRef.current) lyricsScrollRef.current.scrollTop = 0
     if (song.has_sync) {
       supabase.from('lyric_syncs').select('lines').eq('song_id', song.id).single()
@@ -271,7 +281,7 @@ export default function ConcertPage() {
     : rawChords
   const chordsTransposed = chordsText !== rawChords
 
-  const hasAnnotations = currentSong ? (loadAnnotations(currentSong.id)?.strokes.length ?? 0) > 0 : false
+  const hasAnnotations = annAvailable
   const bpm = currentSong?.bpm ?? null
 
   return (
@@ -382,6 +392,7 @@ export default function ConcertPage() {
             {currentSong && (
               <AnnotatedLyrics
                 songId={currentSong.id}
+                userId={user?.id}
                 lyrics={currentSong.edited_lyrics ?? currentSong.lyrics ?? ''}
               />
             )}

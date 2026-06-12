@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import LyricsView from './LyricsView'
-import { loadAnnotations, annotationPath, type SavedAnnotations } from './AnnotationLayer'
+import { loadAnnotations, pullAnnotations, annotationPath, type SavedAnnotations } from './AnnotationLayer'
 
 const PAD_V = 16
 const PAD_H = 20
@@ -10,14 +10,20 @@ const PAD_H = 20
  * available width. Renders at the width the strokes were drawn at and
  * applies a CSS transform so the drawing stays pixel-aligned with the text.
  */
-export default function AnnotatedLyrics({ songId, lyrics }: { songId: string; lyrics: string }) {
+export default function AnnotatedLyrics({ songId, lyrics, userId }: { songId: string; lyrics: string; userId?: string }) {
   const outerRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
   const [data, setData] = useState<SavedAnnotations | null>(null)
   const [outerW, setOuterW] = useState(0)
   const [innerH, setInnerH] = useState(0)
 
-  useEffect(() => { setData(loadAnnotations(songId)) }, [songId])
+  useEffect(() => {
+    const local = loadAnnotations(songId)
+    setData(local)
+    if (userId && (!local || local.strokes.length === 0)) {
+      pullAnnotations(songId, userId).then(remote => { if (remote) setData(remote) })
+    }
+  }, [songId, userId])
 
   useEffect(() => {
     const el = outerRef.current
