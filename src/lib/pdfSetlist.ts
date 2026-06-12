@@ -60,7 +60,21 @@ export async function extractSetlistFromPdf(file: File): Promise<SetlistEntry[]>
     for (const c of clusters) {
       const line = c.words.sort((a, b) => a.x - b.x).map(w => w.text).join(' ').trim()
       if (!line || shouldSkip(line)) continue
-      const parts = line.split(/\s*\/\s*/).map(s => s.trim()).filter(s => s.length > 1)
+function cleanSongName(raw: string): string {
+  return raw
+    // Leading track number: "1.", "01.", "1)", "01)", "(1)", "[1]", "1 -", "1 –"
+    .replace(/^\s*[\[(]?\d{1,3}[.)\]]\s*[-–]?\s*/, '')
+    .replace(/^\s*\d{1,3}\s+[-–]\s*/, '')
+    // Leading hash number: "#1 ", "#01 "
+    .replace(/^\s*#\d+\s+/, '')
+    // Trailing noise: "(ao vivo)", "(live)", "(remix)", "(cover)", "[...]"
+    .replace(/\s*\((ao\s+vivo|live|remix|cover|version|versão|original)\)\s*$/i, '')
+    // Clean up extra whitespace
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+    const parts = line.split(/\s*\/\s*/).map(s => cleanSongName(s)).filter(s => s.length > 1)
       if (parts.length === 0) continue
       entries.push({ raw: line, songs: parts })
     }

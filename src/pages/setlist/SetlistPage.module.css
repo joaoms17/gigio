@@ -11,6 +11,14 @@
 .metaRow { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
 .dateVenueGroup { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: nowrap; }
 .dateVenueGroup .metaField { flex: 1; min-width: 0; }
+.venueWrap { position: relative; flex: 1; min-width: 0; }
+.venueWrap .metaField { display: flex; width: 100%; box-sizing: border-box; }
+.venueDrop { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 200; overflow: hidden; }
+.venueDropItem { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border); }
+.venueDropItem:last-child { border-bottom: none; }
+.venueDropItem:hover { background: var(--bg2); }
+.venueDropName { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
+.venueDropDetail { display: block; font-size: 11px; color: var(--text3); margin-top: 1px; }
 
 .songsChip {
   display: inline-flex; align-items: center;

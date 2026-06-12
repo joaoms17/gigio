@@ -23,6 +23,12 @@ interface MatchedEntry {
   matches: (Song | null)[]
 }
 
+interface LyricsPreview {
+  result: SearchResult
+  lyrics: string
+  loading: boolean
+}
+
 type Step = 'upload' | 'review' | 'done' | 'search'
 
 function findMatch(query: string, library: Song[]): Song | null {
@@ -31,6 +37,16 @@ function findMatch(query: string, library: Song[]): Song | null {
   return library.find(s => normalizeTitle(s.title) === q)
     ?? library.find(s => { const t = normalizeTitle(s.title); return t.includes(q) || q.includes(t) })
     ?? null
+}
+
+async function fetchResults(query: string): Promise<SearchResult[]> {
+  const [lrc, genius] = await Promise.allSettled([searchLrclib(query), searchGenius(query)])
+  const combined = [
+    ...(lrc.status === 'fulfilled' ? lrc.value : []),
+    ...(genius.status === 'fulfilled' ? genius.value : []),
+  ]
+  combined.sort((a, b) => (b.has_sync ? 1 : 0) - (a.has_sync ? 1 : 0))
+  return combined
 }
 
 export default function SetlistImportModal({ setlistId, projectId, currentPosition, onClose, onImported }: Props) {
@@ -44,6 +60,11 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
   const [addedCount, setAddedCount] = useState(0)
   const [missed, setMissed] = useState<string[]>([])
 
+  // Pre-loaded search results — populated in background after import
+  const [preloaded, setPreloaded] = useState<Record<string, SearchResult[]>>({})
+  const [preloadDone, setPreloadDone] = useState(0)   // how many have finished
+  const preloadTotal = useRef(0)
+
   // Search step
   const [searchQueue, setSearchQueue] = useState<string[]>([])
   const [searchIndex, setSearchIndex] = useState(0)
@@ -52,6 +73,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
   const [searchLoading, setSearchLoading] = useState(false)
   const [savingKey, setSavingKey] = useState<string | null>(null)
   const [addedFromSearch, setAddedFromSearch] = useState(0)
+  const [lyricsPreview, setLyricsPreview] = useState<LyricsPreview | null>(null)
 
   function handleClose() {
     if (addedCount > 0 || addedFromSearch > 0) onImported()
@@ -59,22 +81,16 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
   }
 
   async function handleFile(file: File) {
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      setError('Por favor seleciona um ficheiro PDF.')
-      return
-    }
-    setError(null)
-    setParsing(true)
+    if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Por favor seleciona um ficheiro PDF.'); return }
+    setError(null); setParsing(true)
     try {
       const parsed = await extractSetlistFromPdf(file)
       if (parsed.length === 0) { setError('Não foram encontradas entradas no PDF.'); setParsing(false); return }
-
       let library: Song[] = []
       if (projectId) {
         const { data } = await supabase.from('songs').select('*').eq('project_id', projectId)
         library = data ?? []
       }
-
       setEntries(parsed.map((entry, i) => ({
         id: String(i), entry, checked: true,
         matches: entry.songs.map(name => findMatch(name, library)),
@@ -82,21 +98,34 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
       setStep('review')
     } catch (err: any) {
       setError(err?.message ?? 'Erro ao processar o PDF.')
-    } finally {
-      setParsing(false)
-    }
+    } finally { setParsing(false) }
   }
 
   const checkedEntries = entries.filter(e => e.checked)
   const totalSongs = checkedEntries.reduce((acc, e) => acc + e.entry.songs.length, 0)
   const foundCount = checkedEntries.reduce((acc, e) => acc + e.matches.filter(Boolean).length, 0)
 
+  // Start pre-fetching results for all missed songs in the background
+  function preloadAll(names: string[]) {
+    preloadTotal.current = names.length
+    setPreloadDone(0)
+    setPreloaded({})
+    names.forEach(async name => {
+      try {
+        const results = await fetchResults(name)
+        setPreloaded(prev => ({ ...prev, [name]: results }))
+      } catch {
+        setPreloaded(prev => ({ ...prev, [name]: [] }))
+      }
+      setPreloadDone(n => n + 1)
+    })
+  }
+
   async function handleImport() {
     setImporting(true)
     let pos = currentPosition
     const inserts: { setlist_id: string; song_id: string; position: number }[] = []
     const missedNames: string[] = []
-
     for (const e of checkedEntries) {
       for (let i = 0; i < e.entry.songs.length; i++) {
         const match = e.matches[i]
@@ -104,65 +133,95 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
         else missedNames.push(e.entry.songs[i])
       }
     }
-
     if (inserts.length > 0) await Promise.all(inserts.map(row => supabase.from('setlist_songs').insert(row)))
     setAddedCount(inserts.length)
     setMissed(missedNames)
     setImporting(false)
     setStep('done')
     if (inserts.length > 0) onImported()
+    // Pre-load searches for all missed songs immediately
+    if (missedNames.length > 0) preloadAll(missedNames)
   }
 
-  async function runSearch(query: string) {
-    if (!query.trim()) return
-    setSearchLoading(true)
-    setSearchResults([])
-    try {
-      const [lrc, genius] = await Promise.allSettled([searchLrclib(query), searchGenius(query)])
-      const combined = [
-        ...(lrc.status === 'fulfilled' ? lrc.value : []),
-        ...(genius.status === 'fulfilled' ? genius.value : []),
-      ]
-      combined.sort((a, b) => (b.has_sync ? 1 : 0) - (a.has_sync ? 1 : 0))
-      setSearchResults(combined)
-    } finally {
-      setSearchLoading(false)
-    }
+  function getResultsFor(name: string): SearchResult[] | undefined {
+    return preloaded[name]
   }
 
   function startSearch() {
     const queue = missed
     setSearchQueue(queue)
     setSearchIndex(0)
-    setSearchQuery(queue[0] ?? '')
-    setSearchResults([])
     setAddedFromSearch(0)
+    setLyricsPreview(null)
+    const first = queue[0]
+    setSearchQuery(first ?? '')
+    const cached = getResultsFor(first)
+    if (cached !== undefined) {
+      setSearchResults(cached)
+      setSearchLoading(false)
+    } else {
+      setSearchResults([])
+      setSearchLoading(true)
+      fetchResults(first).then(r => { setSearchResults(r); setSearchLoading(false) }).catch(() => setSearchLoading(false))
+    }
     setStep('search')
-    if (queue[0]) runSearch(queue[0])
   }
 
   function advanceSearch(didAdd: boolean) {
     if (didAdd) setAddedFromSearch(n => n + 1)
+    setLyricsPreview(null)
     const next = searchIndex + 1
     if (next >= searchQueue.length) { onImported(); return }
     setSearchIndex(next)
     const q = searchQueue[next]
     setSearchQuery(q)
-    setSearchResults([])
-    runSearch(q)
+    const cached = getResultsFor(q)
+    if (cached !== undefined) {
+      setSearchResults(cached)
+      setSearchLoading(false)
+    } else {
+      setSearchResults([])
+      setSearchLoading(true)
+      fetchResults(q).then(r => { setSearchResults(r); setSearchLoading(false) }).catch(() => setSearchLoading(false))
+    }
   }
 
-  async function pickResult(r: SearchResult) {
+  async function runManualSearch() {
+    if (!searchQuery.trim()) return
+    setSearchLoading(true); setSearchResults([])
+    fetchResults(searchQuery).then(r => { setSearchResults(r); setSearchLoading(false) }).catch(() => setSearchLoading(false))
+  }
+
+  async function openPreview(r: SearchResult) {
+    setLyricsPreview({ result: r, lyrics: '', loading: true })
+    try {
+      let lyrics = ''
+      if (r.source === 'lrclib') {
+        const d = await getLrclibLyrics(r.external_id)
+        lyrics = d.lyrics
+      } else {
+        lyrics = await getLyricsOvh(r.artist, r.title)
+      }
+      setLyricsPreview(prev => prev ? { ...prev, lyrics: lyrics || '(Letra não disponível)', loading: false } : null)
+    } catch {
+      setLyricsPreview(prev => prev ? { ...prev, lyrics: '(Letra não disponível)', loading: false } : null)
+    }
+  }
+
+  async function pickResult(r: SearchResult, cachedLyrics?: string, cachedLines?: LyricLine[] | null) {
     if (!user) return
     const key = `${r.source}-${r.external_id}`
     setSavingKey(key)
     try {
-      let lyrics = '', lines: LyricLine[] | null = null
-      if (r.source === 'lrclib') {
-        const d = await getLrclibLyrics(r.external_id)
-        lyrics = d.lyrics; lines = d.lines
-      } else {
-        lyrics = await getLyricsOvh(r.artist, r.title)
+      let lyrics = cachedLyrics ?? ''
+      let lines: LyricLine[] | null = cachedLines ?? null
+      if (!lyrics) {
+        if (r.source === 'lrclib') {
+          const d = await getLrclibLyrics(r.external_id)
+          lyrics = d.lyrics; lines = d.lines
+        } else {
+          lyrics = await getLyricsOvh(r.artist, r.title)
+        }
       }
       const { data: song, error: songErr } = await supabase.from('songs').insert({
         owner_id: user.id, title: r.title, artist: r.artist,
@@ -182,16 +241,15 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
       advanceSearch(true)
     } catch (err: any) {
       alert('Erro ao guardar: ' + (err?.message ?? err))
-    } finally {
-      setSavingKey(null)
-    }
+    } finally { setSavingKey(null) }
   }
 
+  const isPreloadingDone = preloadDone >= preloadTotal.current && preloadTotal.current > 0
   const stepTitle =
     step === 'upload' ? 'Importar concerto de PDF' :
     step === 'review' ? 'Rever entradas' :
     step === 'done'   ? 'Importação concluída' :
-    `Pesquisar músicas (${searchIndex + 1}/${searchQueue.length})`
+    `Pesquisar (${searchIndex + 1}/${searchQueue.length})`
 
   return (
     <div className={styles.overlay} onClick={handleClose}>
@@ -209,7 +267,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
             >
               <div className={styles.uploadIcon}>📄</div>
               <div className={styles.uploadHint}>Clica ou arrasta um PDF aqui</div>
-              <div className={styles.uploadSub}>O PDF deve ter uma música por linha</div>
+              <div className={styles.uploadSub}>Números e ruído são removidos automaticamente</div>
             </div>
             <input ref={fileInputRef} type="file" accept=".pdf,application/pdf"
               style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
@@ -251,7 +309,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
             <div className={styles.footer}>
               <button className={styles.cancelBtn} onClick={onClose}>Cancelar</button>
               <button className={styles.importBtn} onClick={handleImport} disabled={totalSongs === 0 || importing}>
-                {importing ? 'A importar...' : `Importar ${foundCount > 0 ? `${foundCount} encontrada${foundCount !== 1 ? 's' : ''}` : 'e pesquisar restantes'}`}
+                {importing ? 'A importar...' : `Importar${foundCount > 0 ? ` ${foundCount} encontradas` : ''}`}
               </button>
             </div>
           </>
@@ -264,7 +322,19 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
             {missed.length > 0 ? (
               <div className={styles.missedSection}>
                 <div className={styles.missedTitle}>{missed.length} não encontrada{missed.length !== 1 ? 's' : ''} na biblioteca</div>
-                {missed.map((name, i) => <div key={i} className={styles.missedItem}>{name}</div>)}
+                {missed.map((name, i) => (
+                  <div key={i} className={styles.missedItem}>
+                    {name}
+                    {preloaded[name] !== undefined && (
+                      <span className={styles.preloadReady}> · {preloaded[name].length} resultado{preloaded[name].length !== 1 ? 's' : ''}</span>
+                    )}
+                  </div>
+                ))}
+                {!isPreloadingDone && preloadTotal.current > 0 && (
+                  <div className={styles.preloadProgress}>
+                    A pré-carregar pesquisas... {preloadDone}/{preloadTotal.current}
+                  </div>
+                )}
                 <button className={styles.searchMissedBtn} onClick={startSearch}>
                   Pesquisar {missed.length} música{missed.length !== 1 ? 's' : ''} em falta →
                 </button>
@@ -273,64 +343,94 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
               <button className={styles.doneBtn} onClick={handleClose}>Fechar</button>
             )}
             {missed.length > 0 && (
-              <button className={styles.cancelBtn} style={{ marginTop: 8 }} onClick={handleClose}>Fechar sem pesquisar</button>
+              <button className={styles.cancelBtn} style={{ display: 'block', margin: '10px auto 0', textAlign: 'center' }} onClick={handleClose}>
+                Fechar sem pesquisar
+              </button>
             )}
           </div>
         )}
 
         {step === 'search' && (
           <div className={styles.searchStep}>
-            <div className={styles.searchCurrent}>
-              {searchQueue[searchIndex]}
-            </div>
-            <div className={styles.searchForm}>
-              <input
-                className={styles.searchInput}
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && runSearch(searchQuery)}
-                placeholder="Pesquisar..."
-              />
-              <button className={styles.searchBtn} onClick={() => runSearch(searchQuery)} disabled={searchLoading}>
-                {searchLoading ? '...' : 'Pesquisar'}
-              </button>
-            </div>
+            {lyricsPreview ? (
+              /* ── Lyrics preview ── */
+              <>
+                <div className={styles.previewHeader}>
+                  <button className={styles.backBtn} onClick={() => setLyricsPreview(null)}>← Voltar</button>
+                  <div className={styles.previewMeta}>
+                    <div className={styles.previewTitle}>{lyricsPreview.result.title}</div>
+                    <div className={styles.previewArtist}>{lyricsPreview.result.artist}</div>
+                  </div>
+                  <button
+                    className={styles.resultAddBtn}
+                    onClick={() => pickResult(lyricsPreview.result)}
+                    disabled={savingKey !== null}
+                  >
+                    {savingKey ? '...' : '+ Adicionar'}
+                  </button>
+                </div>
+                <div className={styles.lyricsScroll}>
+                  {lyricsPreview.loading
+                    ? <div className={styles.parseSpinner}>A carregar letra...</div>
+                    : <pre className={styles.lyricsText}>{lyricsPreview.lyrics}</pre>
+                  }
+                </div>
+              </>
+            ) : (
+              /* ── Results list ── */
+              <>
+                <div className={styles.searchCurrent}>{searchQueue[searchIndex]}</div>
+                <div className={styles.searchForm}>
+                  <input
+                    className={styles.searchInput}
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && runManualSearch()}
+                    placeholder="Pesquisar..."
+                  />
+                  <button className={styles.searchBtn} onClick={runManualSearch} disabled={searchLoading}>
+                    {searchLoading ? '...' : 'Pesquisar'}
+                  </button>
+                </div>
 
-            {searchLoading && <div className={styles.parseSpinner}>A pesquisar...</div>}
-
-            {!searchLoading && searchResults.length > 0 && (
-              <div className={styles.resultList}>
-                {searchResults.slice(0, 8).map(r => {
-                  const key = `${r.source}-${r.external_id}`
-                  return (
-                    <div key={key} className={styles.resultRow}>
-                      <div className={styles.resultInfo}>
-                        <div className={styles.resultTitle}>{r.title}</div>
-                        <div className={styles.resultArtist}>{r.artist}</div>
+                {searchLoading
+                  ? <div className={styles.parseSpinner}>A pesquisar...</div>
+                  : searchResults.length > 0
+                    ? (
+                      <div className={styles.resultList}>
+                        {searchResults.slice(0, 8).map(r => {
+                          const key = `${r.source}-${r.external_id}`
+                          return (
+                            <div key={key} className={styles.resultRow}>
+                              <div className={styles.resultInfo}>
+                                <div className={styles.resultTitle}>{r.title}</div>
+                                <div className={styles.resultArtist}>{r.artist}</div>
+                              </div>
+                              {r.has_sync && <span className={styles.syncBadge}>sync</span>}
+                              <button className={styles.previewBtn} onClick={() => openPreview(r)}>Ver</button>
+                              <button
+                                className={styles.resultAddBtn}
+                                onClick={() => pickResult(r)}
+                                disabled={savingKey !== null}
+                              >
+                                {savingKey === key ? '...' : '+ Adicionar'}
+                              </button>
+                            </div>
+                          )
+                        })}
                       </div>
-                      {r.has_sync && <span className={styles.syncBadge}>sync</span>}
-                      <button
-                        className={styles.resultAddBtn}
-                        onClick={() => pickResult(r)}
-                        disabled={savingKey !== null}
-                      >
-                        {savingKey === key ? '...' : '+ Adicionar'}
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+                    ) : searchQuery
+                      ? <div className={styles.noResults}>Sem resultados. Tenta outro nome.</div>
+                      : null
+                }
 
-            {!searchLoading && searchResults.length === 0 && searchQuery && (
-              <div className={styles.noResults}>Sem resultados. Tenta outro nome.</div>
+                <div className={styles.searchActions}>
+                  <button className={styles.skipBtn} onClick={() => advanceSearch(false)} disabled={savingKey !== null}>
+                    Saltar →
+                  </button>
+                </div>
+              </>
             )}
-
-            <div className={styles.searchActions}>
-              <button className={styles.skipBtn} onClick={() => advanceSearch(false)} disabled={savingKey !== null}>
-                Saltar →
-              </button>
-            </div>
           </div>
         )}
       </div>

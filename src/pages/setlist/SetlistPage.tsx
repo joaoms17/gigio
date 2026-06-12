@@ -79,6 +79,9 @@ export default function SetlistPage() {
   const [editingName, setEditingName] = useState(false)
   const [name, setName] = useState('')
   const [venue, setVenue] = useState('')
+  const [venueSuggestions, setVenueSuggestions] = useState<{ name: string; detail: string }[]>([])
+  const [showVenueDrop, setShowVenueDrop] = useState(false)
+  const venueDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [date, setDate] = useState('')
   const [duplicating, setDuplicating] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -194,7 +197,24 @@ export default function SetlistPage() {
   async function saveVenue(val: string) {
     if (!id) return
     setVenue(val)
+    setVenueSuggestions([])
+    setShowVenueDrop(false)
     await supabase.from('setlists').update({ venue: val || null }).eq('id', id)
+  }
+
+  function onVenueInput(val: string) {
+    setVenue(val)
+    if (venueDebounceRef.current) clearTimeout(venueDebounceRef.current)
+    if (val.trim().length < 3) { setVenueSuggestions([]); setShowVenueDrop(false); return }
+    venueDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=5&accept-language=pt`, { headers: { 'Accept-Language': 'pt' } })
+        const data: { display_name: string }[] = await res.json()
+        const suggestions = data.map(r => { const parts = r.display_name.split(','); return { name: parts[0].trim(), detail: parts.slice(1, 3).map(s => s.trim()).join(', ') } })
+        setVenueSuggestions(suggestions)
+        setShowVenueDrop(suggestions.length > 0)
+      } catch { /* ignore */ }
+    }, 400)
   }
 
   async function saveDate(val: string) {
@@ -418,15 +438,29 @@ export default function SetlistPage() {
               </span>
             </div>
             <div className={styles.dateVenueGroup}>
-              <div className={styles.metaField}>
-                <span className={styles.metaIcon}>📍</span>
-                <input
-                  className={styles.venueInput}
-                  value={venue}
-                  onChange={e => setVenue(e.target.value)}
-                  onBlur={e => saveVenue(e.target.value)}
-                  placeholder="Local / evento..."
-                />
+              <div className={styles.venueWrap}>
+                <div className={styles.metaField}>
+                  <span className={styles.metaIcon}>📍</span>
+                  <input
+                    className={styles.venueInput}
+                    value={venue}
+                    onChange={e => onVenueInput(e.target.value)}
+                    onBlur={e => saveVenue(e.target.value)}
+                    placeholder="Local / evento..."
+                  />
+                </div>
+                {showVenueDrop && (
+                  <div className={styles.venueDrop}>
+                    {venueSuggestions.map((s, i) => (
+                      <div key={i} className={styles.venueDropItem}
+                        onMouseDown={e => { e.preventDefault(); saveVenue(s.name) }}
+                      >
+                        <span className={styles.venueDropName}>{s.name}</span>
+                        {s.detail && <span className={styles.venueDropDetail}>{s.detail}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className={styles.metaField}>
                 <span className={styles.metaIcon}>📅</span>
