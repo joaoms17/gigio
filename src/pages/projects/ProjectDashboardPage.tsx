@@ -82,6 +82,7 @@ export default function ProjectDashboardPage() {
   const [isOffline, setIsOffline] = useState(false)
   const [songSearch, setSongSearch] = useState('')
   const [deletingSong, setDeletingSong] = useState<string | null>(null)
+  const [songPlayCounts, setSongPlayCounts] = useState<Record<string, number>>({})
 
   // Settings form
   const [settingsName, setSettingsName] = useState('')
@@ -186,6 +187,21 @@ export default function ProjectDashboardPage() {
     setMembers((membersRes.data ?? []) as unknown as ProjectMember[])
     setSetlists(fetchedSetlists)
     setSongs(fetchedSongs)
+    // Count setlist appearances per song
+    if (setlistsRes.data && setlistsRes.data.length > 0) {
+      const setlistIds = setlistsRes.data.map((s: any) => s.id)
+      supabase
+        .from('setlist_songs')
+        .select('song_id')
+        .in('setlist_id', setlistIds)
+        .then(({ data }) => {
+          if (data) {
+            const counts: Record<string, number> = {}
+            data.forEach((r: any) => { counts[r.song_id] = (counts[r.song_id] ?? 0) + 1 })
+            setSongPlayCounts(counts)
+          }
+        })
+    }
     setInvites((invitesRes.data ?? []) as unknown as ProjectInvite[])
     cacheProjectDashboard(projectId, {
       project: proj,
@@ -575,6 +591,11 @@ export default function ProjectDashboardPage() {
                             <div className={styles.songArtist}>{s.artist}</div>
                           </div>
                           <div className={styles.songMeta}>
+                            {songPlayCounts[s.id] > 0 && (
+                              <span className={styles.playCountBadge} title="Vezes em setlists">
+                                {songPlayCounts[s.id]}×
+                              </span>
+                            )}
                             {s.performance_key && <span className={styles.keyBadge}>{s.performance_key}</span>}
                             {s.bpm && <span className={styles.bpmBadge}>{s.bpm} bpm</span>}
                             {s.has_sync && <span className={styles.syncBadge2}>sync</span>}

@@ -64,7 +64,14 @@ export default function ConcertPage() {
   useEffect(() => {
     if (!id || !user) return
     let wakeLock: any = null
-    navigator.wakeLock?.request('screen').then(wl => { wakeLock = wl }).catch(() => {})
+    const acquireWakeLock = () => {
+      navigator.wakeLock?.request('screen').then(wl => { wakeLock = wl }).catch(() => {})
+    }
+    acquireWakeLock()
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') acquireWakeLock()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
     supabase.from('setlist_songs').select('*, song:songs(*)').eq('setlist_id', id).order('position')
       .then(({ data, error }) => {
         if (data && data.length > 0 && !error) {
@@ -90,7 +97,7 @@ export default function ConcertPage() {
           if (cached) setTheme(cached)
         }
       })
-    return () => { wakeLock?.release(); stopTimer() }
+    return () => { wakeLock?.release(); document.removeEventListener('visibilitychange', onVisibilityChange); stopTimer() }
   }, [id, user])
 
   // ── Song change ─────────────────────────────────────────────────────────

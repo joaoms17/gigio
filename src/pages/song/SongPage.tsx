@@ -55,6 +55,7 @@ export default function SongPage() {
   const projectId = searchParams.get('project')
   const setlistId = searchParams.get('setlist')
 
+  const [concertHistory, setConcertHistory] = useState<{setlistName: string, date: string | null, venue: string | null}[]>([])
   const [song, setSong] = useState<Song | null>(null)
   const [projectName, setProjectName] = useState<string | null>(null)
   const [setlistName, setSetlistName] = useState<string | null>(null)
@@ -115,6 +116,19 @@ export default function SongPage() {
     const s = data as unknown as Song
     setSong(s)
     baseUpdatedAtRef.current = (s as any).updated_at ?? null
+    supabase
+      .from('setlist_songs')
+      .select('setlist:setlists(name, date, venue)')
+      .eq('song_id', s.id)
+      .then(({ data: histData }) => {
+        if (histData) {
+          const history = histData
+            .map((r: any) => r.setlist)
+            .filter(Boolean)
+            .sort((a: any, b: any) => (b.date ?? '').localeCompare(a.date ?? ''))
+          setConcertHistory(history)
+        }
+      })
     setTitle(s.title)
     setArtist(s.artist)
     setLyrics(s.edited_lyrics ?? s.lyrics ?? '')
@@ -486,6 +500,24 @@ export default function SongPage() {
                   />
                 </div>
               </div>
+
+              {concertHistory.length > 0 && (
+                <div className={styles.historySection}>
+                  <label className={styles.fieldLabel}>Histórico de concertos</label>
+                  <ul className={styles.historyList}>
+                    {concertHistory.slice(0, 10).map((h, i) => {
+                      const dateStr = h.date
+                        ? (() => { const [y, m, d] = h.date!.split('-'); return `${d}/${m}/${y}` })()
+                        : 'Sem data'
+                      return (
+                        <li key={i} className={styles.historyItem}>
+                          {dateStr}{h.venue ? ` · ${h.venue}` : ''} · {h.setlistName}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
 
               <div className={styles.tagsSection}>
                 <label className={styles.fieldLabel}>Tags</label>
