@@ -12,6 +12,7 @@ import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import { useConfirm } from '../../components/ConfirmDialog'
 import ProjectPickerModal from '../../components/ProjectPickerModal'
+import SetlistImportModal from '../../components/SetlistImportModal'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import {
@@ -80,6 +81,7 @@ export default function SetlistPage() {
   const [venue, setVenue] = useState('')
   const [date, setDate] = useState('')
   const [duplicating, setDuplicating] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
 
   // Per-setlist song overrides modal
@@ -442,6 +444,9 @@ export default function SetlistPage() {
               ▶ Iniciar Concerto
             </button>
             <div className={styles.secondaryActions}>
+              {setlist?.band_id && (
+                <button className={styles.dupBtn} onClick={() => setShowImport(true)}>📄 Importar PDF</button>
+              )}
               <button className={styles.dupBtn} onClick={exportPdf}>🖨 PDF</button>
               <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>⧉ Duplicar</button>
               <button className={styles.deleteBtn} onClick={deleteSetlist}>🗑 Apagar</button>
@@ -538,6 +543,16 @@ export default function SetlistPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {showImport && setlist?.band_id && (
+        <SetlistImportModal
+          setlistId={id!}
+          projectId={setlist.band_id}
+          currentPosition={songs.length}
+          onClose={() => setShowImport(false)}
+          onImported={() => { setShowImport(false); loadSongs() }}
+        />
       )}
 
       {duplicating && (
