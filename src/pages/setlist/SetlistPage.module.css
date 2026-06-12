@@ -173,3 +173,29 @@
 
 .overlay { animation: overlayIn 0.18s ease-out; }
 .modal { animation: sheetIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Per-setlist overrides modal */
+.ovSubtitle { font-size: 11.5px; color: var(--text3); margin-top: 3px; }
+.ovField { margin-bottom: 14px; }
+.ovLabel {
+  display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text3); margin-bottom: 6px;
+}
+.ovInput {
+  width: 100%; padding: 11px 13px; border: 1.5px solid var(--border);
+  border-radius: 10px; background: var(--bg2); color: var(--text); font-size: 14px;
+}
+.ovInput:focus { outline: none; border-color: var(--gig); }
+.ovTextarea {
+  width: 100%; padding: 11px 13px; border: 1.5px solid var(--border);
+  border-radius: 10px; background: var(--bg2); color: var(--text); font-size: 14px;
+  resize: vertical; font-family: inherit;
+}
+.ovTextarea:focus { outline: none; border-color: var(--gig); }
+.ovSaveBtn {
+  width: 100%; padding: 13px; background: linear-gradient(135deg, var(--gig), var(--io));
+  color: #fff; border: none; border-radius: 12px; font-size: 15px; font-weight: 700;
+  cursor: pointer; margin-top: 4px;
+}
+.ovSaveBtn:hover { opacity: 0.9; }
+.ovSaveBtn:disabled { opacity: 0.5; }

@@ -19,9 +19,10 @@ import styles from './SetlistPage.module.css'
 
 type Row = SetlistSong & { song: Song }
 
-function SortableSongRow({ ss, index, onEdit, onRemove }: {
+function SortableSongRow({ ss, index, onEdit, onRemove, onOverrides }: {
   ss: Row; index: number
   onEdit: (songId: string) => void; onRemove: (id: string) => void
+  onOverrides: (ss: Row) => void
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: ss.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
@@ -35,12 +36,13 @@ function SortableSongRow({ ss, index, onEdit, onRemove }: {
         title="Arrastar para reordenar"
       >⋮⋮</button>
       <div className={styles.songNum}>{index + 1}</div>
-      <div className={styles.songInfo}>
+      <div className={styles.songInfo} onClick={() => onOverrides(ss)} style={{ cursor: 'pointer' }} title="Tom, notas, intro e final desta música nesta setlist">
         <div className={styles.songTitle}>{ss.song?.title}</div>
         <div className={styles.songArtist}>
           {ss.song?.artist}
           {ss.performance_key && <span className={styles.keyChip}>{ss.performance_key}</span>}
           {ss.notes && <span className={styles.notesIndicator} title={ss.notes}>📝</span>}
+          {(ss.custom_intro || ss.custom_ending) && <span className={styles.notesIndicator} title="Tem intro/final custom">🎬</span>}
           {ss.song?.has_sync && <span className={styles.syncBadge}>sync ✓</span>}
         </div>
       </div>
@@ -73,6 +75,14 @@ export default function SetlistPage() {
   const [date, setDate] = useState('')
   const [status, setStatus] = useState('draft')
   const [duplicating, setDuplicating] = useState(false)
+
+  // Per-setlist song overrides modal
+  const [overrideRow, setOverrideRow] = useState<Row | null>(null)
+  const [ovKey, setOvKey] = useState('')
+  const [ovNotes, setOvNotes] = useState('')
+  const [ovIntro, setOvIntro] = useState('')
+  const [ovEnding, setOvEnding] = useState('')
+  const [ovSaving, setOvSaving] = useState(false)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
@@ -170,6 +180,29 @@ export default function SetlistPage() {
     await supabase.from('setlists').update({ status: val }).eq('id', id)
   }
 
+  function openOverrides(ss: Row) {
+    setOverrideRow(ss)
+    setOvKey(ss.performance_key ?? '')
+    setOvNotes(ss.notes ?? '')
+    setOvIntro(ss.custom_intro ?? '')
+    setOvEnding(ss.custom_ending ?? '')
+  }
+
+  async function saveOverrides() {
+    if (!overrideRow) return
+    setOvSaving(true)
+    const patch = {
+      performance_key: ovKey.trim() || null,
+      notes: ovNotes.trim() || null,
+      custom_intro: ovIntro.trim() || null,
+      custom_ending: ovEnding.trim() || null,
+    }
+    await supabase.from('setlist_songs').update(patch).eq('id', overrideRow.id)
+    setSongs(prev => prev.map(s => s.id === overrideRow.id ? ({ ...s, ...patch } as Row) : s))
+    setOvSaving(false)
+    setOverrideRow(null)
+  }
+
   async function removeSong(ssId: string) {
     await supabase.from('setlist_songs').delete().eq('id', ssId)
     setSongs(prev => prev.filter(s => s.id !== ssId))
@@ -226,6 +259,9 @@ export default function SetlistPage() {
 
   const totalSec = songs.reduce((acc, s) => acc + (s.song?.duration_sec ?? 0), 0)
   const totalMin = Math.floor(totalSec / 60)
+  const durationLabel = totalMin >= 60
+    ? `${Math.floor(totalMin / 60)}h${String(totalMin % 60).padStart(2, '0')}`
+    : `${totalMin} min`
   const filteredLibrary = library.filter(s =>
     !librarySearch || `${s.title} ${s.artist}`.toLowerCase().includes(librarySearch.toLowerCase())
   )
@@ -264,7 +300,7 @@ export default function SetlistPage() {
             <div className={styles.metaRow}>
               <span className={styles.songsChip}>
                 ♪ {songs.length} música{songs.length !== 1 ? 's' : ''}
-                {totalMin > 0 ? ` · ~${totalMin} min` : ''}
+                {totalMin > 0 ? ` · ~${durationLabel}` : ''}
               </span>
               <select
                 className={styles.statusSelect}
@@ -333,6 +369,7 @@ export default function SetlistPage() {
                     index={i}
                     onEdit={songId => navigate(`/songs/${songId}?setlist=${id}`)}
                     onRemove={removeSong}
+                    onOverrides={openOverrides}
                   />
                 ))}
               </SortableContext>
@@ -340,6 +377,66 @@ export default function SetlistPage() {
           )}
         </div>
       </div>
+
+      {/* Per-setlist overrides modal */}
+      {overrideRow && (
+        <div className={styles.overlay} onClick={() => setOverrideRow(null)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <span className={styles.modalTitle}>{overrideRow.song?.title}</span>
+                <div className={styles.ovSubtitle}>Só nesta setlist — não altera a música original</div>
+              </div>
+              <button className={styles.closeBtn} onClick={() => setOverrideRow(null)}>✕</button>
+            </div>
+
+            <div className={styles.ovField}>
+              <label className={styles.ovLabel}>Tom nesta setlist</label>
+              <input
+                className={styles.ovInput}
+                value={ovKey}
+                onChange={e => setOvKey(e.target.value)}
+                placeholder={overrideRow.song?.performance_key || overrideRow.song?.original_key || 'ex: G, Am, F#'}
+              />
+            </div>
+
+            <div className={styles.ovField}>
+              <label className={styles.ovLabel}>Intro</label>
+              <input
+                className={styles.ovInput}
+                value={ovIntro}
+                onChange={e => setOvIntro(e.target.value)}
+                placeholder="ex: 4 compassos só bateria"
+              />
+            </div>
+
+            <div className={styles.ovField}>
+              <label className={styles.ovLabel}>Final</label>
+              <input
+                className={styles.ovInput}
+                value={ovEnding}
+                onChange={e => setOvEnding(e.target.value)}
+                placeholder="ex: termina em fade, segue direto para a próxima"
+              />
+            </div>
+
+            <div className={styles.ovField}>
+              <label className={styles.ovLabel}>Notas</label>
+              <textarea
+                className={styles.ovTextarea}
+                value={ovNotes}
+                onChange={e => setOvNotes(e.target.value)}
+                placeholder="Notas visíveis no modo concerto..."
+                rows={3}
+              />
+            </div>
+
+            <button className={styles.ovSaveBtn} onClick={saveOverrides} disabled={ovSaving}>
+              {ovSaving ? 'A guardar...' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {duplicating && (
         <ProjectPickerModal

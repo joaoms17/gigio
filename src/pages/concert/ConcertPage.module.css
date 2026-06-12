@@ -431,3 +431,74 @@
   .setlistNum { font-size: 13px; min-width: 22px; }
   .setlistKey { font-size: 14px; }
 }
+
+/* Chords view */
+.chordsPre {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: calc(var(--lyric-size, 32px) * 0.55);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  padding: 12px 24px;
+  margin: 0;
+}
+.transposeNote {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 10px 24px 0;
+  opacity: 0.8;
+}
+
+/* Annotations view */
+.annotationsWrap {
+  padding: 12px 16px;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Banner stack (intro / notes / ending) */
+.bannerStack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Metronome visual pulse */
+.metroDot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: inline-block;
+  animation: metroPulse 1s ease-out infinite;
+}
+@keyframes metroPulse {
+  0%   { transform: scale(1.35); opacity: 1; }
+  50%  { transform: scale(0.85); opacity: 0.45; }
+  100% { transform: scale(1.35); opacity: 1; }
+}
+
+/* Reorder buttons in setlist panel */
+.reorderBtns {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.reorderBtn {
+  background: none;
+  border: none;
+  font-size: 13px;
+  padding: 4px 7px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.reorderBtn:disabled { cursor: default; }
+
+@media (min-width: 768px) {
+  .chordsPre { font-size: calc(var(--lyric-size, 32px) * 0.75); }
+  .reorderBtn { font-size: 16px; padding: 6px 10px; }
+  .metroDot { width: 22px; height: 22px; }
+}

@@ -2,6 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
+import { transposeChordsText } from '../../lib/transpose'
+import {
+  cacheSetlistSongs, getCachedSetlistSongs,
+  cacheSyncLines, getCachedSyncLines,
+  cacheTheme, getCachedTheme,
+} from '../../lib/concertCache'
+import AnnotatedLyrics from '../../components/AnnotatedLyrics'
+import { loadAnnotations } from '../../components/AnnotationLayer'
 import type { SetlistSong, Song, ConcertTheme, LyricLine } from '../../types'
 import styles from './ConcertPage.module.css'
 
@@ -10,6 +18,7 @@ const DEFAULT_THEME: ConcertTheme = {
 }
 
 type Row = SetlistSong & { song: Song }
+type ContentView = 'lyrics' | 'chords' | 'annotations'
 
 export default function ConcertPage() {
   const { id } = useParams<{ id: string }>()
@@ -26,6 +35,8 @@ export default function ConcertPage() {
   const [playing, setPlaying] = useState(false)
   const [showSetlist, setShowSetlist] = useState(false)
   const [scrollFollowing, setScrollFollowing] = useState(true)
+  const [contentView, setContentView] = useState<ContentView>('lyrics')
+  const [metronomeOn, setMetronomeOn] = useState(false)
 
   const timerRef              = useRef<ReturnType<typeof setInterval> | null>(null)
   const startRef              = useRef<number>(0)
@@ -38,15 +49,36 @@ export default function ConcertPage() {
 
   useEffect(() => { syncLinesRef.current = syncLines }, [syncLines])
 
-  // ── Load ────────────────────────────────────────────────────────────────
+  // ── Load (with offline cache fallback) ──────────────────────────────────
   useEffect(() => {
     if (!id || !user) return
     let wakeLock: any = null
     navigator.wakeLock?.request('screen').then(wl => { wakeLock = wl }).catch(() => {})
     supabase.from('setlist_songs').select('*, song:songs(*)').eq('setlist_id', id).order('position')
-      .then(({ data }) => setSongs((data ?? []) as any))
+      .then(({ data, error }) => {
+        if (data && data.length > 0 && !error) {
+          setSongs(data as any)
+          cacheSetlistSongs(id, data)
+        } else {
+          const cached = getCachedSetlistSongs<Row>(id)
+          if (cached) setSongs(cached)
+          else if (data) setSongs(data as any)
+        }
+      })
+      .then(undefined, () => {
+        const cached = getCachedSetlistSongs<Row>(id)
+        if (cached) setSongs(cached)
+      })
     supabase.from('profiles').select('concert_theme').eq('id', user.id).single()
-      .then(({ data }) => { if (data?.concert_theme) setTheme(data.concert_theme as ConcertTheme) })
+      .then(({ data }) => {
+        if (data?.concert_theme) {
+          setTheme(data.concert_theme as ConcertTheme)
+          cacheTheme(data.concert_theme)
+        } else {
+          const cached = getCachedTheme<ConcertTheme>()
+          if (cached) setTheme(cached)
+        }
+      })
     return () => { wakeLock?.release(); stopTimer() }
   }, [id, user])
 
@@ -56,10 +88,19 @@ export default function ConcertPage() {
     if (!song) return
     setLineIdx(0); setElapsed(0); stopTimer(); setPlaying(false)
     setScrollFollowing(true)
+    setContentView('lyrics')
     if (lyricsScrollRef.current) lyricsScrollRef.current.scrollTop = 0
     if (song.has_sync) {
       supabase.from('lyric_syncs').select('lines').eq('song_id', song.id).single()
-        .then(({ data }) => setSyncLines(data?.lines as LyricLine[] ?? null))
+        .then(({ data }) => {
+          const lines = data?.lines as LyricLine[] ?? null
+          if (lines) {
+            setSyncLines(lines)
+            cacheSyncLines(song.id, lines)
+          } else {
+            setSyncLines(getCachedSyncLines<LyricLine[]>(song.id))
+          }
+        }, () => setSyncLines(getCachedSyncLines<LyricLine[]>(song.id)))
     } else {
       setSyncLines(null)
     }
@@ -195,6 +236,25 @@ export default function ConcertPage() {
     else if (songIdx > 0) setSongIdx(s => s - 1)
   }
 
+  // ── Reorder inside concert (setlist panel ↑↓) ───────────────────────────
+  async function moveSong(from: number, to: number) {
+    if (to < 0 || to >= songs.length) return
+    const next = [...songs]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    // Keep pointing at the same song
+    let newIdx = songIdx
+    if (songIdx === from) newIdx = to
+    else if (from < songIdx && to >= songIdx) newIdx = songIdx - 1
+    else if (from > songIdx && to <= songIdx) newIdx = songIdx + 1
+    setSongs(next)
+    setSongIdx(newIdx)
+    if (id) cacheSetlistSongs(id, next)
+    // Persist (two-phase to dodge unique constraints)
+    await Promise.all(next.map((ss, i) => supabase.from('setlist_songs').update({ position: 10000 + i }).eq('id', ss.id)))
+    await Promise.all(next.map((ss, i) => supabase.from('setlist_songs').update({ position: i }).eq('id', ss.id)))
+  }
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const currentRow  = songs[songIdx]
   const currentSong = currentRow?.song
@@ -203,6 +263,16 @@ export default function ConcertPage() {
   const prevSong    = songs[songIdx - 1]?.song
   const nextSong    = songs[songIdx + 1]?.song
   const displayKey  = currentRow?.performance_key ?? currentSong?.performance_key ?? currentSong?.original_key
+
+  // Chords (transposed to the display key when both keys are known)
+  const rawChords = currentSong?.chords ?? ''
+  const chordsText = (rawChords && displayKey && currentSong?.original_key && displayKey !== currentSong.original_key)
+    ? transposeChordsText(rawChords, currentSong.original_key, displayKey)
+    : rawChords
+  const chordsTransposed = chordsText !== rawChords
+
+  const hasAnnotations = currentSong ? (loadAnnotations(currentSong.id)?.strokes.length ?? 0) > 0 : false
+  const bpm = currentSong?.bpm ?? null
 
   return (
     <div className={styles.page} style={{ background: theme.bg }}>
@@ -214,6 +284,34 @@ export default function ConcertPage() {
           {songIdx + 1} / {songs.length}
         </span>
         <div className={styles.headerRight}>
+          {bpm && (
+            <button
+              className={styles.modeBtn}
+              style={{ color: metronomeOn ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
+              onClick={() => setMetronomeOn(m => !m)}
+              title={`Metrónomo visual — ${bpm} bpm`}
+            >
+              {metronomeOn
+                ? <span className={styles.metroDot} style={{ background: theme.accent_color, animationDuration: `${60 / bpm}s` }} />
+                : '◉'}
+            </button>
+          )}
+          {rawChords && (
+            <button
+              className={styles.modeBtn}
+              style={{ color: contentView === 'chords' ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
+              onClick={() => setContentView(v => v === 'chords' ? 'lyrics' : 'chords')}
+              title="Acordes"
+            >♩</button>
+          )}
+          {hasAnnotations && (
+            <button
+              className={styles.modeBtn}
+              style={{ color: contentView === 'annotations' ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
+              onClick={() => setContentView(v => v === 'annotations' ? 'lyrics' : 'annotations')}
+              title="Anotações de ensaio"
+            >✏</button>
+          )}
           <button
             className={styles.modeSwitchBtn}
             style={{ color: theme.accent_color, borderColor: theme.accent_color + '40' }}
@@ -244,15 +342,53 @@ export default function ConcertPage() {
         </div>
       </div>
 
-      {/* ── Notes banner ── */}
-      {currentRow?.notes && (
-        <div className={styles.notesBanner} style={{ borderColor: theme.accent_color + '40', color: theme.active_color, opacity: 0.6 }}>
-          {currentRow.notes}
+      {/* ── Intro / notes / ending banners ── */}
+      {(currentRow?.custom_intro || currentRow?.notes || currentRow?.custom_ending) && (
+        <div className={styles.bannerStack}>
+          {currentRow?.custom_intro && (
+            <div className={styles.notesBanner} style={{ borderColor: theme.accent_color + '70', color: theme.accent_color }}>
+              ▶ Intro: {currentRow.custom_intro}
+            </div>
+          )}
+          {currentRow?.notes && (
+            <div className={styles.notesBanner} style={{ borderColor: theme.accent_color + '40', color: theme.active_color, opacity: 0.6 }}>
+              {currentRow.notes}
+            </div>
+          )}
+          {currentRow?.custom_ending && (
+            <div className={styles.notesBanner} style={{ borderColor: theme.accent_color + '40', color: theme.active_color, opacity: 0.55 }}>
+              ■ Final: {currentRow.custom_ending}
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── Lyrics ── */}
-      {viewMode === 'semi' ? (
+      {/* ── Chords view ── */}
+      {contentView === 'chords' ? (
+        <div className={styles.lyricsScroll} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+          {chordsTransposed && (
+            <div className={styles.transposeNote} style={{ color: theme.accent_color }}>
+              transposto {currentSong?.original_key} → {displayKey}
+            </div>
+          )}
+          <pre className={styles.chordsPre} style={{ color: theme.active_color }}>
+            {chordsText || 'Sem acordes'}
+          </pre>
+          <div style={{ height: '30vh' }} />
+        </div>
+      ) : contentView === 'annotations' ? (
+        <div className={styles.lyricsScroll} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+          <div className={styles.annotationsWrap}>
+            {currentSong && (
+              <AnnotatedLyrics
+                songId={currentSong.id}
+                lyrics={currentSong.edited_lyrics ?? currentSong.lyrics ?? ''}
+              />
+            )}
+          </div>
+          <div style={{ height: '30vh' }} />
+        </div>
+      ) : viewMode === 'semi' ? (
         <div
           ref={lyricsScrollRef}
           className={styles.lyricsScroll}
@@ -320,7 +456,7 @@ export default function ConcertPage() {
       )}
 
       {/* ── Re-sync button ── */}
-      {viewMode === 'semi' && !scrollFollowing && (
+      {contentView === 'lyrics' && viewMode === 'semi' && !scrollFollowing && (
         <div className={styles.resyncWrap}>
           <button
             className={styles.resyncBtn}
@@ -333,7 +469,7 @@ export default function ConcertPage() {
       )}
 
       {/* ── Controls (semi + syncLines only) ── */}
-      {viewMode === 'semi' && syncLines && (
+      {contentView === 'lyrics' && viewMode === 'semi' && syncLines && (
         <div className={styles.controls}>
           <button
             className={styles.seekBtn}
@@ -387,7 +523,7 @@ export default function ConcertPage() {
       {showSetlist && (
         <div className={styles.setlistPanel} style={{ borderTopColor: 'rgba(255,255,255,0.06)' }}>
           {songs.map((ss, i) => (
-            <button
+            <div
               key={ss.id}
               className={styles.setlistItem}
               style={{
@@ -404,7 +540,21 @@ export default function ConcertPage() {
                   {ss.performance_key ?? ss.song?.original_key}
                 </span>
               )}
-            </button>
+              <span className={styles.reorderBtns} onClick={e => e.stopPropagation()}>
+                <button
+                  className={styles.reorderBtn}
+                  style={{ color: 'inherit', opacity: i === 0 ? 0.2 : 0.7 }}
+                  disabled={i === 0}
+                  onClick={() => moveSong(i, i - 1)}
+                >▲</button>
+                <button
+                  className={styles.reorderBtn}
+                  style={{ color: 'inherit', opacity: i === songs.length - 1 ? 0.2 : 0.7 }}
+                  disabled={i === songs.length - 1}
+                  onClick={() => moveSong(i, i + 1)}
+                >▼</button>
+              </span>
+            </div>
           ))}
         </div>
       )}

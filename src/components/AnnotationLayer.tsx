@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import styles from './AnnotationLayer.module.css'
 
-interface Stroke {
+export interface Stroke {
   id: string
   pts: number[]   // flat [x0,y0, x1,y1, ...]
   color: string
@@ -16,7 +16,28 @@ interface Props {
   clearTrigger: number   // increment to trigger clear
 }
 
-const STORAGE_KEY = (id: string) => `gigio_ann_v1_${id}`
+export const ANN_STORAGE_KEY = (id: string) => `gigio_ann_v1_${id}`
+
+export interface SavedAnnotations {
+  w: number          // container width when drawn — used to scale on display
+  strokes: Stroke[]
+}
+
+/** Read saved annotations, handling the legacy bare-array format. */
+export function loadAnnotations(songId: string): SavedAnnotations | null {
+  try {
+    const raw = localStorage.getItem(ANN_STORAGE_KEY(songId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return { w: 0, strokes: parsed }
+    return parsed
+  } catch { return null }
+}
+
+export function annotationPath(pts: number[]): string {
+  return smoothPath(pts)
+}
+
 const ERASER_RADIUS = 18
 
 function smoothPath(pts: number[]): string {
@@ -56,16 +77,16 @@ export default function AnnotationLayer({ songId, tool, color, strokeWidth, clea
 
   // Load from localStorage
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY(songId))
-      if (saved) setStrokes(JSON.parse(saved))
-      else setStrokes([])
-    } catch { setStrokes([]) }
+    const saved = loadAnnotations(songId)
+    setStrokes(saved?.strokes ?? [])
   }, [songId])
 
-  // Save to localStorage
+  // Save to localStorage (with container width so other views can scale)
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY(songId), JSON.stringify(strokes)) } catch {}
+    try {
+      const w = layerRef.current?.offsetWidth ?? svgW
+      localStorage.setItem(ANN_STORAGE_KEY(songId), JSON.stringify({ w, strokes }))
+    } catch {}
   }, [strokes, songId])
 
   // Clear trigger

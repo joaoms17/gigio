@@ -1,5 +1,16 @@
-import * as pdfjsLib from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+// Legacy build: works on older Safari/iOS (the modern build needs
+// Promise.withResolvers, which only exists in Safari 17.4+)
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs'
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
+
+// Polyfill for browsers that still miss it (pdf.js touches it in a few paths)
+if (typeof (Promise as any).withResolvers !== 'function') {
+  ;(Promise as any).withResolvers = function () {
+    let resolve: any, reject: any
+    const promise = new Promise((res, rej) => { resolve = res; reject = rej })
+    return { promise, resolve, reject }
+  }
+}
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
