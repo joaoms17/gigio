@@ -86,6 +86,7 @@ export default function SetlistPage() {
   const [duplicating, setDuplicating] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
+  const [canDelete, setCanDelete] = useState(false)
 
   // Per-setlist song overrides modal
   const [overrideRow, setOverrideRow] = useState<Row | null>(null)
@@ -99,8 +100,8 @@ export default function SetlistPage() {
 
   useEffect(() => {
     if (!id || !user) return
-    supabase.from('setlists').select('*, bands(name, image_url, color)').eq('id', id).single()
-      .then(({ data, error }) => {
+    supabase.from('setlists').select('*, bands(name, image_url, color, owner_id)').eq('id', id).single()
+      .then(async ({ data, error }) => {
         if (data && !error) {
           setIsOffline(false)
           setSetlist(data)
@@ -111,6 +112,17 @@ export default function SetlistPage() {
           setVenue(data.venue ?? '')
           setDate(data.date ?? '')
           cacheSetlistMeta(id, data)
+          // Check delete permission: setlist owner OR band owner OR band admin
+          const isSetlistOwner = data.owner_id === user.id
+          const isBandOwner = (data as any).bands?.owner_id === user.id
+          if (isSetlistOwner || isBandOwner) {
+            setCanDelete(true)
+          } else if (data.band_id) {
+            const { data: mem } = await supabase
+              .from('band_members').select('role')
+              .eq('band_id', data.band_id).eq('user_id', user.id).maybeSingle()
+            setCanDelete(mem?.role === 'owner' || mem?.role === 'admin')
+          }
         } else {
           const cached = getCachedSetlistMeta<any>(id)
           if (cached) {
@@ -485,7 +497,7 @@ export default function SetlistPage() {
               )}
               <button className={styles.dupBtn} onClick={exportPdf}>🖨 PDF</button>
               <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>⧉ Duplicar</button>
-              <button className={styles.deleteBtn} onClick={deleteSetlist}>🗑 Apagar</button>
+              {canDelete && <button className={styles.deleteBtn} onClick={deleteSetlist}>🗑 Apagar</button>}
             </div>
           </div>
         </div>
