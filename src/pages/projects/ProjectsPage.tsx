@@ -226,10 +226,9 @@ export default function ProjectsPage() {
           <div className={styles.grid}>
             {[0, 1, 2].map(i => (
               <div key={i} className={styles.card} style={{ pointerEvents: 'none' }}>
-                <div className="skeleton" style={{ height: 72, borderRadius: 0 }} />
                 <div className={styles.cardBody}>
                   <div className={styles.cardTop}>
-                    <div className="skeleton" style={{ width: 56, height: 56, borderRadius: 16 }} />
+                    <div className="skeleton" style={{ width: 72, height: 72, borderRadius: 18, flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
                       <div className="skeleton" style={{ height: 16, width: '60%', marginBottom: 8 }} />
                       <div className="skeleton" style={{ height: 12, width: '40%' }} />
@@ -261,22 +260,6 @@ export default function ProjectsPage() {
                 onClick={() => navigate(`/projects/${p.id}`)}
                 style={{ '--project-color': p.color } as React.CSSProperties}
               >
-                <div
-                  className={styles.cardBanner}
-                  style={p.image_url
-                    ? undefined
-                    : { background: `linear-gradient(120deg, ${p.color}, ${p.color}88)` }
-                  }
-                >
-                  {p.image_url && (
-                    <img
-                      src={p.image_url}
-                      alt=""
-                      className={styles.cardBannerImg}
-                      style={{ objectPosition: `50% ${p.image_position ?? 50}%` }}
-                    />
-                  )}
-                </div>
                 <div className={styles.cardBody}>
                   <div className={styles.cardTop}>
                     <div className={styles.avatar} style={{ background: p.color }}>
