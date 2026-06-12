@@ -45,19 +45,22 @@ export async function pullAnnotations(songId: string, userId: string): Promise<S
   try {
     const { data, error } = await supabase
       .from('song_annotations')
-      .select('data, updated_at')
+      .select('strokes, updated_at')
       .eq('song_id', songId)
       .eq('user_id', userId)
       .maybeSingle()
-    if (error || !data) return null
-    return data.data as SavedAnnotations
+    if (error || !data?.strokes) return null
+    const payload = data.strokes
+    // Stored as {w, strokes} object; tolerate a bare array too
+    if (Array.isArray(payload)) return { w: 0, strokes: payload }
+    return payload as SavedAnnotations
   } catch { return null }
 }
 
 export async function pushAnnotations(songId: string, userId: string, payload: SavedAnnotations) {
   try {
     await supabase.from('song_annotations').upsert(
-      { song_id: songId, user_id: userId, data: payload, updated_at: new Date().toISOString() },
+      { song_id: songId, user_id: userId, strokes: payload, updated_at: new Date().toISOString() },
       { onConflict: 'song_id,user_id' }
     )
   } catch { /* table may not exist yet — localStorage still has the data */ }
