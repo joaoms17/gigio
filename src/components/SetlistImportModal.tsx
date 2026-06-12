@@ -29,7 +29,7 @@ interface LyricsPreview {
   loading: boolean
 }
 
-type Step = 'upload' | 'review' | 'done' | 'search'
+type Step = 'upload' | 'review' | 'done' | 'search' | 'bulk'
 
 function findMatch(query: string, library: Song[]): Song | null {
   const q = normalizeTitle(query)
@@ -74,6 +74,11 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
   const [savingKey, setSavingKey] = useState<string | null>(null)
   const [addedFromSearch, setAddedFromSearch] = useState(0)
   const [lyricsPreview, setLyricsPreview] = useState<LyricsPreview | null>(null)
+
+  const [bulkChecked, setBulkChecked] = useState<Record<string, boolean>>({})
+  const [bulkOverrides, setBulkOverrides] = useState<Record<string, SearchResult | null>>({})
+  const [bulkExpanded, setBulkExpanded] = useState<string | null>(null)
+  const [bulkImporting, setBulkImporting] = useState(false)
 
   function handleClose() {
     if (addedCount > 0 || addedFromSearch > 0) onImported()
@@ -208,36 +213,82 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
     }
   }
 
-  async function pickResult(r: SearchResult, cachedLyrics?: string, cachedLines?: LyricLine[] | null) {
+  function getBulkResult(name: string): SearchResult | null {
+    if (name in bulkOverrides) return bulkOverrides[name]
+    return preloaded[name]?.[0] ?? null
+  }
+
+  function startBulk() {
+    const checked: Record<string, boolean> = {}
+    missed.forEach(n => { checked[n] = true })
+    setBulkChecked(checked)
+    setBulkOverrides({})
+    setBulkExpanded(null)
+    setStep('bulk')
+  }
+
+  async function saveSongAndAdd(r: SearchResult): Promise<void> {
+    if (!user) throw new Error('not logged in')
+    let lyrics = '', lines: LyricLine[] | null = null
+    if (r.source === 'lrclib') {
+      const d = await getLrclibLyrics(r.external_id)
+      lyrics = d.lyrics; lines = d.lines
+    } else {
+      lyrics = await getLyricsOvh(r.artist, r.title)
+    }
+    const { data: song, error: songErr } = await supabase.from('songs').insert({
+      owner_id: user.id, title: r.title, artist: r.artist,
+      lyrics, original_lyrics: lyrics, edited_lyrics: lyrics,
+      source: r.source === 'lrclib' ? 'lrclib' : 'manual',
+      source_provider: r.source,
+      has_sync: r.has_sync && !!lines,
+      duration_sec: r.duration_sec ? Math.round(r.duration_sec) : null,
+      project_id: projectId ?? null, is_user_edited: false,
+    }).select().single()
+    if (songErr) throw songErr
+    if (song && lines?.length) await supabase.from('lyric_syncs').insert({ song_id: song.id, lines })
+    if (song) {
+      const { count } = await supabase.from('setlist_songs').select('*', { count: 'exact', head: true }).eq('setlist_id', setlistId)
+      await supabase.from('setlist_songs').insert({ setlist_id: setlistId, song_id: song.id, position: count ?? 0 })
+    }
+  }
+
+  async function addEmpty(name: string): Promise<void> {
+    if (!user) throw new Error('not logged in')
+    const { data: song } = await supabase.from('songs').insert({
+      owner_id: user.id, title: name, artist: '',
+      lyrics: '', original_lyrics: '', edited_lyrics: '',
+      source: 'manual', source_provider: 'manual',
+      has_sync: false, duration_sec: null,
+      project_id: projectId ?? null, is_user_edited: false,
+    }).select().single()
+    if (song) {
+      const { count } = await supabase.from('setlist_songs').select('*', { count: 'exact', head: true }).eq('setlist_id', setlistId)
+      await supabase.from('setlist_songs').insert({ setlist_id: setlistId, song_id: song.id, position: count ?? 0 })
+    }
+  }
+
+  async function handleBulkImport() {
+    setBulkImporting(true)
+    try {
+      const toProcess = missed.filter(n => bulkChecked[n] !== false)
+      for (const name of toProcess) {
+        const result = getBulkResult(name)
+        if (result) { await saveSongAndAdd(result) } else { await addEmpty(name) }
+      }
+      onImported()
+    } catch (err: any) {
+      alert('Erro ao guardar: ' + (err?.message ?? err))
+      setBulkImporting(false)
+    }
+  }
+
+  async function pickResult(r: SearchResult) {
     if (!user) return
     const key = `${r.source}-${r.external_id}`
     setSavingKey(key)
     try {
-      let lyrics = cachedLyrics ?? ''
-      let lines: LyricLine[] | null = cachedLines ?? null
-      if (!lyrics) {
-        if (r.source === 'lrclib') {
-          const d = await getLrclibLyrics(r.external_id)
-          lyrics = d.lyrics; lines = d.lines
-        } else {
-          lyrics = await getLyricsOvh(r.artist, r.title)
-        }
-      }
-      const { data: song, error: songErr } = await supabase.from('songs').insert({
-        owner_id: user.id, title: r.title, artist: r.artist,
-        lyrics, original_lyrics: lyrics, edited_lyrics: lyrics,
-        source: r.source === 'lrclib' ? 'lrclib' : 'manual',
-        source_provider: r.source,
-        has_sync: r.has_sync && !!lines,
-        duration_sec: r.duration_sec ? Math.round(r.duration_sec) : null,
-        project_id: projectId ?? null, is_user_edited: false,
-      }).select().single()
-      if (songErr) throw songErr
-      if (song && lines?.length) await supabase.from('lyric_syncs').insert({ song_id: song.id, lines })
-      if (song) {
-        const { count } = await supabase.from('setlist_songs').select('*', { count: 'exact', head: true }).eq('setlist_id', setlistId)
-        await supabase.from('setlist_songs').insert({ setlist_id: setlistId, song_id: song.id, position: count ?? 0 })
-      }
+      await saveSongAndAdd(r)
       advanceSearch(true)
     } catch (err: any) {
       alert('Erro ao guardar: ' + (err?.message ?? err))
@@ -249,6 +300,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
     step === 'upload' ? 'Importar concerto de PDF' :
     step === 'review' ? 'Rever entradas' :
     step === 'done'   ? 'Importação concluída' :
+    step === 'bulk'   ? `Músicas em falta (${missed.length})` :
     `Pesquisar (${searchIndex + 1}/${searchQueue.length})`
 
   return (
@@ -335,7 +387,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
                     A pré-carregar pesquisas... {preloadDone}/{preloadTotal.current}
                   </div>
                 )}
-                <button className={styles.searchMissedBtn} onClick={startSearch}>
+                <button className={styles.searchMissedBtn} onClick={startBulk}>
                   Pesquisar {missed.length} música{missed.length !== 1 ? 's' : ''} em falta →
                 </button>
               </div>
@@ -431,6 +483,89 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {step === 'bulk' && (
+          <div className={styles.searchStep}>
+            <div className={styles.bulkSummary}>
+              {missed.filter(n => bulkChecked[n] !== false).length} de {missed.length} selecionadas
+              {!isPreloadingDone && preloadTotal.current > 0 && (
+                <span className={styles.preloadProgress}> · A carregar {preloadDone}/{preloadTotal.current}</span>
+              )}
+            </div>
+            <div className={styles.bulkList}>
+              {missed.map(name => {
+                const checked = bulkChecked[name] !== false
+                const results = preloaded[name]
+                const topResult = getBulkResult(name)
+                const isExpanded = bulkExpanded === name
+                return (
+                  <div key={name}>
+                    <div className={`${styles.bulkRow} ${!checked ? styles.bulkUnchecked : ''}`}>
+                      <input type="checkbox" className={styles.checkbox}
+                        checked={checked}
+                        onChange={() => setBulkChecked(prev => ({ ...prev, [name]: !checked }))} />
+                      <div className={styles.bulkMain}>
+                        <div className={styles.bulkName}>{name}</div>
+                        {topResult ? (
+                          <div className={styles.bulkMatchInfo}>
+                            <span className={styles.bulkMatchTitle}>{topResult.title}</span>
+                            <span className={styles.bulkMatchArtist}> · {topResult.artist}</span>
+                            {topResult.has_sync && <span className={styles.syncBadge}>sync</span>}
+                          </div>
+                        ) : results === undefined ? (
+                          <div className={styles.bulkLoading}>A carregar...</div>
+                        ) : (
+                          <div className={styles.bulkNoResult}>Sem resultado — será adicionada sem letra</div>
+                        )}
+                      </div>
+                      {results !== undefined && results.length > 0 && (
+                        <button className={styles.bulkChangeBtn}
+                          onClick={() => setBulkExpanded(isExpanded ? null : name)}>
+                          {isExpanded ? '▲' : '▾'}
+                        </button>
+                      )}
+                    </div>
+                    {isExpanded && (
+                      <div className={styles.bulkExpandWrap}>
+                        {results?.slice(0, 6).map(r => {
+                          const rKey = `${r.source}-${r.external_id}`
+                          const tKey = topResult ? `${topResult.source}-${topResult.external_id}` : null
+                          const isActive = rKey === tKey
+                          return (
+                            <div key={rKey}
+                              className={`${styles.bulkExpandRow} ${isActive ? styles.bulkExpandRowActive : ''}`}
+                              onClick={() => { setBulkOverrides(prev => ({ ...prev, [name]: r })); setBulkExpanded(null) }}>
+                              <div className={styles.resultInfo}>
+                                <div className={styles.resultTitle}>{r.title}</div>
+                                <div className={styles.resultArtist}>{r.artist}</div>
+                              </div>
+                              {r.has_sync && <span className={styles.syncBadge}>sync</span>}
+                              {isActive && <span className={styles.bulkActiveIndicator}>✓</span>}
+                            </div>
+                          )
+                        })}
+                        <div className={styles.bulkSemLetraRow}
+                          onClick={() => { setBulkOverrides(prev => ({ ...prev, [name]: null })); setBulkExpanded(null) }}>
+                          + Sem letra (criar entrada vazia)
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <div className={styles.footer}>
+              <button className={styles.cancelBtn} onClick={startSearch}>Um a um →</button>
+              <button className={styles.importBtn}
+                disabled={bulkImporting || missed.filter(n => bulkChecked[n] !== false).length === 0}
+                onClick={handleBulkImport}>
+                {bulkImporting
+                  ? 'A guardar...'
+                  : `Importar ${missed.filter(n => bulkChecked[n] !== false).length} músicas`}
+              </button>
+            </div>
           </div>
         )}
       </div>
