@@ -246,7 +246,7 @@ export default function ProjectsPage() {
             <div className={styles.emptyIcon}>🎸</div>
             <h2 className={styles.emptyTitle}>Ainda não tens projetos</h2>
             <p className={styles.emptySub}>
-              Cria o teu primeiro projeto musical para começares a organizar repertório, letras e setlists.
+              Cria o teu primeiro projeto musical para começares a organizar repertório, letras e concertos.
             </p>
             <button className={styles.emptyBtn} onClick={() => setShowCreate(true)}>
               Criar primeiro projeto
@@ -305,7 +305,7 @@ export default function ProjectsPage() {
                     <span className={styles.statDot}>·</span>
                     <span className={styles.stat}>
                       <span className={styles.statNum}>{p.setlistCount}</span>
-                      {' '}setlist{p.setlistCount !== 1 ? 's' : ''}
+                      {' '}concerto{p.setlistCount !== 1 ? 's' : ''}
                     </span>
                   </div>
 

@@ -55,12 +55,6 @@ function initials(name: string) {
   return ((p[0]?.[0] ?? '') + (p[1]?.[0] ?? '')).toUpperCase() || '?'
 }
 
-const SETLIST_STATUS_LABELS: Record<string, string> = {
-  draft: 'Rascunho',
-  preparing: 'A preparar',
-  final: 'Final',
-  archived: 'Arquivada',
-}
 
 export default function ProjectDashboardPage() {
   const { user } = useAuth()
@@ -108,6 +102,11 @@ export default function ProjectDashboardPage() {
   const [newSetlistName, setNewSetlistName] = useState('')
   const [newSetlistVenue, setNewSetlistVenue] = useState('')
   const [creatingSetlist, setCreatingSetlist] = useState(false)
+
+  // Nominatim venue autocomplete
+  const [venueSuggestions, setVenueSuggestions] = useState<{ name: string; detail: string }[]>([])
+  const [showVenueDrop, setShowVenueDrop] = useState(false)
+  const venueDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const setTab = (tab: Tab) => setSearchParams({ tab })
 
@@ -328,9 +327,32 @@ export default function ProjectDashboardPage() {
     setDeletingSong(null)
   }
 
+  function onVenueInput(val: string) {
+    setNewSetlistVenue(val)
+    if (venueDebounceRef.current) clearTimeout(venueDebounceRef.current)
+    if (val.trim().length < 3) { setVenueSuggestions([]); setShowVenueDrop(false); return }
+    venueDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&limit=5&accept-language=pt`,
+          { headers: { 'Accept-Language': 'pt' } }
+        )
+        const data: { display_name: string }[] = await res.json()
+        const suggestions = data.map(r => {
+          const parts = r.display_name.split(',')
+          return { name: parts[0].trim(), detail: parts.slice(1, 3).map(s => s.trim()).join(', ') }
+        })
+        setVenueSuggestions(suggestions)
+        setShowVenueDrop(suggestions.length > 0)
+      } catch { setVenueSuggestions([]); setShowVenueDrop(false) }
+    }, 400)
+  }
+
   function createSetlist() {
     setNewSetlistName('')
     setNewSetlistVenue('')
+    setVenueSuggestions([])
+    setShowVenueDrop(false)
     setShowCreateSetlist(true)
   }
 
@@ -433,7 +455,7 @@ export default function ProjectDashboardPage() {
                 <span className={styles.metaDot}>·</span>
                 <span className={styles.metaText}>{members.length} membro{members.length !== 1 ? 's' : ''}</span>
                 <span className={styles.metaDot}>·</span>
-                <span className={styles.metaText}>{setlists.length} setlist{setlists.length !== 1 ? 's' : ''}</span>
+                <span className={styles.metaText}>{setlists.length} concerto{setlists.length !== 1 ? 's' : ''}</span>
               </div>
             </div>
           </div>
@@ -442,7 +464,7 @@ export default function ProjectDashboardPage() {
         {/* Tabs */}
         <div className={styles.tabs} style={{ '--tab-color': projectColor } as React.CSSProperties}>
           {([
-            ['setlists', 'Setlists'],
+            ['setlists', 'Concertos'],
             ['repertoire', 'Repertório'],
             ['members', 'Membros'],
             ['settings', 'Definições'],
@@ -474,7 +496,7 @@ export default function ProjectDashboardPage() {
                 </div>
                 <div className={styles.statCard}>
                   <div className={styles.statNum}>{setlists.length}</div>
-                  <div className={styles.statLabel}>Setlists</div>
+                  <div className={styles.statLabel}>Concertos</div>
                 </div>
               </div>
 
@@ -482,8 +504,8 @@ export default function ProjectDashboardPage() {
               {setlists.length > 0 && (
                 <div className={styles.section}>
                   <div className={styles.sectionHeader}>
-                    <div className={styles.sectionTitle}>SETLISTS RECENTES</div>
-                    <button className={styles.seeAll} onClick={() => setTab('setlists')}>ver todas</button>
+                    <div className={styles.sectionTitle}>CONCERTOS RECENTES</div>
+                    <button className={styles.seeAll} onClick={() => setTab('setlists')}>ver todos</button>
                   </div>
                   <div className={styles.recentList}>
                     {setlists.slice(0, 3).map(s => (
@@ -631,12 +653,12 @@ export default function ProjectDashboardPage() {
             <div>
               <div className={styles.tabHeader}>
                 <div>
-                  <h2 className={styles.tabTitle}>Setlists</h2>
-                  <p className={styles.tabSub}>{setlists.length} setlist{setlists.length !== 1 ? 's' : ''}</p>
+                  <h2 className={styles.tabTitle}>Concertos</h2>
+                  <p className={styles.tabSub}>{setlists.length} concerto{setlists.length !== 1 ? 's' : ''}</p>
                 </div>
                 {canEdit && (
                   <button className={styles.addBtn} style={{ background: projectColor }} onClick={createSetlist}>
-                    + Nova setlist
+                    + Novo concerto
                   </button>
                 )}
               </div>
@@ -644,15 +666,15 @@ export default function ProjectDashboardPage() {
               {setlists.length === 0 ? (
                 <div className={styles.emptyTab}>
                   <div className={styles.emptyTabIcon}>📋</div>
-                  <h3 className={styles.emptyTabTitle}>Ainda não existem setlists neste projeto</h3>
-                  <p className={styles.emptyTabSub}>Cria a primeira setlist para ensaio ou concerto.</p>
+                  <h3 className={styles.emptyTabTitle}>Ainda não existem concertos neste projeto</h3>
+                  <p className={styles.emptyTabSub}>Cria o primeiro concerto para ensaio ou apresentação.</p>
                   {canEdit && (
                     <button
                       className={styles.emptyTabBtn}
                       style={{ background: projectColor }}
                       onClick={createSetlist}
                     >
-                      Criar setlist
+                      Criar concerto
                     </button>
                   )}
                 </div>
@@ -669,11 +691,6 @@ export default function ProjectDashboardPage() {
                         </div>
                         <div className={styles.setlistTags}>
                           <span className={styles.setlistCount}>{s.setlist_songs?.[0]?.count ?? 0} músicas</span>
-                          {s.status && s.status !== 'draft' && (
-                            <span className={styles.statusBadge} data-status={s.status}>
-                              {SETLIST_STATUS_LABELS[s.status] ?? s.status}
-                            </span>
-                          )}
                           {s.is_shared && <span className={styles.sharedBadge}>partilhada</span>}
                         </div>
                       </div>
@@ -682,7 +699,7 @@ export default function ProjectDashboardPage() {
                   {canEdit && (
                     <button className={styles.newSetlistCard} onClick={createSetlist}>
                       <span>+</span>
-                      <span>Nova setlist</span>
+                      <span>Novo concerto</span>
                     </button>
                   )}
                 </div>
@@ -945,7 +962,7 @@ export default function ProjectDashboardPage() {
         <div className={styles.modalOverlay} onClick={() => setShowCreateSetlist(false)}>
           <div className={styles.createModal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <div className={styles.modalTitle}>Nova setlist</div>
+              <div className={styles.modalTitle}>Novo concerto</div>
               <button className={styles.modalClose} onClick={() => setShowCreateSetlist(false)}>✕</button>
             </div>
             <div className={styles.modalBody}>
@@ -953,22 +970,39 @@ export default function ProjectDashboardPage() {
                 <label className={styles.modalLabel}>Nome *</label>
                 <input
                   className={styles.modalInput}
-                  placeholder="Nome da setlist..."
+                  placeholder="Nome do concerto..."
                   value={newSetlistName}
                   onChange={e => setNewSetlistName(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && newSetlistVenue === '' && doCreateSetlist()}
                   autoFocus
                 />
               </div>
-              <div className={styles.modalField}>
+              <div className={styles.modalField} style={{ position: 'relative' }}>
                 <label className={styles.modalLabel}>Local (opcional)</label>
                 <input
                   className={styles.modalInput}
-                  placeholder="Ex: Hard Club, Sala Principal..."
+                  placeholder="Ex: Hard Club, Porto..."
                   value={newSetlistVenue}
-                  onChange={e => setNewSetlistVenue(e.target.value)}
+                  onChange={e => onVenueInput(e.target.value)}
+                  onFocus={() => venueSuggestions.length > 0 && setShowVenueDrop(true)}
+                  onBlur={() => setTimeout(() => setShowVenueDrop(false), 200)}
                   onKeyDown={e => e.key === 'Enter' && doCreateSetlist()}
+                  autoComplete="off"
                 />
+                {showVenueDrop && venueSuggestions.length > 0 && (
+                  <div className={styles.venueDrop}>
+                    {venueSuggestions.map((s, i) => (
+                      <div
+                        key={i}
+                        className={styles.venueDropItem}
+                        onMouseDown={() => { setNewSetlistVenue(s.name); setShowVenueDrop(false) }}
+                      >
+                        <div className={styles.venueDropName}>{s.name}</div>
+                        {s.detail && <div className={styles.venueDropDetail}>{s.detail}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className={styles.modalFooter}>
@@ -979,7 +1013,7 @@ export default function ProjectDashboardPage() {
                 onClick={doCreateSetlist}
                 disabled={creatingSetlist || !newSetlistName.trim()}
               >
-                {creatingSetlist ? 'A criar...' : 'Criar setlist'}
+                {creatingSetlist ? 'A criar...' : 'Criar concerto'}
               </button>
             </div>
           </div>

@@ -79,7 +79,6 @@ export default function SetlistPage() {
   const [name, setName] = useState('')
   const [venue, setVenue] = useState('')
   const [date, setDate] = useState('')
-  const [status, setStatus] = useState('draft')
   const [duplicating, setDuplicating] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
 
@@ -106,7 +105,6 @@ export default function SetlistPage() {
           setName(data.name)
           setVenue(data.venue ?? '')
           setDate(data.date ?? '')
-          setStatus(data.status ?? 'draft')
           cacheSetlistMeta(id, data)
         } else {
           const cached = getCachedSetlistMeta<any>(id)
@@ -119,7 +117,6 @@ export default function SetlistPage() {
             setName(cached.name)
             setVenue(cached.venue ?? '')
             setDate(cached.date ?? '')
-            setStatus(cached.status ?? 'draft')
           }
         }
       })
@@ -204,12 +201,6 @@ export default function SetlistPage() {
     await supabase.from('setlists').update({ date: val || null }).eq('id', id)
   }
 
-  async function saveStatus(val: string) {
-    if (!id) return
-    setStatus(val)
-    await supabase.from('setlists').update({ status: val }).eq('id', id)
-  }
-
   function openOverrides(ss: Row) {
     setOverrideRow(ss)
     setOvKey(ss.performance_key ?? '')
@@ -264,7 +255,7 @@ export default function SetlistPage() {
 
   async function deleteSetlist() {
     if (!id) return
-    if (!await confirmDialog({ title: 'Apagar setlist', message: `Apagar a setlist "${setlist?.name}"? Esta ação não pode ser desfeita.`, confirmLabel: 'Apagar', danger: true })) return
+    if (!await confirmDialog({ title: 'Apagar concerto', message: `Apagar o concerto "${setlist?.name}"? Esta ação não pode ser desfeita.`, confirmLabel: 'Apagar', danger: true })) return
     await supabase.from('setlist_songs').delete().eq('setlist_id', id)
     await supabase.from('setlists').delete().eq('id', id)
     setlist?.band_id ? navigate(`/projects/${setlist.band_id}?tab=setlists`) : navigate('/setlists')
@@ -397,11 +388,11 @@ export default function SetlistPage() {
                 ? [
                     { label: 'Projetos', to: '/' },
                     { label: projectName ?? 'Projeto', to: `/projects/${setlist.band_id}?tab=setlists` },
-                    { label: setlist?.name ?? 'Setlist' },
+                    { label: setlist?.name ?? 'Concerto' },
                   ]
                 : [
-                    { label: 'Setlists', to: '/setlists' },
-                    { label: setlist?.name ?? 'Setlist' },
+                    { label: 'Concertos', to: '/setlists' },
+                    { label: setlist?.name ?? 'Concerto' },
                   ]
             } />
             {editingName ? (
@@ -423,17 +414,6 @@ export default function SetlistPage() {
                 ♪ {songs.length} música{songs.length !== 1 ? 's' : ''}
                 {totalMin > 0 ? ` · ~${durationLabel}` : ''}
               </span>
-              <select
-                className={styles.statusSelect}
-                data-status={status}
-                value={status}
-                onChange={e => saveStatus(e.target.value)}
-              >
-                <option value="draft">Rascunho</option>
-                <option value="preparing">A preparar</option>
-                <option value="final">Final</option>
-                <option value="archived">Arquivada</option>
-              </select>
             </div>
             <div className={styles.dateVenueGroup}>
               <div className={styles.metaField}>
@@ -507,7 +487,7 @@ export default function SetlistPage() {
             <div className={styles.modalHeader}>
               <div>
                 <span className={styles.modalTitle}>{overrideRow.song?.title}</span>
-                <div className={styles.ovSubtitle}>Só nesta setlist — não altera a música original</div>
+                <div className={styles.ovSubtitle}>Só neste concerto — não altera a música original</div>
               </div>
               <button className={styles.closeBtn} onClick={() => setOverrideRow(null)}>✕</button>
             </div>
@@ -562,7 +542,7 @@ export default function SetlistPage() {
 
       {duplicating && (
         <ProjectPickerModal
-          title="Duplicar setlist para que projeto?"
+          title="Duplicar concerto para que projeto?"
           onPick={duplicateTo}
           onClose={() => setDuplicating(false)}
         />

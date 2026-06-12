@@ -691,6 +691,34 @@
   margin-top: 4px;
 }
 
+.venueDrop {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0; right: 0;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.15);
+  z-index: 200;
+  overflow: hidden;
+}
+.venueDropItem {
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.venueDropItem:hover { background: var(--hover, rgba(0,0,0,.05)); }
+.venueDropName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text, #111);
+}
+.venueDropDetail {
+  font-size: 11px;
+  color: var(--text3, #888);
+  margin-top: 1px;
+}
+
 .offlineBanner {
   background: rgba(255, 160, 0, 0.12);
   border: 1px solid rgba(255, 160, 0, 0.35);
