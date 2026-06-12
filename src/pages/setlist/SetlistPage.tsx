@@ -278,8 +278,10 @@ export default function SetlistPage() {
   async function deleteSetlist() {
     if (!id) return
     if (!await confirmDialog({ title: 'Apagar concerto', message: `Apagar o concerto "${setlist?.name}"? Esta ação não pode ser desfeita.`, confirmLabel: 'Apagar', danger: true })) return
-    await supabase.from('setlist_songs').delete().eq('setlist_id', id)
-    await supabase.from('setlists').delete().eq('id', id)
+    const { error: e1 } = await supabase.from('setlist_songs').delete().eq('setlist_id', id)
+    if (e1) { alert('Erro ao apagar músicas do concerto: ' + e1.message); return }
+    const { error: e2 } = await supabase.from('setlists').delete().eq('id', id)
+    if (e2) { alert('Erro ao apagar concerto: ' + e2.message); return }
     setlist?.band_id ? navigate(`/projects/${setlist.band_id}?tab=setlists`) : navigate('/setlists')
   }
 
