@@ -50,7 +50,8 @@ export default function SongPage() {
   const [tab, setTab] = useState<Tab>('lyrics')
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
-  const [preview, setPreview] = useState(true)
+  // 'ensaio' = view + annotate (default), 'editar' = text editor
+  const [mode, setMode] = useState<'ensaio' | 'editar'>('ensaio')
 
   // Editable fields
   const [title, setTitle] = useState('')
@@ -66,8 +67,7 @@ export default function SongPage() {
   const [notes, setNotes] = useState('')
   const [tagInput, setTagInput] = useState('')
 
-  // Rehearsal / annotation state
-  const [rehearsal, setRehearsal] = useState(false)
+  // Annotation state
   const [annTool, setAnnTool] = useState<'pen' | 'eraser'>('pen')
   const [annColor, setAnnColor] = useState(ANN_COLORS[0].value)
   const [annWidth, setAnnWidth] = useState(ANN_WIDTHS[0].value)
@@ -241,7 +241,7 @@ export default function SongPage() {
             <button
               key={t}
               className={`${styles.tab} ${tab === t ? styles.tabActive : ''}`}
-              onClick={() => { setTab(t); if (t !== 'lyrics') setPreview(false) }}
+              onClick={() => setTab(t)}
             >
               {{ lyrics: 'Letra', chords: 'Acordes', details: 'Detalhes' }[t]}
             </button>
@@ -253,7 +253,7 @@ export default function SongPage() {
           {tab === 'lyrics' && (
             <div className={styles.editorPane}>
               <div className={styles.editorToolbar}>
-                {song.original_lyrics && song.is_user_edited && (
+                {song.original_lyrics && song.is_user_edited && mode === 'editar' && (
                   <button
                     className={styles.resetBtn}
                     onClick={() => { setLyrics(song.original_lyrics!); scheduleSave() }}
@@ -261,87 +261,74 @@ export default function SongPage() {
                     Repor original
                   </button>
                 )}
-                {preview && (
+                {/* Mode toggle: Ensaio ↔ Editar letra */}
+                <div className={styles.modeToggle}>
                   <button
-                    className={`${styles.rehearsalBtn} ${rehearsal ? styles.rehearsalBtnActive : ''}`}
-                    onClick={() => setRehearsal(v => !v)}
-                    title="Modo ensaio — anotações sobre a letra"
+                    className={`${styles.modeBtn} ${mode === 'ensaio' ? styles.modeBtnActive : ''}`}
+                    onClick={() => setMode('ensaio')}
                   >
                     ✏ Ensaio
                   </button>
-                )}
-                <button
-                  className={`${styles.previewToggle} ${preview ? styles.previewToggleActive : ''}`}
-                  onClick={() => { setPreview(v => !v); if (rehearsal) setRehearsal(false) }}
-                >
-                  {preview ? '✎ Editar' : '👁 Pré-ver'}
-                </button>
+                  <button
+                    className={`${styles.modeBtn} ${mode === 'editar' ? styles.modeBtnActive : ''}`}
+                    onClick={() => setMode('editar')}
+                  >
+                    ✎ Editar letra
+                  </button>
+                </div>
               </div>
-              {preview ? (
+
+              {mode === 'ensaio' ? (
                 <>
-                  {rehearsal && (
-                    <div className={styles.rehearsalBar}>
-                      <span className={styles.rehearsalLabel}>Ensaio</span>
-
-                      {/* Colors */}
-                      <div className={styles.annColors}>
-                        {ANN_COLORS.map(c => (
-                          <button
-                            key={c.id}
-                            className={`${styles.annColor} ${annTool === 'pen' && annColor === c.value ? styles.annColorActive : ''}`}
-                            style={{ background: c.value, borderColor: annTool === 'pen' && annColor === c.value ? '#fff' : 'transparent' }}
-                            onClick={() => { setAnnColor(c.value); setAnnTool('pen') }}
-                            title={c.id}
-                          />
-                        ))}
-                      </div>
-
-                      <div className={styles.annDivider} />
-
-                      {/* Stroke widths */}
-                      <div className={styles.annWidths}>
-                        {ANN_WIDTHS.map(w => (
-                          <button
-                            key={w.id}
-                            className={`${styles.annWidth} ${annWidth === w.value && annTool === 'pen' ? styles.annWidthActive : ''}`}
-                            onClick={() => { setAnnWidth(w.value); setAnnTool('pen') }}
-                            title={w.id}
-                          >
-                            <span className={styles.annWidthDot} style={{ width: w.size, height: w.size }} />
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className={styles.annDivider} />
-
-                      {/* Eraser */}
-                      <button
-                        className={`${styles.annTool} ${annTool === 'eraser' ? styles.annToolActive : ''}`}
-                        onClick={() => setAnnTool(t => t === 'eraser' ? 'pen' : 'eraser')}
-                        title="Borracha"
-                      >
-                        ◌
-                      </button>
-
-                      {/* Clear */}
-                      <button
-                        className={styles.annClear}
-                        onClick={() => { if (window.confirm('Limpar todas as anotações desta música?')) setAnnClear(c => c + 1) }}
-                        title="Limpar tudo"
-                      >
-                        ✕ Limpar
-                      </button>
-
-                      {/* Exit */}
-                      <button className={styles.annExit} onClick={() => setRehearsal(false)}>
-                        Sair
-                      </button>
+                  {/* Annotation toolbar */}
+                  <div className={styles.rehearsalBar}>
+                    <div className={styles.annColors}>
+                      {ANN_COLORS.map(c => (
+                        <button
+                          key={c.id}
+                          className={`${styles.annColor} ${annTool === 'pen' && annColor === c.value ? styles.annColorActive : ''}`}
+                          style={{ background: c.value, borderColor: annTool === 'pen' && annColor === c.value ? '#fff' : 'transparent' }}
+                          onClick={() => { setAnnColor(c.value); setAnnTool('pen') }}
+                        />
+                      ))}
                     </div>
-                  )}
+
+                    <div className={styles.annDivider} />
+
+                    <div className={styles.annWidths}>
+                      {ANN_WIDTHS.map(w => (
+                        <button
+                          key={w.id}
+                          className={`${styles.annWidth} ${annWidth === w.value && annTool === 'pen' ? styles.annWidthActive : ''}`}
+                          onClick={() => { setAnnWidth(w.value); setAnnTool('pen') }}
+                        >
+                          <span className={styles.annWidthDot} style={{ width: w.size, height: w.size }} />
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className={styles.annDivider} />
+
+                    <button
+                      className={`${styles.annTool} ${annTool === 'eraser' ? styles.annToolActive : ''}`}
+                      onClick={() => setAnnTool(t => t === 'eraser' ? 'pen' : 'eraser')}
+                      title="Borracha"
+                    >
+                      ◌
+                    </button>
+
+                    <button
+                      className={styles.annClear}
+                      onClick={() => { if (window.confirm('Limpar todas as anotações desta música?')) setAnnClear(c => c + 1) }}
+                    >
+                      ✕ Limpar
+                    </button>
+                  </div>
+
                   <div className={styles.previewPane}>
                     <div className={styles.previewInner}>
                       <LyricsView lyrics={lyrics} />
-                      {rehearsal && song && (
+                      {song && (
                         <AnnotationLayer
                           songId={song.id}
                           tool={annTool}
