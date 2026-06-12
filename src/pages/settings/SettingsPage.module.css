@@ -84,6 +84,16 @@
 }
 .saveBtn:hover { opacity: 0.88; }
 
+.guideBtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 16px; border-radius: 10px;
+  border: 1.5px solid var(--border); background: var(--bg2);
+  color: var(--text2); font-size: 13px; font-weight: 600;
+  text-decoration: none; white-space: nowrap; flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+.guideBtn:hover { border-color: var(--gig); color: var(--gig); }
+
 /* App theme toggle */
 .themeToggle { display: flex; gap: 6px; background: var(--bg2); padding: 4px; border-radius: 12px; }
 .themeOption {

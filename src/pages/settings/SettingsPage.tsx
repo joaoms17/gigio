@@ -237,6 +237,27 @@ export default function SettingsPage() {
             {themeSaved ? '✓ Guardado' : 'Guardar preferências do concerto'}
           </button>
         </section>
+
+        {/* Guide */}
+        <section className={styles.section}>
+          <div className={styles.sectionTitle}>AJUDA</div>
+          <div className={styles.card}>
+            <div className={styles.row}>
+              <div className={styles.rowLabel}>
+                <div className={styles.label}>Guia da aplicação</div>
+                <div className={styles.hint}>Tutorial completo em PDF — projetos, biblioteca, concertos, modo concerto</div>
+              </div>
+              <a
+                href="/guia.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.guideBtn}
+              >
+                📖 Abrir guia
+              </a>
+            </div>
+          </div>
+        </section>
       </div>
     </Layout>
   )
