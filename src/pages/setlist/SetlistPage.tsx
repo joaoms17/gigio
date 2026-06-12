@@ -64,6 +64,8 @@ export default function SetlistPage() {
   const autoAddDone = useRef(false)
   const [setlist, setSetlist] = useState<Setlist | null>(null)
   const [projectName, setProjectName] = useState<string | null>(null)
+  const [projectImage, setProjectImage] = useState<string | null>(null)
+  const [projectColor, setProjectColor] = useState<string | null>(null)
   const [songs, setSongs] = useState<Row[]>([])
   const [library, setLibrary] = useState<Song[]>([])
   const [librarySearch, setLibrarySearch] = useState('')
@@ -88,11 +90,13 @@ export default function SetlistPage() {
 
   useEffect(() => {
     if (!id || !user) return
-    supabase.from('setlists').select('*, bands(name)').eq('id', id).single()
+    supabase.from('setlists').select('*, bands(name, image_url, color)').eq('id', id).single()
       .then(({ data }) => {
         if (data) {
           setSetlist(data)
           setProjectName((data as any).bands?.name ?? null)
+          setProjectImage((data as any).bands?.image_url ?? null)
+          setProjectColor((data as any).bands?.color ?? null)
           setName(data.name)
           setVenue(data.venue ?? '')
           setDate(data.date ?? '')
@@ -272,13 +276,36 @@ export default function SetlistPage() {
         <td class="dur">${dur(ss.song?.duration_sec)}</td>
       </tr>`).join('')
     const meta = [
-      projectName,
       venue,
       date ? new Date(date + 'T00:00').toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' }) : null,
     ].filter(Boolean).join(' · ')
+    const accent = projectColor ?? '#FF4D6D'
+    const projectHeader = projectName ? `
+      <div class="proj">
+        ${projectImage
+          ? `<img class="projImg" src="${esc(projectImage)}" alt="" />`
+          : `<div class="projImg projInitial">${esc(projectName.charAt(0).toUpperCase())}</div>`}
+        <div class="projName">${esc(projectName)}</div>
+      </div>` : ''
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(setlist.name)}</title>
       <style>
         body { font-family: -apple-system, 'Segoe UI', sans-serif; color: #111; margin: 32px; }
+        .toolbar {
+          position: sticky; top: 0; display: flex; gap: 10px; justify-content: flex-end;
+          padding: 10px 0; margin-bottom: 14px; background: #fff;
+        }
+        .toolbar button {
+          font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+          padding: 9px 20px; border-radius: 10px; border: 1px solid #ccc; background: #f5f5f5;
+        }
+        .toolbar .print { background: ${accent}; border-color: ${accent}; color: #fff; }
+        .proj { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .projImg { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; }
+        .projInitial {
+          display: flex; align-items: center; justify-content: center;
+          background: ${accent}; color: #fff; font-size: 24px; font-weight: 800;
+        }
+        .projName { font-size: 17px; font-weight: 800; }
         h1 { font-size: 26px; margin: 0 0 4px; }
         .meta { color: #666; font-size: 13px; margin-bottom: 6px; }
         .total { color: #666; font-size: 12px; margin-bottom: 20px; }
@@ -287,15 +314,32 @@ export default function SetlistPage() {
         .num { width: 30px; color: #999; font-weight: 700; }
         .t { font-weight: 700; font-size: 15px; }
         .a { color: #666; font-size: 12px; margin-top: 2px; }
-        .key { width: 50px; font-weight: 700; color: #FF4D6D; text-align: center; }
+        .key { width: 50px; font-weight: 700; color: ${accent}; text-align: center; }
         .dur { width: 50px; color: #666; text-align: right; font-variant-numeric: tabular-nums; }
-        @media print { body { margin: 12mm; } }
+        @media print { body { margin: 12mm; } .toolbar { display: none; } }
       </style></head><body>
+      <div class="toolbar">
+        <button onclick="window.close(); history.back()">✕ Fechar</button>
+        <button class="print" onclick="window.print()">🖨 Imprimir / PDF</button>
+      </div>
+      ${projectHeader}
       <h1>${esc(setlist.name)}</h1>
       ${meta ? `<div class="meta">${esc(meta)}</div>` : ''}
       <div class="total">${songs.length} músicas${totalMin > 0 ? ` · duração total ≈ ${durationLabel}` : ''}</div>
       <table>${rows}</table>
-      <script>window.onload = () => { window.print() }<\/script>
+      <script>
+        // Wait for the project image before printing (1.5s safety timeout)
+        window.onload = () => {
+          const img = document.querySelector('img.projImg')
+          const go = () => setTimeout(() => window.print(), 100)
+          if (img && !img.complete) {
+            let done = false
+            const once = () => { if (!done) { done = true; go() } }
+            img.onload = once; img.onerror = once
+            setTimeout(once, 1500)
+          } else go()
+        }
+      <\/script>
       </body></html>`
     const w = window.open('', '_blank')
     if (!w) { alert('Permite pop-ups para exportar o PDF.'); return }
