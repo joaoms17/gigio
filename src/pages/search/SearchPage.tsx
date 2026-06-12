@@ -218,10 +218,11 @@ export default function SearchPage() {
     setImportingPdf(true)
     try {
       const { extractLyricsFromPdf } = await import('../../lib/pdfLyrics')
-      const lyrics = await extractLyricsFromPdf(file)
+      const { lyrics, title, artist } = await extractLyricsFromPdf(file)
+      // Never overwrite what the user already typed
       setManual(m => m
-        ? { ...m, lyrics }
-        : { title: query, artist: artistQuery, lyrics, setlistId })
+        ? { ...m, lyrics, title: m.title || title, artist: m.artist || artist }
+        : { title: query || title, artist: artistQuery || artist, lyrics, setlistId })
     } catch (err: any) {
       alert(err?.message ?? 'Não foi possível ler o PDF. Tenta copiar o texto manualmente.')
     } finally {
