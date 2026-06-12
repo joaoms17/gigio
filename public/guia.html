@@ -330,9 +330,52 @@
   ul { padding-left: 0; list-style: none; }
   ul li { padding-left: 18px; position: relative; margin-bottom: 6px; color: var(--text2); font-size: 13px; }
   ul li::before { content: '→'; position: absolute; left: 0; color: var(--gig); font-weight: 700; font-size: 11px; top: 1px; }
+
+  /* ── ACTION BAR ── */
+  .action-bar {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    gap: 10px;
+    z-index: 999;
+  }
+  .action-bar button {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 11px 20px;
+    border-radius: 12px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .action-bar button:hover { opacity: 0.88; transform: translateY(-1px); }
+  .btn-download {
+    background: linear-gradient(135deg, var(--gig), var(--io));
+    color: #fff;
+  }
+  .btn-close {
+    background: #fff;
+    color: var(--text2);
+    border: 1.5px solid var(--border) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+  }
+  @media print {
+    .action-bar { display: none; }
+  }
 </style>
 </head>
 <body>
+
+<div class="action-bar">
+  <button class="btn-close" onclick="window.close()">✕ Fechar</button>
+  <button class="btn-download" onclick="window.print()">⬇ Download PDF</button>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════ CAPA -->
 <div class="cover">
