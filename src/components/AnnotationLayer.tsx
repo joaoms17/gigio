@@ -139,11 +139,13 @@ export default function AnnotationLayer({ songId, tool, color, strokeWidth, clea
     drawingRef.current = false
     setEraserPos(null)
 
-    if (tool !== 'eraser' && currentRef.current && currentRef.current.pts.length >= 4) {
-      setStrokes(prev => [...prev, currentRef.current!])
-    }
+    const finished = currentRef.current
     currentRef.current = null
     setCurrent(null)
+
+    if (tool !== 'eraser' && finished && finished.pts.length >= 4) {
+      setStrokes(prev => [...prev, finished])
+    }
   }
 
   return (
