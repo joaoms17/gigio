@@ -681,3 +681,18 @@
   color: var(--text3);
   margin-top: 4px;
 }
+
+.offlineBanner {
+  background: rgba(255, 160, 0, 0.12);
+  border: 1px solid rgba(255, 160, 0, 0.35);
+  color: #b36f00;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+@media (prefers-color-scheme: dark) {
+  .offlineBanner { color: #ffba5a; background: rgba(255,160,0,0.08); }
+}

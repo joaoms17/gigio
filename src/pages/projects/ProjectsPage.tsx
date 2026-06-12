@@ -11,6 +11,7 @@ import {
   PROJECT_COLORS,
   ROLE_LABELS,
 } from '../../types'
+import { cacheProjects, getCachedProjects } from '../../lib/concertCache'
 import styles from './ProjectsPage.module.css'
 
 interface ProjectWithCounts extends Project {
@@ -47,6 +48,7 @@ export default function ProjectsPage() {
   const navigate = useNavigate()
   const [projects, setProjects] = useState<ProjectWithCounts[]>([])
   const [loading, setLoading] = useState(true)
+  const [isOffline, setIsOffline] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const [showJoin, setShowJoin] = useState(false)
   const [joinCode, setJoinCode] = useState('')
@@ -70,14 +72,20 @@ export default function ProjectsPage() {
     if (!user) return
     setLoading(true)
 
-    const { data: memberships } = await supabase
+    const { data: memberships, error } = await supabase
       .from('band_members')
       .select('band_id, role, bands(*)')
       .eq('user_id', user.id)
       .order('joined_at', { ascending: false })
 
-    if (!memberships) { setLoading(false); return }
+    if (!memberships || error) {
+      const cached = getCachedProjects<ProjectWithCounts[]>(user.id)
+      if (cached) { setProjects(cached); setIsOffline(true) }
+      setLoading(false)
+      return
+    }
 
+    setIsOffline(false)
     const rawProjects = memberships
       .map((m: any) => ({ ...m.bands, myRole: m.role }))
       .filter(Boolean)
@@ -102,15 +110,15 @@ export default function ProjectsPage() {
       setlistCounts[r.band_id] = (setlistCounts[r.band_id] ?? 0) + 1
     })
 
-    setProjects(
-      rawProjects.map((p: any) => ({
-        ...p,
-        type: p.type ?? 'band',
-        color: p.color ?? PROJECT_COLORS[0],
-        memberCount: memberCounts[p.id] ?? 0,
-        setlistCount: setlistCounts[p.id] ?? 0,
-      }))
-    )
+    const result = rawProjects.map((p: any) => ({
+      ...p,
+      type: p.type ?? 'band',
+      color: p.color ?? PROJECT_COLORS[0],
+      memberCount: memberCounts[p.id] ?? 0,
+      setlistCount: setlistCounts[p.id] ?? 0,
+    }))
+    setProjects(result)
+    cacheProjects(user.id, result)
     setLoading(false)
   }
 
@@ -194,6 +202,11 @@ export default function ProjectsPage() {
   return (
     <Layout>
       <div className={styles.page}>
+        {isOffline && (
+          <div className={styles.offlineBanner}>
+            Sem ligação — a mostrar dados em cache
+          </div>
+        )}
         <div className={styles.header}>
           <div>
             <h1 className={styles.title}>Os meus projetos</h1>

@@ -14,6 +14,10 @@ import { useConfirm } from '../../components/ConfirmDialog'
 import ProjectPickerModal from '../../components/ProjectPickerModal'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
+import {
+  cacheSetlistMeta, getCachedSetlistMeta,
+  cacheSetlistSongs, getCachedSetlistSongs,
+} from '../../lib/concertCache'
 import type { Setlist, SetlistSong, Song } from '../../types'
 import styles from './SetlistPage.module.css'
 
@@ -77,6 +81,7 @@ export default function SetlistPage() {
   const [date, setDate] = useState('')
   const [status, setStatus] = useState('draft')
   const [duplicating, setDuplicating] = useState(false)
+  const [isOffline, setIsOffline] = useState(false)
 
   // Per-setlist song overrides modal
   const [overrideRow, setOverrideRow] = useState<Row | null>(null)
@@ -91,8 +96,9 @@ export default function SetlistPage() {
   useEffect(() => {
     if (!id || !user) return
     supabase.from('setlists').select('*, bands(name, image_url, color)').eq('id', id).single()
-      .then(({ data }) => {
-        if (data) {
+      .then(({ data, error }) => {
+        if (data && !error) {
+          setIsOffline(false)
           setSetlist(data)
           setProjectName((data as any).bands?.name ?? null)
           setProjectImage((data as any).bands?.image_url ?? null)
@@ -101,6 +107,20 @@ export default function SetlistPage() {
           setVenue(data.venue ?? '')
           setDate(data.date ?? '')
           setStatus(data.status ?? 'draft')
+          cacheSetlistMeta(id, data)
+        } else {
+          const cached = getCachedSetlistMeta<any>(id)
+          if (cached) {
+            setIsOffline(true)
+            setSetlist(cached)
+            setProjectName(cached.bands?.name ?? null)
+            setProjectImage(cached.bands?.image_url ?? null)
+            setProjectColor(cached.bands?.color ?? null)
+            setName(cached.name)
+            setVenue(cached.venue ?? '')
+            setDate(cached.date ?? '')
+            setStatus(cached.status ?? 'draft')
+          }
         }
       })
     loadSongs()
@@ -116,12 +136,18 @@ export default function SetlistPage() {
 
   async function loadSongs() {
     if (!id) return
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('setlist_songs')
       .select('*, song:songs(*)')
       .eq('setlist_id', id)
       .order('position')
-    setSongs((data ?? []) as any)
+    if (data && !error) {
+      setSongs(data as any)
+      cacheSetlistSongs(id, data)
+    } else {
+      const cached = getCachedSetlistSongs<Row>(id)
+      if (cached) setSongs(cached)
+    }
   }
 
   async function loadLibrary() {
@@ -359,6 +385,11 @@ export default function SetlistPage() {
   return (
     <Layout>
       <div className={styles.page}>
+        {isOffline && (
+          <div className={styles.offlineBanner}>
+            Sem ligação — a mostrar dados em cache
+          </div>
+        )}
         <div className={styles.header}>
           <div className={styles.headerLeft}>
             <Breadcrumbs items={

@@ -16,6 +16,7 @@ import {
   PROJECT_COLORS,
   ROLE_LABELS,
 } from '../../types'
+import { cacheProjectDashboard, getCachedProjectDashboard } from '../../lib/concertCache'
 import styles from './ProjectDashboardPage.module.css'
 
 type Tab = 'overview' | 'repertoire' | 'setlists' | 'members' | 'settings'
@@ -78,6 +79,7 @@ export default function ProjectDashboardPage() {
   const [invites, setInvites] = useState<ProjectInvite[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isOffline, setIsOffline] = useState(false)
   const [songSearch, setSongSearch] = useState('')
   const [deletingSong, setDeletingSong] = useState<string | null>(null)
 
@@ -117,19 +119,33 @@ export default function ProjectDashboardPage() {
     if (!silent) setLoading(true)
     setError(null)
 
-    const { data: membership } = await supabase
+    const { data: membership, error: membershipError } = await supabase
       .from('band_members')
       .select('role, bands(*)')
       .eq('band_id', projectId)
       .eq('user_id', user.id)
       .single()
 
-    if (!membership || !membership.bands) {
-      setError('Não tens acesso a este projeto ou ele não existe.')
-      setLoading(false)
+    if (!membership || membershipError) {
+      const cached = getCachedProjectDashboard<{
+        project: Project; role: ProjectRole
+        setlists: SetlistCard[]; songs: SongCard[]
+      }>(projectId)
+      if (cached) {
+        setProject(cached.project)
+        setMyRole(cached.role)
+        setSetlists(cached.setlists)
+        setSongs(cached.songs)
+        setIsOffline(true)
+        setLoading(false)
+      } else {
+        setError('Não tens acesso a este projeto ou ele não existe.')
+        setLoading(false)
+      }
       return
     }
 
+    setIsOffline(false)
     const proj = membership.bands as unknown as Project
     setProject(proj)
     setMyRole(membership.role as ProjectRole)
@@ -165,10 +181,18 @@ export default function ProjectDashboardPage() {
         : Promise.resolve({ data: [] }),
     ])
 
+    const fetchedSetlists = (setlistsRes.data ?? []) as unknown as SetlistCard[]
+    const fetchedSongs    = (songsRes.data ?? []) as unknown as SongCard[]
     setMembers((membersRes.data ?? []) as unknown as ProjectMember[])
-    setSetlists((setlistsRes.data ?? []) as unknown as SetlistCard[])
-    setSongs((songsRes.data ?? []) as unknown as SongCard[])
+    setSetlists(fetchedSetlists)
+    setSongs(fetchedSongs)
     setInvites((invitesRes.data ?? []) as unknown as ProjectInvite[])
+    cacheProjectDashboard(projectId, {
+      project: proj,
+      role: membership.role as ProjectRole,
+      setlists: fetchedSetlists,
+      songs: fetchedSongs,
+    })
     setLoading(false)
   }, [user, projectId, canManage])
 
@@ -338,6 +362,11 @@ export default function ProjectDashboardPage() {
   return (
     <Layout>
       <div className={styles.page}>
+        {isOffline && (
+          <div className={styles.offlineBanner}>
+            Sem ligação — a mostrar dados em cache
+          </div>
+        )}
         {/* Header */}
         <div className={styles.header}>
           <Breadcrumbs items={[
