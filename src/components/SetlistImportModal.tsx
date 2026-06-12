@@ -143,7 +143,6 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
     setMissed(missedNames)
     setImporting(false)
     setStep('done')
-    if (inserts.length > 0) onImported()
     // Pre-load searches for all missed songs immediately
     if (missedNames.length > 0) preloadAll(missedNames)
   }
