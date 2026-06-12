@@ -126,6 +126,7 @@ export default function SongPage() {
             .map((r: any) => r.setlist)
             .filter(Boolean)
             .sort((a: any, b: any) => (b.date ?? '').localeCompare(a.date ?? ''))
+            .map((sl: any) => ({ setlistName: sl.name, date: sl.date, venue: sl.venue }))
           setConcertHistory(history)
         }
       })
