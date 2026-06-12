@@ -49,13 +49,6 @@ export default function AnnotatedLyrics({
     return () => obs.disconnect()
   }, [data])
 
-  // Follow the active line (semi mode in concert)
-  useEffect(() => {
-    if (activeLine == null || activeLine < 0) return
-    const el = innerRef.current?.querySelector('[data-activeline]')
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [activeLine])
-
   // Width of the drawing area (inside padding)
   const contentW = Math.max(0, outerW - PAD_H * 2)
   const baseW = data?.w && data.w > 0 ? data.w : contentW

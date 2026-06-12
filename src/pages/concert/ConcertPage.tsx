@@ -132,10 +132,11 @@ export default function ConcertPage() {
     recenterActiveLine()
   }, [lineIdx, viewMode, scrollFollowing])
 
-  // Returning from chords/annotations → restore scroll-follow and snap to active line
+  // Switching views (lyrics/chords/annotations) → restore scroll-follow and
+  // snap the lyrics view back to the active line
   useEffect(() => {
-    if (contentView !== 'lyrics') return
     setScrollFollowing(true)
+    if (contentView !== 'lyrics') return
     requestAnimationFrame(() => {
       if (viewMode === 'semi' && activeLineRef.current) {
         programmaticScrollRef.current = true
@@ -319,6 +320,19 @@ export default function ConcertPage() {
     }
   }
 
+  // Follow the active line in the annotations view — same semantics as the
+  // lyrics view: manual scroll pauses following, "Seguir letra" resumes it
+  useEffect(() => {
+    if (contentView !== 'annotations' || viewMode !== 'semi' || !scrollFollowing) return
+    if (annActiveLine < 0) return
+    const el = document.querySelector('[data-activeline]')
+    if (!el) return
+    programmaticScrollRef.current = true
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+    scrollTimerRef.current = setTimeout(() => { programmaticScrollRef.current = false }, 800)
+  }, [annActiveLine, contentView, viewMode, scrollFollowing])
+
   return (
     <div className={styles.page} style={{ background: theme.bg }}>
 
@@ -422,7 +436,7 @@ export default function ConcertPage() {
           <div style={{ height: '30vh' }} />
         </div>
       ) : contentView === 'annotations' ? (
-        <div className={styles.lyricsScroll} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+        <div className={styles.lyricsScroll} onScroll={handleScroll} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           <div className={styles.annotationsWrap}>
             {currentSong && (
               <AnnotatedLyrics
@@ -506,7 +520,7 @@ export default function ConcertPage() {
       )}
 
       {/* ── Re-sync button ── */}
-      {contentView === 'lyrics' && viewMode === 'semi' && !scrollFollowing && (
+      {contentView !== 'chords' && viewMode === 'semi' && !scrollFollowing && (
         <div className={styles.resyncWrap}>
           <button
             className={styles.resyncBtn}
