@@ -9,7 +9,7 @@
 }
 
 .modal {
-  background: var(--surface, #fff);
+  background: var(--bg);
   border-radius: 16px;
   max-width: 560px;
   width: 90vw;
@@ -176,7 +176,7 @@
   gap: 10px;
   padding: 14px 20px;
   border-top: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--bg2);
 }
 
 .cancelBtn {
@@ -332,7 +332,7 @@
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--surface);
+  background: var(--bg2);
 }
 
 .resultInfo { flex: 1; min-width: 0; }
