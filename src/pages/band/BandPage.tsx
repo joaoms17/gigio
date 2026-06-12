@@ -120,7 +120,7 @@ export default function BandPage() {
     if (band.invite_expires_at && new Date(band.invite_expires_at).getTime() < Date.now()) {
       alert('Este código de convite expirou. Pede um novo ao dono do projeto.'); setJoining(false); return
     }
-    const { error: memErr } = await supabase.from('band_members').insert({ band_id: band.id, user_id: user.id, role: 'member' })
+    const { error: memErr } = await supabase.from('band_members').insert({ band_id: band.id, user_id: user.id, role: 'editor' })
     setJoining(false)
     if (memErr && !memErr.message.includes('duplicate')) { alert('Erro ao entrar: ' + memErr.message); return }
     setJoinCode('')
