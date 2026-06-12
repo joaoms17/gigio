@@ -36,6 +36,16 @@ function durationLabel(sec: number) {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+/** Accepts "3:45" or plain seconds ("225"); returns null when empty/invalid. */
+function parseDuration(input: string): number | null {
+  const t = input.trim()
+  if (!t) return null
+  const m = t.match(/^(\d+):([0-5]?\d)$/)
+  if (m) return parseInt(m[1]) * 60 + parseInt(m[2])
+  const secs = parseInt(t)
+  return Number.isFinite(secs) && secs > 0 ? secs : null
+}
+
 export default function SongPage() {
   const { id } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
@@ -63,6 +73,7 @@ export default function SongPage() {
   const [performanceKey, setPerformanceKey] = useState('')
   const [originalKey, setOriginalKey] = useState('')
   const [bpm, setBpm] = useState('')
+  const [duration, setDuration] = useState('')  // "m:ss" or plain seconds
   const [capo, setCapo] = useState('')
   const [tuning, setTuning] = useState('')
   const [tags, setTags] = useState<string[]>([])
@@ -111,6 +122,7 @@ export default function SongPage() {
     setPerformanceKey(s.performance_key ?? '')
     setOriginalKey(s.original_key ?? '')
     setBpm(s.bpm ? String(s.bpm) : '')
+    setDuration(s.duration_sec ? `${Math.floor(s.duration_sec / 60)}:${String(s.duration_sec % 60).padStart(2, '0')}` : '')
     setCapo(s.capo ? String(s.capo) : '')
     setTuning(s.tuning ?? '')
     setTags(s.tags ?? [])
@@ -160,6 +172,7 @@ export default function SongPage() {
       performance_key: performanceKey.trim() || null,
       original_key: originalKey.trim() || null,
       bpm: bpm ? parseInt(bpm) : null,
+      duration_sec: parseDuration(duration),
       capo: capo ? parseInt(capo) : null,
       tuning: tuning.trim() || null,
       tags: tags.length ? tags : null,
@@ -178,7 +191,7 @@ export default function SongPage() {
       if (saveTimer.current) clearTimeout(saveTimer.current)
       if (isDirtyRef.current && song) save()
     }
-  }, [song, lyrics, title, artist, chords, performanceKey, originalKey, bpm, capo, tuning, tags, notes])
+  }, [song, lyrics, title, artist, chords, performanceKey, originalKey, bpm, duration, capo, tuning, tags, notes])
 
   function addTag(t: string) {
     const tag = t.trim()
@@ -439,6 +452,16 @@ export default function SongPage() {
                     value={bpm}
                     onChange={e => { setBpm(e.target.value); scheduleSave() }}
                     placeholder="ex: 120"
+                  />
+                </div>
+                <div className={styles.fieldGroup}>
+                  <label className={styles.fieldLabel}>Duração</label>
+                  <input
+                    className={styles.fieldInput}
+                    value={duration}
+                    onChange={e => { setDuration(e.target.value); scheduleSave() }}
+                    placeholder="ex: 3:45"
+                    inputMode="numeric"
                   />
                 </div>
                 <div className={styles.fieldGroup}>
