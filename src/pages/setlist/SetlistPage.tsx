@@ -331,7 +331,7 @@ export default function SetlistPage() {
                     key={ss.id}
                     ss={ss}
                     index={i}
-                    onEdit={songId => navigate(`/songs/${songId}`)}
+                    onEdit={songId => navigate(`/songs/${songId}?setlist=${id}`)}
                     onRemove={removeSong}
                   />
                 ))}

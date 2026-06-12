@@ -43,9 +43,11 @@ export default function SongPage() {
   const { user } = useAuth()
 
   const projectId = searchParams.get('project')
+  const setlistId = searchParams.get('setlist')
 
   const [song, setSong] = useState<Song | null>(null)
   const [projectName, setProjectName] = useState<string | null>(null)
+  const [setlistName, setSetlistName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('lyrics')
   const [saving, setSaving] = useState(false)
@@ -86,6 +88,12 @@ export default function SongPage() {
     supabase.from('bands').select('name').eq('id', projectId).single()
       .then(({ data }) => setProjectName(data?.name ?? null))
   }, [projectId])
+
+  useEffect(() => {
+    if (!setlistId) { setSetlistName(null); return }
+    supabase.from('setlists').select('name').eq('id', setlistId).single()
+      .then(({ data }) => setSetlistName(data?.name ?? null))
+  }, [setlistId])
 
   async function load() {
     setLoading(true)
@@ -162,6 +170,7 @@ export default function SongPage() {
   }
 
   function backPath() {
+    if (setlistId) return `/setlist/${setlistId}`
     if (projectId) return `/projects/${projectId}?tab=repertoire`
     return '/library'
   }
@@ -191,9 +200,15 @@ export default function SongPage() {
         {/* Top bar */}
         <div className={styles.topBar}>
           <Breadcrumbs items={
-            projectId
+            setlistId
               ? [
-                  { label: 'Projetos', to: '/' },
+                  { label: 'Setlists', to: '/setlists' },
+                  { label: setlistName ?? 'Setlist', to: `/setlist/${setlistId}` },
+                  { label: song.title || 'Música' },
+                ]
+              : projectId
+              ? [
+                  { label: 'Projetos', to: '/projects' },
                   { label: projectName ?? 'Projeto', to: `/projects/${projectId}` },
                   { label: 'Repertório', to: `/projects/${projectId}?tab=repertoire` },
                   { label: song.title || 'Música' },
