@@ -33,6 +33,11 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         skipWaiting: true,
         clientsClaim: true,
+        // Prevent the SPA navigation fallback from returning HTML for asset
+        // requests that are missing from the precache (e.g. stale worker URLs
+        // after a deploy). Assets that miss the cache should 404, not return
+        // index.html with text/html — which breaks Worker / importScripts.
+        navigateFallbackDenylist: [/^\/assets\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/lrclib\.net\/.*/i,
