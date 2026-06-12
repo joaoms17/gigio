@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gigio — Guia da Aplicação</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+  :root {
+    --gig: #FF4D6D;
+    --io: #7C3AED;
+    --text: #0f0f13;
+    --text2: #3d3d4a;
+    --text3: #8888a0;
+    --bg: #fff;
+    --bg2: #f7f7fb;
+    --border: #e8e8f0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: var(--text);
+    background: #fff;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── PRINT ── */
+  @media print {
+    body { font-size: 12px; }
+    .page { page-break-after: always; page-break-inside: avoid; }
+    .no-break { page-break-inside: avoid; }
+    @page { margin: 15mm 18mm; }
+  }
+
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 48px 40px;
+  }
+
+  /* ── COVER ── */
+  .cover {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    background: linear-gradient(145deg, #0f0f18 0%, #1a1020 50%, #0a0a14 100%);
+    color: #fff;
+    padding: 64px 56px;
+  }
+  .cover-logo {
+    font-size: 52px;
+    font-weight: 900;
+    letter-spacing: -2px;
+    background: linear-gradient(135deg, var(--gig), var(--io));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+  }
+  .cover-sub {
+    font-size: 22px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 48px;
+  }
+  .cover-desc {
+    font-size: 16px;
+    color: rgba(255,255,255,0.55);
+    max-width: 460px;
+    line-height: 1.7;
+    margin-bottom: 64px;
+  }
+  .cover-version {
+    font-size: 12px;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 0.05em;
+  }
+
+  /* ── SECTION HEADERS ── */
+  .section-num {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--gig);
+    margin-bottom: 6px;
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: -0.5px;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .section-lead {
+    font-size: 15px;
+    color: var(--text3);
+    margin-bottom: 32px;
+    max-width: 560px;
+  }
+  h2 {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 28px 0 10px;
+  }
+  h3 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin: 20px 0 8px;
+  }
+  p { color: var(--text2); margin-bottom: 10px; }
+
+  /* ── DIVIDER ── */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 32px 0;
+  }
+
+  /* ── FEATURE CARDS ── */
+  .card-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 16px 0 24px;
+  }
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+  }
+  .card-icon { font-size: 26px; margin-bottom: 8px; }
+  .card-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .card-desc { font-size: 12px; color: var(--text3); line-height: 1.5; }
+
+  /* ── STEPS ── */
+  .steps { list-style: none; margin: 12px 0 24px; }
+  .steps li {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 14px;
+    align-items: flex-start;
+  }
+  .step-num {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    background: linear-gradient(135deg, var(--gig), var(--io));
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+  }
+  .step-content { flex: 1; }
+  .step-title { font-weight: 700; color: var(--text); font-size: 14px; }
+  .step-desc { color: var(--text3); font-size: 13px; margin-top: 2px; }
+
+  /* ── TIPS ── */
+  .tip {
+    background: linear-gradient(135deg, rgba(255,77,109,.06), rgba(124,58,237,.06));
+    border-left: 3px solid var(--gig);
+    border-radius: 0 10px 10px 0;
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 13px;
+    color: var(--text2);
+  }
+  .tip strong { color: var(--gig); }
+
+  /* ── KEYBOARD SHORTCUTS ── */
+  .shortcuts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 12px 0 20px;
+  }
+  .shortcut {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .key {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    background: #fff;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 0 var(--border);
+    border-radius: 5px;
+    padding: 2px 8px;
+    color: var(--text);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .key-desc { font-size: 12px; color: var(--text3); }
+
+  /* ── BADGE ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 20px;
+    vertical-align: middle;
+  }
+  .badge-sync { background: rgba(5,150,105,.12); color: #059669; }
+  .badge-new  { background: rgba(255,77,109,.12); color: var(--gig); }
+
+  /* ── FLOW DIAGRAM ── */
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: wrap;
+    margin: 16px 0 24px;
+  }
+  .flow-step {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text2);
+    text-align: center;
+  }
+  .flow-arrow {
+    font-size: 18px;
+    color: var(--text3);
+    padding: 0 8px;
+  }
+
+  /* ── TABLE ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 24px;
+    font-size: 13px;
+  }
+  th {
+    text-align: left;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text3);
+    padding: 8px 12px;
+    border-bottom: 1.5px solid var(--border);
+  }
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text2);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  /* ── INLINE BUTTON MOCKUP ── */
+  .btn-demo {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    color: var(--text2);
+    vertical-align: middle;
+  }
+  .btn-demo.primary {
+    background: linear-gradient(135deg, var(--gig), var(--io));
+    color: #fff;
+    border: none;
+  }
+
+  /* ── MODE COMPARISON ── */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 12px 0 20px; }
+  .compare-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .compare-header {
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  .compare-body { padding: 12px 14px; }
+  .compare-body li {
+    font-size: 12px;
+    color: var(--text3);
+    margin-bottom: 5px;
+    padding-left: 14px;
+    position: relative;
+  }
+  .compare-body li::before {
+    content: '·';
+    position: absolute;
+    left: 4px;
+    color: var(--gig);
+    font-weight: 700;
+  }
+
+  ul { padding-left: 0; list-style: none; }
+  ul li { padding-left: 18px; position: relative; margin-bottom: 6px; color: var(--text2); font-size: 13px; }
+  ul li::before { content: '→'; position: absolute; left: 0; color: var(--gig); font-weight: 700; font-size: 11px; top: 1px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ CAPA -->
+<div class="cover">
+  <div class="cover-logo">gigio</div>
+  <div class="cover-sub">Guia da Aplicação</div>
+  <div class="cover-desc">
+    Tudo o que precisas de saber para gerir o repertório da tua banda, preparar concertos e
+    tocar com as letras sempre à mão — mesmo sem internet.
+  </div>
+  <div class="cover-version">Junho 2026 · gigio.app</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ ÍNDICE -->
+<div class="page">
+  <div class="section-num">Índice</div>
+  <h1>O que há neste guia</h1>
+  <p class="section-lead">Consulta a secção que precisas ou lê do início ao fim para aproveitares ao máximo.</p>
+
+  <table>
+    <thead><tr><th>#</th><th>Secção</th><th>Para quê</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><strong>O que é o Gigio</strong></td><td>Visão geral da app e como funciona</td></tr>
+      <tr><td>2</td><td><strong>Projetos e Banda</strong></td><td>Criar a tua banda e convidar membros</td></tr>
+      <tr><td>3</td><td><strong>Biblioteca de Músicas</strong></td><td>Adicionar e gerir o repertório</td></tr>
+      <tr><td>4</td><td><strong>Concertos</strong></td><td>Criar, ordenar e exportar setlists</td></tr>
+      <tr><td>5</td><td><strong>Importar PDF</strong></td><td>Transformar um PDF numa setlist em segundos</td></tr>
+      <tr><td>6</td><td><strong>Modo Concerto</strong></td><td>Usar durante a atuação ao vivo</td></tr>
+      <tr><td>7</td><td><strong>Partilha com a Banda</strong></td><td>Dar acesso ao projeto a outros músicos</td></tr>
+      <tr><td>8</td><td><strong>Atalhos e Dicas</strong></td><td>Referência rápida</td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip">
+    <strong>Funciona offline.</strong> O Gigio é uma PWA (Progressive Web App) — depois da primeira visita
+    funciona sem internet. Perfeito para soundchecks sem wifi ou palcos no campo.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ 1 — O QUE É -->
+<div class="page">
+  <div class="section-num">Secção 1</div>
+  <h1>O que é o Gigio</h1>
+  <p class="section-lead">Um gestor de repertório e setlists pensado para bandas que já existem e já tocam.</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">🎸</div>
+      <div class="card-title">Repertório organizado</div>
+      <div class="card-desc">Toda a biblioteca de músicas da banda num só lugar, com letras e cifras sincronizadas.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🎤</div>
+      <div class="card-title">Setlists por concerto</div>
+      <div class="card-desc">Cria a ordem das músicas para cada show, com local e data. Arrasta para reordenar.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📄</div>
+      <div class="card-title">Importa PDFs</div>
+      <div class="card-desc">Já tens os concertos em PDF? Importa diretamente — o Gigio lê as músicas e adiciona automaticamente.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">▶</div>
+      <div class="card-title">Modo Concerto</div>
+      <div class="card-desc">Letras e cifras que acompanham a música automaticamente. O ecrã mantém-se sempre ligado.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">👥</div>
+      <div class="card-title">Partilha com a banda</div>
+      <div class="card-desc">Convida os outros membros com um código ou link. Cada um acede no seu dispositivo.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📶</div>
+      <div class="card-title">Funciona offline</div>
+      <div class="card-desc">Letras e setlists ficam guardadas no dispositivo. Funciona mesmo sem internet no palco.</div>
+    </div>
+  </div>
+
+  <h2>Fluxo geral</h2>
+  <div class="flow">
+    <div class="flow-step">Cria a Banda</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">Adiciona Músicas</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">Cria Concerto</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">Ordena Setlist</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">Toca ao Vivo</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ 2 — PROJETOS -->
+<div class="page">
+  <div class="section-num">Secção 2</div>
+  <h1>Projetos e Banda</h1>
+  <p class="section-lead">Cada banda ou projeto musical tem o seu espaço próprio — com repertório, concertos e membros separados.</p>
+
+  <h2>Criar um projeto</h2>
+  <ol class="steps">
+    <li>
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <div class="step-title">Vai a <em>Projetos</em> no menu lateral</div>
+        <div class="step-desc">O ícone de pasta — acessa todos os teus projetos.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <div class="step-title">Clica em <span class="btn-demo primary">+ Novo projeto</span></div>
+        <div class="step-desc">Dá um nome à banda e escolhe uma cor de identificação.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <div class="step-title">O projeto fica no dashboard</div>
+        <div class="step-desc">Vês de imediato os concertos recentes, as músicas e o botão para convidar membros.</div>
+      </div>
+    </li>
+  </ol>
+
+  <h2>Convidar membros</h2>
+  <p>Dentro de um projeto, carrega em <strong>"Gerir Membros"</strong>. Tens duas formas de convidar:</p>
+
+  <table>
+    <thead><tr><th>Método</th><th>Como funciona</th><th>Quando usar</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Código</strong><br><small>ex: ROCK-4721</small></td>
+        <td>Partilhas o código (WhatsApp, SMS). Válido 7 dias, qualquer pessoa com o código entra.</td>
+        <td>Grupos de WhatsApp, ensaios, convites rápidos</td>
+      </tr>
+      <tr>
+        <td><strong>Link por email</strong></td>
+        <td>O sistema envia um link de convite único e de uso único diretamente ao email.</td>
+        <td>Quando queres controlo de quem aceita</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Papéis dos membros</h2>
+  <ul>
+    <li><strong>Dono</strong> — acesso total, pode apagar o projeto</li>
+    <li><strong>Admin</strong> — gere membros e conteúdo</li>
+    <li><strong>Editor</strong> — adiciona e edita músicas e concertos</li>
+    <li><strong>Visualizador</strong> — só lê, não pode editar</li>
+  </ul>
+
+  <div class="tip">
+    <strong>Vários projetos.</strong> Podes ter múltiplos projetos — útil se tokas em mais do que uma banda
+    ou se tens um projeto "Solo" separado da banda principal.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ 3 — BIBLIOTECA -->
+<div class="page">
+  <div class="section-num">Secção 3</div>
+  <h1>Biblioteca de Músicas</h1>
+  <p class="section-lead">O repertório completo da banda. Cada música pode ter letra, cifras, anotações de palco e letra sincronizada com o tempo.</p>
+
+  <h2>Adicionar músicas — 3 formas</h2>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">🔍</div>
+      <div class="card-title">Pesquisar online</div>
+      <div class="card-desc">
+        Vai a <em>Pesquisa</em> no menu. Escreve o nome da música (e opcionalmente o artista).
+        O Gigio procura em bases de dados online e mostra resultados com letra.
+        <br><br>
+        <span class="badge badge-sync">sync</span> = a letra está sincronizada com o tempo da música.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-icon">✏️</div>
+      <div class="card-title">Entrada manual</div>
+      <div class="card-desc">
+        Na pesquisa, carrega em <strong>"Entrada manual"</strong>.
+        Escreves o título, artista e colás a letra. Ótimo para músicas originais
+        ou letras que não estão online.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📄</div>
+      <div class="card-title">Importar de PDF</div>
+      <div class="card-desc">
+        Tens as letras num PDF? Na pesquisa, carrega em
+        <strong>"Importar de PDF"</strong> e o Gigio extrai o texto automaticamente.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-icon">📥</div>
+      <div class="card-title">Via setlist PDF</div>
+      <div class="card-desc">
+        Ao importar um PDF de setlist (ver secção 5), músicas não encontradas
+        podem ser pesquisadas e adicionadas diretamente à biblioteca e ao concerto.
+      </div>
+    </div>
+  </div>
+
+  <h2>Editar uma música</h2>
+  <p>Abre uma música da biblioteca. Podes:</p>
+  <ul>
+    <li>Editar a letra linha a linha</li>
+    <li>Adicionar cifras (acordes) — aparecem no Modo Concerto no tom certo</li>
+    <li>Escrever anotações de palco — visíveis só durante a atuação</li>
+    <li>Transpor automaticamente para o tom da tua banda</li>
+    <li>Marcar como "editada por mim" para preservar as tuas alterações</li>
+  </ul>
+
+  <h2>Filtrar e organizar</h2>
+  <ul>
+    <li>Filtra por nome, artista ou etiqueta (<em>#tag</em> na letra)</li>
+    <li>Ordena por título A–Z, artista A–Z, ou mais recentes</li>
+    <li>Filtra só músicas com letra sincronizada</li>
+    <li>Seleciona várias e apaga em massa</li>
+  </ul>
+
+  <div class="tip">
+    <strong>Sync automático.</strong> Quando adicionas uma música do LRClib com <span class="badge badge-sync">sync</span>,
+    a letra acompanha a música automaticamente no Modo Concerto — sem tocares em nada.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ 4 — CONCERTOS -->
+<div class="page">
+  <div class="section-num">Secção 4</div>
+  <h1>Concertos</h1>
+  <p class="section-lead">Cada concerto é uma setlist com uma ordem de músicas, local, data e duração estimada.</p>
+
+  <h2>Criar um concerto</h2>
+  <ol class="steps">
+    <li>
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <div class="step-title">Vai a <em>Concertos</em> ou ao dashboard do projeto</div>
+        <div class="step-desc">Carrega em <span class="btn-demo primary">+ Novo concerto</span> e escolhe o projeto.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <div class="step-title">Define o local e a data</div>
+        <div class="step-desc">O campo de local tem sugestões automáticas de locais reais (OpenStreetMap). A data é opcional.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <div class="step-title">Adiciona músicas</div>
+        <div class="step-desc">Carrega em <span class="btn-demo">+ Adicionar</span> para escolher da biblioteca. Podes adicionar várias de uma vez.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <div class="step-title">Arrasta para reordenar</div>
+        <div class="step-desc">Usa o handle (≡) à esquerda de cada música para mudar a ordem da setlist.</div>
+      </div>
+    </li>
+  </ol>
+
+  <h2>Ações disponíveis no concerto</h2>
+
+  <table>
+    <thead><tr><th>Botão</th><th>O que faz</th></tr></thead>
+    <tbody>
+      <tr><td><strong>▶ Iniciar Concerto</strong></td><td>Abre o Modo Concerto (ver secção 6)</td></tr>
+      <tr><td><strong>📄 Importar PDF</strong></td><td>Adiciona músicas a partir de um PDF de setlist (ver secção 5)</td></tr>
+      <tr><td><strong>🖨 PDF</strong></td><td>Exporta a setlist como PDF imprimível com ordem, artistas e duração</td></tr>
+      <tr><td><strong>⧉ Duplicar</strong></td><td>Cria uma cópia do concerto noutro projeto</td></tr>
+      <tr><td><strong>🗑 Apagar</strong></td><td>Remove o concerto (irreversível)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Overrides por concerto</h2>
+  <p>Carrega em qualquer música da lista para ver as opções específicas para <em>este</em> concerto:</p>
+  <ul>
+    <li><strong>Tom de execução</strong> — diferente do tom original (as cifras transpõem automaticamente)</li>
+    <li><strong>Intro</strong> — nota de entrada, ex: "4 compassos de guitarra"</li>
+    <li><strong>Ending</strong> — como termina, ex: "fade out"</li>
+    <li><strong>Notas</strong> — qualquer anotação extra visível no palco</li>
+  </ul>
+
+  <div class="tip">
+    <strong>Duração estimada.</strong> O Gigio calcula automaticamente a duração total do concerto
+    com base nas durações das músicas — aparece no topo da setlist, ex: <em>~47 min</em>.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ 5 — IMPORTAR PDF -->
+<div class="page">
+  <div class="section-num">Secção 5</div>
+  <h1>Importar Setlist de PDF</h1>
+  <p class="section-lead">A forma mais rápida de digitalizar concertos que já existem em papel ou PDF. Em segundos tens a setlist criada.</p>
+
+  <h2>Como funciona</h2>
+  <div class="flow" style="gap:8px; margin-bottom: 24px;">
+    <div class="flow-step">1 Upload do PDF</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">2 Leitura automática</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">3 Revisão</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">4 Revisão em massa</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">5 Importado!</div>
+  </div>
+
+  <h2>Passo a passo</h2>
+  <ol class="steps">
+    <li>
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <div class="step-title">Abre o concerto e carrega em <strong>📄 Importar PDF</strong></div>
+        <div class="step-desc">Arrasta o ficheiro ou carrega para escolher. Só ficheiros .pdf são aceites.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <div class="step-title">O Gigio lê as músicas automaticamente</div>
+        <div class="step-desc">Remove números de faixa, letras maiúsculas desnecessárias e ruído típico de PDFs (ex: "01.", "#2 ", "(ao vivo)").</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <div class="step-title">Revê as entradas detetadas</div>
+        <div class="step-desc">Podes desmarcar músicas que não queres. As músicas já na tua biblioteca aparecem com ✓.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <div class="step-title">Revisão em massa para as músicas não encontradas</div>
+        <div class="step-desc">
+          Para cada música não encontrada, o Gigio pesquisa automaticamente em segundo plano e mostra o melhor resultado com uma <strong>percentagem de confiança</strong>:
+          <br>
+          <span class="badge badge-sync">verde ≥80%</span> — boa correspondência &nbsp;
+          <span style="background:rgba(245,158,11,.12);color:#d97706;" class="badge">laranja 50-79%</span> — verificar &nbsp;
+          <span style="background:rgba(239,68,68,.1);color:#dc2626;" class="badge">vermelho &lt;50%</span> — suspeito
+        </div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">5</div>
+      <div class="step-content">
+        <div class="step-title">Carrega em <span class="btn-demo primary">Importar X músicas</span></div>
+        <div class="step-desc">Todas as músicas selecionadas são adicionadas à biblioteca e ao concerto de uma só vez.</div>
+      </div>
+    </li>
+  </ol>
+
+  <div class="tip">
+    <strong>Músicas sem letra?</strong> Se não houver resultado para uma música, ela é criada com o nome
+    mas sem letra — podes adicionar a letra mais tarde na biblioteca. A setlist fica completa na mesma.
+  </div>
+
+  <h2>Dicas para PDFs</h2>
+  <ul>
+    <li>O PDF pode ter o nome do artista antes do título, ex: <em>"BON JOVI LIVING ON A PRAYER"</em> — o algoritmo trata disso</li>
+    <li>Medleys separados por <strong>/</strong> são detetados como entradas únicas, ex: <em>"Gimme All / Chiquitita"</em></li>
+    <li>PDFs protegidos por palavra-passe não são suportados — remove a proteção antes de importar</li>
+    <li>Se uma música aparecer errada, carrega em <strong>▾</strong> para ver os outros resultados encontrados</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ 6 — MODO CONCERTO -->
+<div class="page">
+  <div class="section-num">Secção 6</div>
+  <h1>Modo Concerto</h1>
+  <p class="section-lead">O ecrã que usas no palco. Letras, cifras e anotações — o ecrã não apaga e a letra pode acompanhar automaticamente.</p>
+
+  <h2>Dois modos de visualização</h2>
+  <div class="compare">
+    <div class="compare-card">
+      <div class="compare-header">🎵 Semi (Sincronizado)</div>
+      <div class="compare-body">
+        <ul>
+          <li>A linha atual destaca-se automaticamente</li>
+          <li>Funciona com músicas <span class="badge badge-sync">sync</span></li>
+          <li>Botões Play/Pause e avanço de 5s</li>
+          <li>Ideal para letras que já conheces</li>
+        </ul>
+      </div>
+    </div>
+    <div class="compare-card">
+      <div class="compare-header">👆 Manual</div>
+      <div class="compare-body">
+        <ul>
+          <li>Avança linha a linha com toque/tecla</li>
+          <li>Funciona com qualquer música</li>
+          <li>Mais controlo durante a atuação</li>
+          <li>Ideal para músicas novas ou improvisação</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2>Três conteúdos disponíveis</h2>
+  <ul>
+    <li><strong>Letras</strong> — letra da música com linha atual destacada</li>
+    <li><strong>Cifras</strong> — acordes acima das letras, transpostos para o tom do concerto</li>
+    <li><strong>Anotações</strong> — notas de palco que adicionaste à música</li>
+  </ul>
+
+  <h2>Navegação</h2>
+  <ol class="steps">
+    <li>
+      <div class="step-num">←</div>
+      <div class="step-content">
+        <div class="step-title">Desliza para a esquerda (ou botão ❮)</div>
+        <div class="step-desc">Música anterior</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">→</div>
+      <div class="step-content">
+        <div class="step-title">Desliza para a direita (ou botão ❯)</div>
+        <div class="step-desc">Próxima música</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">☰</div>
+      <div class="step-content">
+        <div class="step-title">Lista de músicas</div>
+        <div class="step-desc">Painel lateral com todas as músicas da setlist — toca para saltar diretamente</div>
+      </div>
+    </li>
+  </ol>
+
+  <h2>Atalhos de teclado (tablet/computador)</h2>
+  <div class="shortcuts">
+    <div class="shortcut"><span class="key">Espaço</span><span class="key-desc">Avançar linha / Play-Pause</span></div>
+    <div class="shortcut"><span class="key">→</span><span class="key-desc">Avançar linha (manual)</span></div>
+    <div class="shortcut"><span class="key">←</span><span class="key-desc">Recuar linha</span></div>
+    <div class="shortcut"><span class="key">↑</span><span class="key-desc">Música anterior</span></div>
+    <div class="shortcut"><span class="key">↓</span><span class="key-desc">Próxima música</span></div>
+    <div class="shortcut"><span class="key">Esc</span><span class="key-desc">Sair do modo concerto</span></div>
+  </div>
+
+  <div class="tip">
+    <strong>Ecrã sempre ligado.</strong> O Modo Concerto usa a Wake Lock API para impedir que o ecrã
+    apague durante a atuação — não precisas de tocar no ecrã para o manter ativo.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ 7 — PARTILHA -->
+<div class="page">
+  <div class="section-num">Secção 7</div>
+  <h1>Partilha com a Banda</h1>
+  <p class="section-lead">Cada músico acede à app no seu próprio dispositivo. A partilha é feita por projeto — quem está no projeto vê tudo o que lhe pertence.</p>
+
+  <h2>Convidar alguém</h2>
+  <ol class="steps">
+    <li>
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <div class="step-title">Vai ao projeto → <strong>Gerir Membros</strong></div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <div class="step-title">Copia o <strong>Código de Convite</strong> (ex: ROCK-4721)</div>
+        <div class="step-desc">Partilha por WhatsApp, SMS ou qualquer mensagem. Válido por 7 dias.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <div class="step-title">A outra pessoa abre o Gigio e introduz o código</div>
+        <div class="step-desc">Entra automaticamente no projeto com o papel que definiste.</div>
+      </div>
+    </li>
+  </ol>
+
+  <div class="tip">
+    <strong>Código expirado?</strong> Gera um novo código — o anterior é invalidado automaticamente.
+    Podes regenerar sempre que precisares.
+  </div>
+
+  <h2>Acesso da banda durante o concerto</h2>
+  <p>Cada músico que está no projeto tem acesso ao Modo Concerto. No tablet do baixista, nos óculos do vocalista, no telemóvel do guitarrista — todos veem a mesma setlist atualizada.</p>
+
+  <h2>O que cada papel pode fazer</h2>
+  <table>
+    <thead><tr><th>Ação</th><th>Dono</th><th>Admin</th><th>Editor</th><th>Visualizador</th></tr></thead>
+    <tbody>
+      <tr><td>Ver concertos e letras</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      <tr><td>Usar Modo Concerto</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      <tr><td>Adicionar/editar músicas</td><td>✓</td><td>✓</td><td>✓</td><td>—</td></tr>
+      <tr><td>Criar/editar concertos</td><td>✓</td><td>✓</td><td>✓</td><td>—</td></tr>
+      <tr><td>Convidar membros</td><td>✓</td><td>✓</td><td>—</td><td>—</td></tr>
+      <tr><td>Apagar projeto</td><td>✓</td><td>—</td><td>—</td><td>—</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ 8 — DICAS -->
+<div class="page">
+  <div class="section-num">Secção 8</div>
+  <h1>Dicas Rápidas</h1>
+  <p class="section-lead">Pequenos truques para tirares o máximo partido do Gigio.</p>
+
+  <h2>Instalar como app (recomendado)</h2>
+  <ol class="steps">
+    <li>
+      <div class="step-num">📱</div>
+      <div class="step-content">
+        <div class="step-title">iOS (Safari): toca em Partilhar → "Adicionar ao Ecrã Inicial"</div>
+        <div class="step-desc">Abre como app nativa, sem barra de endereço, em modo completo.</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">🤖</div>
+      <div class="step-content">
+        <div class="step-title">Android (Chrome): menu ⋮ → "Adicionar ao ecrã inicial" ou "Instalar app"</div>
+      </div>
+    </li>
+    <li>
+      <div class="step-num">💻</div>
+      <div class="step-content">
+        <div class="step-title">Computador (Chrome/Edge): ícone de instalação na barra de endereço</div>
+      </div>
+    </li>
+  </ol>
+
+  <div class="divider"></div>
+
+  <h2>Antes de um concerto</h2>
+  <ul>
+    <li>Abre a setlist enquanto tens internet para garantir que fica em cache</li>
+    <li>Confirma que todas as músicas têm letra (ícone de letra na biblioteca)</li>
+    <li>Define o tom de execução para músicas que tocas noutra tonalidade</li>
+    <li>Adiciona notas de intro/ending para músicas com arranjos especiais</li>
+  </ul>
+
+  <div class="divider"></div>
+
+  <h2>Modo Concerto no tablet</h2>
+  <ul>
+    <li>Usa orientação paisagem para ver mais letra no ecrã</li>
+    <li>Aumenta o tamanho de letra nas Definições → Tema Concerto</li>
+    <li>Conecta um teclado Bluetooth para usar os atalhos</li>
+    <li>Ativa o modo escuro para palcos com pouca luz</li>
+  </ul>
+
+  <div class="divider"></div>
+
+  <h2>Offline — o que fica guardado</h2>
+  <ul>
+    <li>Letras e linhas sincronizadas de todas as músicas abertas</li>
+    <li>Todas as setlists e ordem das músicas</li>
+    <li>Informação dos projetos e bandas</li>
+    <li>Tema e configurações do Modo Concerto</li>
+  </ul>
+
+  <div class="tip">
+    <strong>Problema com um PDF?</strong> Se o Gigio não conseguir ler as músicas, verifica:
+    (1) se o PDF não está protegido por palavra-passe; (2) se o texto é selecionável
+    (não é uma imagem). PDFs gerados pelo Word ou Google Docs funcionam na perfeição.
+  </div>
+
+  <div class="divider"></div>
+
+  <p style="text-align:center; color: var(--text3); font-size: 12px; margin-top: 32px;">
+    <strong>gigio.app</strong> &nbsp;·&nbsp; Junho 2026
+    <br>
+    Para ajuda ou sugestões, fala com o administrador da tua banda.
+  </p>
+</div>
+
+</body>
+</html>
