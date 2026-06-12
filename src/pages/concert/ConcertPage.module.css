@@ -402,7 +402,7 @@
    so it's usable from a music stand
 ────────────────────────────────────────── */
 @media (min-width: 768px) {
-  .lyricLineManual { font-size: calc(var(--lyric-size, 32px) * 1.45); }
+  .lyricLineManual { font-size: var(--lyric-size, 32px); }
 
   .header { padding: 18px 28px; gap: 14px; }
   .exitBtn { width: 54px; height: 54px; font-size: 22px; }

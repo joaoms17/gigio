@@ -39,6 +39,16 @@ export default function ConcertPage() {
   const [metronomeOn, setMetronomeOn] = useState(false)
   const [annAvailable, setAnnAvailable] = useState(false)
 
+  // Effective font size — scales with viewport so all modes stay consistent
+  const [isTablet, setIsTablet] = useState(() => window.innerWidth >= 768)
+  useEffect(() => {
+    const handler = () => setIsTablet(window.innerWidth >= 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  const displayFontSize = isTablet ? Math.round(theme.font_size * 1.45) : theme.font_size
+  const displayLineHeight = theme.line_height ?? 1.6
+
   const timerRef              = useRef<ReturnType<typeof setInterval> | null>(null)
   const startRef              = useRef<number>(0)
   const activeLineRef         = useRef<HTMLDivElement>(null)
@@ -447,8 +457,8 @@ export default function ConcertPage() {
                 textColor={theme.active_color}
                 activeLine={annActiveLine >= 0 ? annActiveLine : undefined}
                 accentColor={theme.accent_color}
-                fontSize={theme.font_size}
-                lineHeight={theme.line_height}
+                fontSize={displayFontSize}
+                lineHeight={displayLineHeight}
               />
             )}
           </div>
@@ -458,7 +468,7 @@ export default function ConcertPage() {
         <div
           ref={lyricsScrollRef}
           className={styles.lyricsScroll}
-          style={{ ['--lyric-size' as any]: `${theme.font_size}px` }}
+          style={{ ['--lyric-size' as any]: `${displayFontSize}px` }}
           onScroll={handleScroll}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
@@ -469,7 +479,7 @@ export default function ConcertPage() {
               Sem letra disponível
             </div>
           ) : lines.map((line, i) => line.trim() === '' ? (
-            <div key={i} style={{ height: `${theme.font_size * (theme.line_height ?? 1.6) * 1.8}px`, flexShrink: 0 }} />
+            <div key={i} style={{ height: `${displayFontSize * displayLineHeight * 1.8}px`, flexShrink: 0 }} />
           ) : (
             <div
               key={i}
@@ -477,7 +487,7 @@ export default function ConcertPage() {
               className={styles.lyricLineManual}
               style={{
                 color: theme.active_color,
-                lineHeight: theme.line_height ?? 1.6,
+                lineHeight: displayLineHeight,
                 fontWeight: i === lineIdx ? 800 : 400,
                 opacity: i < lineIdx ? 0.35 : 1,
                 background: i === lineIdx ? `${theme.accent_color}22` : 'transparent',
@@ -492,7 +502,7 @@ export default function ConcertPage() {
       ) : (
         <div
           className={styles.lyricsScroll}
-          style={{ ['--lyric-size' as any]: `${theme.font_size}px` }}
+          style={{ ['--lyric-size' as any]: `${displayFontSize}px` }}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
@@ -502,14 +512,14 @@ export default function ConcertPage() {
               Sem letra disponível
             </div>
           ) : lines.map((line, i) => line.trim() === '' ? (
-            <div key={i} style={{ height: `${theme.font_size * (theme.line_height ?? 1.6) * 1.8}px`, flexShrink: 0 }} />
+            <div key={i} style={{ height: `${displayFontSize * displayLineHeight * 1.8}px`, flexShrink: 0 }} />
           ) : (
             <div
               key={i}
               className={styles.lyricLineManual}
               style={{
                 color: theme.active_color,
-                lineHeight: theme.line_height ?? 1.6,
+                lineHeight: displayLineHeight,
                 fontWeight: 400,
                 opacity: 1,
               }}
