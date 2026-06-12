@@ -505,9 +505,6 @@ export default function ProjectDashboardPage() {
                     <button className={styles.addBtn} onClick={() => navigate(`/search?project=${project.id}`)}>
                       + Pesquisar letra
                     </button>
-                    <button className={styles.addBtnSecondary} onClick={() => navigate(`/search?project=${project.id}&manual=1`)}>
-                      + Manual
-                    </button>
                   </div>
                 )}
               </div>
