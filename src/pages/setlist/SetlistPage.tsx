@@ -359,13 +359,11 @@ export default function SetlistPage() {
         .divider { width: 40px; height: 3px; background: ${accent}; border: none; border-radius: 2px; margin: 20px auto; }
         .songs { padding: 0 0 24px; }
         .song {
-          display: flex; align-items: baseline; justify-content: center; gap: 10px;
-          padding: 9px 0;
-          border-bottom: 1px solid #f0f0f0;
+          display: flex; align-items: baseline; justify-content: center; gap: 8px;
+          padding: 6px 0;
           page-break-inside: avoid;
         }
-        .song:last-child { border-bottom: none; }
-        .num { font-size: 13px; color: #bbb; font-weight: 700; min-width: 22px; text-align: right; flex-shrink: 0; }
+        .num { font-size: 13px; color: #bbb; font-weight: 700; min-width: 20px; text-align: right; flex-shrink: 0; }
         .title { font-size: 20px; font-weight: 700; text-align: left; }
         @media print { .toolbar { display: none; } }
       </style></head><body>
