@@ -347,27 +347,27 @@ export default function SetlistPage() {
         }
         .toolbar .print { background: ${accent}; border-color: ${accent}; color: #fff; }
         .header {
-          padding: 32px 0 24px;
-          display: flex; align-items: center; justify-content: center; gap: 24px;
+          padding: 14px 0 10px;
+          display: flex; align-items: center; justify-content: center; gap: 16px;
         }
-        .logo { width: 110px; height: 110px; border-radius: 22px; object-fit: cover; flex-shrink: 0; }
+        .logo { width: 64px; height: 64px; border-radius: 14px; object-fit: cover; flex-shrink: 0; }
         .logoInitial {
-          width: 110px; height: 110px; border-radius: 22px; flex-shrink: 0;
+          width: 64px; height: 64px; border-radius: 14px; flex-shrink: 0;
           background: ${accent}; color: #fff;
-          font-size: 48px; font-weight: 900;
+          font-size: 28px; font-weight: 900;
           display: flex; align-items: center; justify-content: center;
         }
         .headerText { text-align: left; }
-        .concertName { font-size: 30px; font-weight: 900; letter-spacing: -0.5px; line-height: 1.15; }
-        .divider { width: 40px; height: 3px; background: ${accent}; border: none; border-radius: 2px; margin: 20px auto; }
-        .songs { padding: 0 0 24px; }
+        .concertName { font-size: 22px; font-weight: 900; letter-spacing: -0.3px; line-height: 1.2; }
+        .divider { width: 36px; height: 2.5px; background: ${accent}; border: none; border-radius: 2px; margin: 10px auto; }
+        .songs { padding: 0; }
         .song {
-          display: flex; align-items: baseline; justify-content: center; gap: 8px;
-          padding: 5px 0;
+          display: flex; align-items: baseline; justify-content: center; gap: 7px;
+          padding: 2px 0;
           page-break-inside: avoid;
         }
-        .num { font-size: 13px; color: #bbb; font-weight: 700; min-width: 20px; text-align: right; flex-shrink: 0; }
-        .title { font-size: 20px; font-weight: 700; }
+        .num { font-size: 11px; color: #bbb; font-weight: 700; min-width: 18px; text-align: right; flex-shrink: 0; }
+        .title { font-size: 17px; font-weight: 700; }
         @media print { .toolbar { display: none; } }
       </style></head><body>
       <div class="toolbar">
