@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { supabase } from '../lib/supabase'
 import styles from './AnnotationLayer.module.css'
 
@@ -11,21 +11,25 @@ export interface Stroke {
 
 interface Props {
   songId: string
-  userId?: string        // when set, annotations sync to Supabase
+  userId?: string
   tool: 'pen' | 'eraser'
   color: string
   strokeWidth: number
-  clearTrigger: number   // increment to trigger clear
+  clearTrigger: number
+  disabled?: boolean   // when true, pointer-events:none so page can scroll
+}
+
+export interface AnnotationHandle {
+  undo: () => void
 }
 
 export const ANN_STORAGE_KEY = (id: string) => `gigio_ann_v1_${id}`
 
 export interface SavedAnnotations {
-  w: number          // container width when drawn — used to scale on display
+  w: number
   strokes: Stroke[]
 }
 
-/** Read saved annotations, handling the legacy bare-array format. */
 export function loadAnnotations(songId: string): SavedAnnotations | null {
   try {
     const raw = localStorage.getItem(ANN_STORAGE_KEY(songId))
@@ -36,11 +40,6 @@ export function loadAnnotations(songId: string): SavedAnnotations | null {
   } catch { return null }
 }
 
-/**
- * Sync annotations with Supabase (song_annotations table). Remote wins if
- * newer; local is pushed otherwise. Silently no-ops if the table doesn't
- * exist yet — localStorage keeps working as the source of truth.
- */
 export async function pullAnnotations(songId: string, userId: string): Promise<SavedAnnotations | null> {
   try {
     const { data, error } = await supabase
@@ -51,7 +50,6 @@ export async function pullAnnotations(songId: string, userId: string): Promise<S
       .maybeSingle()
     if (error || !data?.strokes) return null
     const payload = data.strokes
-    // Stored as {w, strokes} object; tolerate a bare array too
     if (Array.isArray(payload)) return { w: 0, strokes: payload }
     return payload as SavedAnnotations
   } catch { return null }
@@ -63,7 +61,7 @@ export async function pushAnnotations(songId: string, userId: string, payload: S
       { song_id: songId, user_id: userId, strokes: payload, updated_at: new Date().toISOString() },
       { onConflict: 'song_id,user_id' }
     )
-  } catch { /* table may not exist yet — localStorage still has the data */ }
+  } catch {}
 }
 
 export function annotationPath(pts: number[]): string {
@@ -96,7 +94,10 @@ function dist(x1: number, y1: number, x2: number, y2: number) {
   return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 }
 
-export default function AnnotationLayer({ songId, userId, tool, color, strokeWidth, clearTrigger }: Props) {
+const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationLayer(
+  { songId, userId, tool, color, strokeWidth, clearTrigger, disabled = false },
+  ref
+) {
   const layerRef = useRef<HTMLDivElement>(null)
   const [strokes, setStrokes] = useState<Stroke[]>([])
   const [current, setCurrent] = useState<Stroke | null>(null)
@@ -109,27 +110,36 @@ export default function AnnotationLayer({ songId, userId, tool, color, strokeWid
 
   const loadedRef = useRef(false)
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const historyRef = useRef<Stroke[][]>([])  // undo snapshots
 
-  // Load: localStorage first (instant), then merge remote if it has more
+  useImperativeHandle(ref, () => ({
+    undo() {
+      if (historyRef.current.length === 0) return
+      const prev = historyRef.current[historyRef.current.length - 1]
+      historyRef.current = historyRef.current.slice(0, -1)
+      setStrokes(prev)
+    }
+  }))
+
   useEffect(() => {
     loadedRef.current = false
     const local = loadAnnotations(songId)
     setStrokes(local?.strokes ?? [])
+    historyRef.current = []
     loadedRef.current = true
     if (userId) {
       pullAnnotations(songId, userId).then(remote => {
         if (!remote) return
-        // Remote replaces local only when local is empty (fresh device)
         const localNow = loadAnnotations(songId)
         if (!localNow || localNow.strokes.length === 0) {
           setStrokes(remote.strokes)
+          historyRef.current = []
           try { localStorage.setItem(ANN_STORAGE_KEY(songId), JSON.stringify(remote)) } catch {}
         }
       })
     }
   }, [songId, userId])
 
-  // Save to localStorage + debounced push to Supabase
   useEffect(() => {
     if (!loadedRef.current) return
     const w = layerRef.current?.offsetWidth ?? svgW
@@ -141,15 +151,14 @@ export default function AnnotationLayer({ songId, userId, tool, color, strokeWid
     }
   }, [strokes, songId, userId])
 
-  // Clear trigger
   useEffect(() => {
     if (clearTrigger !== prevClearRef.current) {
       prevClearRef.current = clearTrigger
+      historyRef.current.push([...strokes])
       setStrokes([])
     }
   }, [clearTrigger])
 
-  // Observe size for SVG viewBox
   useEffect(() => {
     const el = layerRef.current
     if (!el) return
@@ -174,14 +183,12 @@ export default function AnnotationLayer({ songId, userId, tool, color, strokeWid
     const { x, y } = getXY(e)
     drawingRef.current = true
 
-    if (tool === 'eraser') return
-
-    const stroke: Stroke = {
-      id: crypto.randomUUID(),
-      pts: [x, y],
-      color,
-      width: strokeWidth,
+    if (tool === 'eraser') {
+      historyRef.current.push([...strokes])
+      return
     }
+
+    const stroke: Stroke = { id: crypto.randomUUID(), pts: [x, y], color, width: strokeWidth }
     currentRef.current = stroke
     setCurrent(stroke)
   }
@@ -217,12 +224,13 @@ export default function AnnotationLayer({ songId, userId, tool, color, strokeWid
     setCurrent(null)
 
     if (tool !== 'eraser' && finished && finished.pts.length >= 4) {
+      historyRef.current.push([...strokes])
       setStrokes(prev => [...prev, finished])
     }
   }
 
   return (
-    <div ref={layerRef} className={styles.layer}>
+    <div ref={layerRef} className={styles.layer} style={disabled ? { pointerEvents: 'none' } : {}}>
       {svgW > 0 && (
         <svg
           className={styles.svg}
@@ -235,39 +243,23 @@ export default function AnnotationLayer({ songId, userId, tool, color, strokeWid
           onPointerLeave={onPointerUp}
         >
           {strokes.map(s => (
-            <path
-              key={s.id}
-              d={smoothPath(s.pts)}
-              stroke={s.color}
-              strokeWidth={s.width}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            <path key={s.id} d={smoothPath(s.pts)}
+              stroke={s.color} strokeWidth={s.width}
+              fill="none" strokeLinecap="round" strokeLinejoin="round" />
           ))}
           {current && current.pts.length >= 4 && (
-            <path
-              d={smoothPath(current.pts)}
-              stroke={current.color}
-              strokeWidth={current.width}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            <path d={smoothPath(current.pts)}
+              stroke={current.color} strokeWidth={current.width}
+              fill="none" strokeLinecap="round" strokeLinejoin="round" />
           )}
           {tool === 'eraser' && eraserPos && (
-            <circle
-              cx={eraserPos.x}
-              cy={eraserPos.y}
-              r={ERASER_RADIUS}
-              fill="none"
-              stroke="var(--text3)"
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-            />
+            <circle cx={eraserPos.x} cy={eraserPos.y} r={ERASER_RADIUS}
+              fill="none" stroke="var(--text3)" strokeWidth={1.5} strokeDasharray="4 3" />
           )}
         </svg>
       )}
     </div>
   )
-}
+})
+
+export default AnnotationLayer
