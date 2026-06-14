@@ -346,25 +346,28 @@ export default function SetlistPage() {
           padding: 9px 20px; border-radius: 10px; border: 1px solid #ccc; background: #f5f5f5;
         }
         .toolbar .print { background: ${accent}; border-color: ${accent}; color: #fff; }
-        .header { padding: 32px 0 24px; }
-        .logo { width: 80px; height: 80px; border-radius: 20px; object-fit: cover; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto; }
-        .logoInitial {
-          width: 80px; height: 80px; border-radius: 20px;
-          background: ${accent}; color: #fff;
-          font-size: 36px; font-weight: 900;
-          display: flex; align-items: center; justify-content: center;
-          margin: 0 auto 16px;
+        .header {
+          padding: 32px 0 24px;
+          display: flex; align-items: center; justify-content: center; gap: 24px;
         }
-        .concertName { font-size: 32px; font-weight: 900; letter-spacing: -0.5px; line-height: 1.1; }
+        .logo { width: 110px; height: 110px; border-radius: 22px; object-fit: cover; flex-shrink: 0; }
+        .logoInitial {
+          width: 110px; height: 110px; border-radius: 22px; flex-shrink: 0;
+          background: ${accent}; color: #fff;
+          font-size: 48px; font-weight: 900;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .headerText { text-align: left; }
+        .concertName { font-size: 30px; font-weight: 900; letter-spacing: -0.5px; line-height: 1.15; }
         .divider { width: 40px; height: 3px; background: ${accent}; border: none; border-radius: 2px; margin: 20px auto; }
         .songs { padding: 0 0 24px; }
         .song {
           display: flex; align-items: baseline; justify-content: center; gap: 8px;
-          padding: 6px 0;
+          padding: 5px 0;
           page-break-inside: avoid;
         }
         .num { font-size: 13px; color: #bbb; font-weight: 700; min-width: 20px; text-align: right; flex-shrink: 0; }
-        .title { font-size: 20px; font-weight: 700; text-align: left; }
+        .title { font-size: 20px; font-weight: 700; }
         @media print { .toolbar { display: none; } }
       </style></head><body>
       <div class="toolbar">
@@ -373,7 +376,9 @@ export default function SetlistPage() {
       </div>
       <div class="header">
         ${logoBlock}
-        <div class="concertName">${esc(setlist.name)}</div>
+        <div class="headerText">
+          <div class="concertName">${esc(setlist.name)}</div>
+        </div>
       </div>
       <hr class="divider" />
       <div class="songs">${rows}</div>
