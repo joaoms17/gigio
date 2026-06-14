@@ -357,19 +357,8 @@ export default function SongPage() {
 
               {mode === 'ensaio' ? (
                 <>
-                  {/* Annotation toolbar */}
+                  {/* Annotation toolbar — colors + sizes + undo only */}
                   <div className={styles.rehearsalBar}>
-                    {/* Scroll / Draw toggle */}
-                    <button
-                      className={`${styles.annTool} ${annScrollMode ? styles.annToolActive : ''}`}
-                      onClick={() => setAnnScrollMode(m => !m)}
-                      title={annScrollMode ? 'Modo scroll — clica para desenhar' : 'Modo desenho — clica para scroll'}
-                    >
-                      {annScrollMode ? '↕' : '✏'}
-                    </button>
-
-                    <div className={styles.annDivider} />
-
                     {/* Colors */}
                     <div className={styles.annColors}>
                       {ANN_COLORS.map(c => (
@@ -405,7 +394,10 @@ export default function SongPage() {
                       onClick={() => { setAnnTool(t => t === 'eraser' ? 'pen' : 'eraser'); setAnnScrollMode(false) }}
                       title="Borracha"
                     >
-                      🧹
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 20H7L3 16l9-9 8 8-4 4z"/>
+                        <path d="M6.5 17.5l-4-4"/>
+                      </svg>
                     </button>
 
                     {/* Undo */}
@@ -415,14 +407,6 @@ export default function SongPage() {
                       title="Desfazer"
                     >
                       ↩
-                    </button>
-
-                    {/* Clear */}
-                    <button
-                      className={styles.annClear}
-                      onClick={() => { if (window.confirm('Limpar todas as anotações desta música?')) setAnnClear(c => c + 1) }}
-                    >
-                      ✕
                     </button>
                   </div>
 
@@ -444,9 +428,10 @@ export default function SongPage() {
                     </div>
                     {/* Floating scroll/draw toggle */}
                     <button
-                      className={`${styles.floatToggle} ${annScrollMode ? styles.floatToggleScroll : styles.floatToggleDraw}`}
+                      className={`${styles.floatBtn} ${annScrollMode ? styles.floatBtnScroll : styles.floatBtnDraw}`}
+                      style={{ position: 'sticky', bottom: '72px', float: 'right', marginRight: '-4px' }}
                       onClick={() => setAnnScrollMode(m => !m)}
-                      title={annScrollMode ? 'Modo scroll — clica para desenhar' : 'Modo desenho — clica para scroll'}
+                      title={annScrollMode ? 'Scroll — clica para desenhar' : 'Desenho — clica para scroll'}
                     >
                       {annScrollMode ? '↕' : '✏'}
                     </button>

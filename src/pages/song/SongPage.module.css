@@ -544,16 +544,14 @@
 }
 .annClear:hover { background: #FF4D6D18; color: var(--gig); border-color: var(--gig); }
 
-/* Floating scroll/draw toggle — always visible over the lyrics */
-.floatToggle {
-  position: sticky;
-  bottom: 16px;
-  right: 20px;
-  float: right;
+/* Floating scroll/draw toggle */
+.floatBtn {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  border: none;
+  border: 1.5px solid var(--border);
+  background: var(--bg2);
+  color: var(--text2);
   font-size: 20px;
   cursor: pointer;
   display: flex;
@@ -561,18 +559,21 @@
   justify-content: center;
   box-shadow: 0 3px 12px rgba(0,0,0,0.18);
   transition: transform 0.12s, background 0.15s;
-  z-index: 20;
-  margin-right: -8px;
 }
-.floatToggle:active { transform: scale(0.9); }
-.floatToggleDraw {
+.floatBtn:active { transform: scale(0.9); }
+.floatBtnActive {
   background: var(--gig);
+  border-color: var(--gig);
   color: white;
 }
-.floatToggleScroll {
+.floatBtnDraw {
+  background: var(--gig);
+  border-color: var(--gig);
+  color: white;
+}
+.floatBtnScroll {
   background: var(--bg2);
   color: var(--text2);
-  border: 1.5px solid var(--border);
 }
 
 .annExit {
