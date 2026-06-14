@@ -85,7 +85,7 @@ export default function SongPage() {
   const [annTool, setAnnTool] = useState<'pen' | 'eraser'>('pen')
   const [annColor, setAnnColor] = useState(ANN_COLORS[0].value)
   const [annWidth, setAnnWidth] = useState(ANN_WIDTHS[0].value)
-  const [annClear, setAnnClear] = useState(0)
+  const [annClear] = useState(0)
   const [annScrollMode, setAnnScrollMode] = useState(false)
   const annLayerRef = useRef<AnnotationHandle>(null)
 
