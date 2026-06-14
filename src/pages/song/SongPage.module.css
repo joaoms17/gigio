@@ -555,10 +555,10 @@
 
 /* Floating scroll/draw toggle — absolute on top of previewWrap */
 .floatBtn {
-  position: absolute;
-  bottom: 20px;
+  position: fixed;
+  bottom: calc(var(--bottomnav-h, 60px) + 16px);
   right: 20px;
-  z-index: 30;
+  z-index: 200;
   display: flex;
   align-items: center;
   gap: 6px;
