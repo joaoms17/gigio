@@ -317,17 +317,19 @@ export default function SetlistPage() {
   function exportPdf() {
     if (!setlist) return
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const dur = (sec?: number) => sec ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : ''
-    const rows = songs.map((ss, i) => `
+    const rows = songs.map((ss, i) => {
+      const key = esc(ss.performance_key ?? ss.song?.performance_key ?? ss.song?.original_key ?? '')
+      const note = [ss.custom_intro ? `Intro: ${ss.custom_intro}` : '', ss.notes ?? ''].filter(Boolean).join(' · ')
+      return `
       <tr>
         <td class="num">${i + 1}</td>
-        <td>
-          <div class="t">${esc(ss.song?.title ?? '')}</div>
-          <div class="a">${esc(ss.song?.artist ?? '')}${ss.custom_intro ? ` — Intro: ${esc(ss.custom_intro)}` : ''}${ss.notes ? ` — ${esc(ss.notes)}` : ''}</div>
+        <td class="main">
+          <span class="t">${esc(ss.song?.title ?? '')}</span>
+          <span class="a">${esc(ss.song?.artist ?? '')}${note ? ` <em>· ${esc(note)}</em>` : ''}</span>
         </td>
-        <td class="key">${esc(ss.performance_key ?? ss.song?.performance_key ?? ss.song?.original_key ?? '')}</td>
-        <td class="dur">${dur(ss.song?.duration_sec)}</td>
-      </tr>`).join('')
+        ${key ? `<td class="key">${key}</td>` : '<td></td>'}
+      </tr>`
+    }).join('')
     const meta = [
       venue,
       date ? new Date(date + 'T00:00').toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' }) : null,
@@ -338,11 +340,13 @@ export default function SetlistPage() {
         ${projectImage
           ? `<img class="projImg" src="${esc(projectImage)}" alt="" />`
           : `<div class="projImg projInitial">${esc(projectName.charAt(0).toUpperCase())}</div>`}
-        <div class="projName">${esc(projectName)}</div>
+        <span class="projName">${esc(projectName)}</span>
       </div>` : ''
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(setlist.name)}</title>
       <style>
-        body { font-family: -apple-system, 'Segoe UI', sans-serif; color: #111; margin: 32px; }
+        @page { size: A4; margin: 14mm 16mm; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, 'Segoe UI', sans-serif; color: #111; margin: 24px auto; max-width: 640px; text-align: center; }
         .toolbar {
           position: sticky; top: 0; display: flex; gap: 10px; justify-content: flex-end;
           padding: 10px 0; margin-bottom: 14px; background: #fff;
@@ -352,36 +356,38 @@ export default function SetlistPage() {
           padding: 9px 20px; border-radius: 10px; border: 1px solid #ccc; background: #f5f5f5;
         }
         .toolbar .print { background: ${accent}; border-color: ${accent}; color: #fff; }
-        .proj { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-        .projImg { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; }
+        .proj { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px; }
+        .projImg { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; }
         .projInitial {
-          display: flex; align-items: center; justify-content: center;
-          background: ${accent}; color: #fff; font-size: 24px; font-weight: 800;
+          display: inline-flex; align-items: center; justify-content: center;
+          background: ${accent}; color: #fff; font-size: 20px; font-weight: 800;
         }
-        .projName { font-size: 17px; font-weight: 800; }
-        h1 { font-size: 26px; margin: 0 0 4px; }
-        .meta { color: #666; font-size: 13px; margin-bottom: 6px; }
-        .total { color: #666; font-size: 12px; margin-bottom: 20px; }
+        .projName { font-size: 15px; font-weight: 800; }
+        h1 { font-size: 22px; font-weight: 900; margin: 0 0 4px; }
+        .meta { color: #666; font-size: 12px; margin-bottom: 4px; }
+        .total { color: #999; font-size: 11px; margin-bottom: 18px; }
+        .divider { border: none; border-top: 2px solid ${accent}; margin: 0 auto 14px; width: 48px; }
         table { width: 100%; border-collapse: collapse; }
-        td { padding: 9px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
-        .num { width: 30px; color: #999; font-weight: 700; }
-        .t { font-weight: 700; font-size: 15px; }
-        .a { color: #666; font-size: 12px; margin-top: 2px; }
-        .key { width: 50px; font-weight: 700; color: ${accent}; text-align: center; }
-        .dur { width: 50px; color: #666; text-align: right; font-variant-numeric: tabular-nums; }
-        @media print { body { margin: 12mm; } .toolbar { display: none; } }
+        tr { page-break-inside: avoid; }
+        td { padding: 6px 6px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        .num { width: 24px; color: #bbb; font-size: 11px; font-weight: 700; text-align: right; padding-right: 10px; }
+        .main { text-align: left; }
+        .t { font-weight: 700; font-size: 13px; }
+        .a { color: #888; font-size: 11px; margin-left: 6px; }
+        .key { width: 36px; font-weight: 800; font-size: 12px; color: ${accent}; text-align: center; }
+        @media print { body { margin: 0 auto; } .toolbar { display: none; } }
       </style></head><body>
       <div class="toolbar">
-        <button onclick="window.close(); history.back()">✕ Fechar</button>
+        <button onclick="window.close()">✕ Fechar</button>
         <button class="print" onclick="window.print()">🖨 Imprimir / PDF</button>
       </div>
       ${projectHeader}
       <h1>${esc(setlist.name)}</h1>
       ${meta ? `<div class="meta">${esc(meta)}</div>` : ''}
       <div class="total">${songs.length} músicas${totalMin > 0 ? ` · duração total ≈ ${durationLabel}` : ''}</div>
+      <hr class="divider" />
       <table>${rows}</table>
       <script>
-        // Wait for the project image before printing (1.5s safety timeout)
         window.onload = () => {
           const img = document.querySelector('img.projImg')
           const go = () => setTimeout(() => window.print(), 100)
