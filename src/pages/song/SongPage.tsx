@@ -344,6 +344,13 @@ export default function SongPage() {
                     ✎ Editar letra
                   </button>
                 </div>
+                <button
+                  className={styles.syncEditorBtn}
+                  onClick={() => navigate(`/songs/${id}/sync${projectId ? `?project=${projectId}` : ''}`)}
+                  title="Editor de sincronização de letra"
+                >
+                  🎵 Sincronizar
+                </button>
               </div>
 
               {mode === 'ensaio' ? (

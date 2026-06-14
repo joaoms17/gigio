@@ -388,6 +388,20 @@
   color: var(--text);
 }
 
+.syncEditorBtn {
+  padding: 5px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--text3);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.syncEditorBtn:hover { border-color: var(--gig); color: var(--gig); }
+
 .previewToggle {
   background: none;
   border: 1.5px solid var(--border);

@@ -14,6 +14,7 @@ import ConcertPage from './pages/concert/ConcertPage'
 import LibraryPage from './pages/library/LibraryPage'
 import SetlistsPage from './pages/setlists/SetlistsPage'
 import SettingsPage from './pages/settings/SettingsPage'
+import SyncEditorPage from './pages/sync/SyncEditorPage'
 import './index.css'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -43,6 +44,7 @@ function AppRoutes() {
       {/* Biblioteca pessoal */}
       <Route path="/library" element={<AuthGuard><LibraryPage /></AuthGuard>} />
       <Route path="/songs/:id" element={<AuthGuard><SongPage /></AuthGuard>} />
+      <Route path="/songs/:id/sync" element={<AuthGuard><SyncEditorPage /></AuthGuard>} />
       <Route path="/search" element={<AuthGuard><SearchPage /></AuthGuard>} />
 
       {/* Definições */}
