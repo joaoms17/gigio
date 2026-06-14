@@ -46,6 +46,12 @@ export default function SyncEditorPage() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const lineRefs = useRef<(HTMLDivElement | null)[]>([])
+  const linesRef = useRef<SyncLine[]>([])
+  const cursorRef = useRef(0)
+
+  // Keep refs in sync for use inside callbacks without stale closure
+  useEffect(() => { linesRef.current = lines }, [lines])
+  useEffect(() => { cursorRef.current = cursor }, [cursor])
 
   useEffect(() => {
     if (!id || !user) return
@@ -71,39 +77,53 @@ export default function SyncEditorPage() {
 
   function handleAudioFile(file: File) {
     if (audioUrl) URL.revokeObjectURL(audioUrl)
-    const url = URL.createObjectURL(file)
-    setAudioUrl(url)
+    setAudioUrl(URL.createObjectURL(file))
     setCurrentTime(0)
+    setPlaying(false)
   }
 
   function togglePlay() {
-    if (!audioRef.current) return
-    if (playing) audioRef.current.pause()
-    else audioRef.current.play()
+    const a = audioRef.current
+    if (!a) return
+    if (a.paused) a.play()
+    else a.pause()
+  }
+
+  function seek(delta: number) {
+    const a = audioRef.current
+    if (!a) return
+    const t = Math.max(0, Math.min(a.duration || 0, a.currentTime + delta))
+    a.currentTime = t
+    setCurrentTime(t)
   }
 
   const tap = useCallback(() => {
-    if (!audioRef.current) return
-    const ms = Math.round(audioRef.current.currentTime * 1000)
+    const a = audioRef.current
+    if (!a) return
+    const ms = Math.round(a.currentTime * 1000)
+    const cur = cursorRef.current
+    const len = linesRef.current.length
     setLines(prev => {
       const next = [...prev]
-      next[cursor] = { ...next[cursor], time_ms: ms }
+      next[cur] = { ...next[cur], time_ms: ms }
       return next
     })
-    setCursor(c => Math.min(c + 1, lines.length - 1))
-  }, [cursor, lines.length])
+    setCursor(c => Math.min(c + 1, len - 1))
+  }, [])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement) return
       if (e.code === 'Space') { e.preventDefault(); tap() }
       if (e.code === 'ArrowUp') { e.preventDefault(); setCursor(c => Math.max(0, c - 1)) }
-      if (e.code === 'ArrowDown') { e.preventDefault(); setCursor(c => Math.min(lines.length - 1, c + 1)) }
+      if (e.code === 'ArrowDown') { e.preventDefault(); setCursor(c => Math.min(linesRef.current.length - 1, c + 1)) }
       if (e.code === 'KeyP') { e.preventDefault(); togglePlay() }
+      if (e.code === 'ArrowLeft') { e.preventDefault(); seek(-5) }
+      if (e.code === 'ArrowRight') { e.preventDefault(); seek(5) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [tap, lines.length])
+  }, [tap])
 
   function undoLast() {
     const idx = [...lines].map((l, i) => ({ ...l, i })).filter(l => l.time_ms !== null).pop()?.i
@@ -118,8 +138,9 @@ export default function SyncEditorPage() {
   }
 
   function jumpTo(ms: number) {
-    if (!audioRef.current) return
-    audioRef.current.currentTime = ms / 1000
+    const a = audioRef.current
+    if (!a) return
+    a.currentTime = ms / 1000
     setCurrentTime(ms / 1000)
   }
 
@@ -151,7 +172,7 @@ export default function SyncEditorPage() {
           <span className={styles.songArtist}>{song?.artist}</span>
         </div>
         <div className={styles.topRight}>
-          <span className={styles.prog}>{tapped}/{lines.length}</span>
+          <span className={styles.prog}>{tapped}/{lines.length} linhas</span>
           <button
             className={`${styles.saveBtn} ${savedOk ? styles.saveBtnOk : ''}`}
             onClick={save} disabled={saving}
@@ -182,6 +203,8 @@ export default function SyncEditorPage() {
             <button className={styles.playBtn} onClick={togglePlay}>
               {playing ? '⏸' : '▶'}
             </button>
+            <button className={styles.seekBtn} onClick={() => seek(-5)} title="−5s (←)">−5s</button>
+            <button className={styles.seekBtn} onClick={() => seek(5)} title="+5s (→)">+5s</button>
             <span className={styles.timeLabel}>{msToStr(currentTime * 1000)}</span>
             <input className={styles.scrubber} type="range"
               min={0} max={audioDur || 100} step={0.05} value={currentTime}
@@ -209,14 +232,19 @@ export default function SyncEditorPage() {
         )}
       </div>
 
-      {/* Tap button */}
+      {/* Tap controls */}
       {audioUrl && (
         <div className={styles.tapRow}>
           <button className={styles.tapBtn} onClick={tap}>
-            TAP — marcar linha {cursor + 1}
+            TAP
           </button>
-          <button className={styles.undoBtn} onClick={undoLast}>↩ Desfazer</button>
-          <span className={styles.tapHint}>Espaço = tap · P = play/pause · ↑↓ = mover linha</span>
+          <div className={styles.tapCurrent}>
+            {cursor < lines.length
+              ? <><span className={styles.tapLineNum}>#{cursor + 1}</span> {lines[cursor]?.text}</>
+              : '✓ Todas marcadas'}
+          </div>
+          <button className={styles.undoBtn} onClick={undoLast}>↩</button>
+          <span className={styles.tapHint}>Espaço = tap · P = play · ← → = ±5s · ↑↓ = linha</span>
         </div>
       )}
 
