@@ -499,11 +499,11 @@ export default function SetlistPage() {
             </button>
             <div className={styles.secondaryActions}>
               {setlist?.band_id && (
-                <button className={styles.dupBtn} onClick={() => setShowImport(true)}>📄 Importar PDF</button>
+                <button className={styles.dupBtn} onClick={() => setShowImport(true)}>Importar PDF</button>
               )}
-              <button className={styles.dupBtn} onClick={exportPdf}>🖨 PDF</button>
-              <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>⧉ Duplicar</button>
-              {canDelete && <button className={styles.deleteBtn} onClick={deleteSetlist}>🗑 Apagar</button>}
+              <button className={styles.dupBtn} onClick={exportPdf}>Exportar PDF</button>
+              <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>Duplicar</button>
+              {canDelete && <button className={styles.deleteBtn} onClick={deleteSetlist}>Apagar</button>}
             </div>
           </div>
         </div>

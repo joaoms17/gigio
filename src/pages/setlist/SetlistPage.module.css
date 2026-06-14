@@ -62,9 +62,9 @@
 .headerActions { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 220px; }
 .secondaryActions { display: flex; gap: 6px; flex-wrap: wrap; }
 .secondaryActions .dupBtn, .secondaryActions .deleteBtn { flex: 1 1 calc(50% - 3px); min-width: 0; font-size: 13px; padding: 8px 10px; }
-.deleteBtn { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: var(--text3); font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; text-align: center; }
+.deleteBtn { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: var(--text3); font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
 .deleteBtn:hover { border-color: #ef4444; color: #ef4444; }
-.dupBtn { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--text2); font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; text-align: center; }
+.dupBtn { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
 .dupBtn:hover { border-color: var(--gig); color: var(--gig); }
 .concertBtn { width: 100%; padding: 14px 18px; border: none; border-radius: var(--radius); background: linear-gradient(135deg, var(--gig), var(--io)); color: white; font-size: 16px; font-weight: 800; white-space: nowrap; cursor: pointer; box-shadow: 0 4px 16px rgba(255,77,109,0.25); transition: opacity 0.15s; }
 .concertBtn:hover { opacity: 0.9; }
