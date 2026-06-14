@@ -317,79 +317,71 @@ export default function SetlistPage() {
   function exportPdf() {
     if (!setlist) return
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const rows = songs.map((ss, i) => {
-      const key = esc(ss.performance_key ?? ss.song?.performance_key ?? ss.song?.original_key ?? '')
-      const note = [ss.custom_intro ? `Intro: ${ss.custom_intro}` : '', ss.notes ?? ''].filter(Boolean).join(' · ')
-      return `
-      <tr>
-        <td class="num">${i + 1}</td>
-        <td class="main">
-          <span class="t">${esc(ss.song?.title ?? '')}</span>
-          <span class="a">${esc(ss.song?.artist ?? '')}${note ? ` <em>· ${esc(note)}</em>` : ''}</span>
-        </td>
-        ${key ? `<td class="key">${key}</td>` : '<td></td>'}
-      </tr>`
-    }).join('')
-    const meta = [
-      venue,
-      date ? new Date(date + 'T00:00').toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' }) : null,
-    ].filter(Boolean).join(' · ')
+    const rows = songs.map((ss, i) => `
+      <div class="song">
+        <span class="num">${i + 1}</span>
+        <span class="title">${esc(ss.song?.title ?? '')}</span>
+      </div>`
+    ).join('')
     const accent = projectColor ?? '#FF4D6D'
-    const projectHeader = projectName ? `
-      <div class="proj">
-        ${projectImage
-          ? `<img class="projImg" src="${esc(projectImage)}" alt="" />`
-          : `<div class="projImg projInitial">${esc(projectName.charAt(0).toUpperCase())}</div>`}
-        <span class="projName">${esc(projectName)}</span>
-      </div>` : ''
+    const logoBlock = projectName
+      ? projectImage
+        ? `<img class="logo" src="${esc(projectImage)}" alt="${esc(projectName)}" />`
+        : `<div class="logoInitial">${esc(projectName.charAt(0).toUpperCase())}</div>`
+      : ''
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(setlist.name)}</title>
       <style>
-        @page { size: A4; margin: 14mm 16mm; }
+        @page { size: A4; margin: 18mm 20mm; }
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, 'Segoe UI', sans-serif; color: #111; margin: 24px auto; max-width: 640px; text-align: center; }
+        body {
+          font-family: -apple-system, 'Segoe UI', sans-serif;
+          color: #111; margin: 0; text-align: center;
+        }
         .toolbar {
           position: sticky; top: 0; display: flex; gap: 10px; justify-content: flex-end;
-          padding: 10px 0; margin-bottom: 14px; background: #fff;
+          padding: 10px 16px 10px; background: #fff; border-bottom: 1px solid #eee;
         }
         .toolbar button {
           font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
           padding: 9px 20px; border-radius: 10px; border: 1px solid #ccc; background: #f5f5f5;
         }
         .toolbar .print { background: ${accent}; border-color: ${accent}; color: #fff; }
-        .proj { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px; }
-        .projImg { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; }
-        .projInitial {
-          display: inline-flex; align-items: center; justify-content: center;
-          background: ${accent}; color: #fff; font-size: 20px; font-weight: 800;
+        .header { padding: 32px 0 24px; }
+        .logo { width: 80px; height: 80px; border-radius: 20px; object-fit: cover; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto; }
+        .logoInitial {
+          width: 80px; height: 80px; border-radius: 20px;
+          background: ${accent}; color: #fff;
+          font-size: 36px; font-weight: 900;
+          display: flex; align-items: center; justify-content: center;
+          margin: 0 auto 16px;
         }
-        .projName { font-size: 15px; font-weight: 800; }
-        h1 { font-size: 22px; font-weight: 900; margin: 0 0 4px; }
-        .meta { color: #666; font-size: 12px; margin-bottom: 4px; }
-        .total { color: #999; font-size: 11px; margin-bottom: 18px; }
-        .divider { border: none; border-top: 2px solid ${accent}; margin: 0 auto 14px; width: 48px; }
-        table { width: 100%; border-collapse: collapse; }
-        tr { page-break-inside: avoid; }
-        td { padding: 6px 6px; border-bottom: 1px solid #eee; vertical-align: middle; }
-        .num { width: 24px; color: #bbb; font-size: 11px; font-weight: 700; text-align: right; padding-right: 10px; }
-        .main { text-align: left; }
-        .t { font-weight: 700; font-size: 13px; }
-        .a { color: #888; font-size: 11px; margin-left: 6px; }
-        .key { width: 36px; font-weight: 800; font-size: 12px; color: ${accent}; text-align: center; }
-        @media print { body { margin: 0 auto; } .toolbar { display: none; } }
+        .concertName { font-size: 32px; font-weight: 900; letter-spacing: -0.5px; line-height: 1.1; }
+        .divider { width: 40px; height: 3px; background: ${accent}; border: none; border-radius: 2px; margin: 20px auto; }
+        .songs { padding: 0 0 24px; }
+        .song {
+          display: flex; align-items: baseline; justify-content: center; gap: 10px;
+          padding: 9px 0;
+          border-bottom: 1px solid #f0f0f0;
+          page-break-inside: avoid;
+        }
+        .song:last-child { border-bottom: none; }
+        .num { font-size: 13px; color: #bbb; font-weight: 700; min-width: 22px; text-align: right; flex-shrink: 0; }
+        .title { font-size: 20px; font-weight: 700; text-align: left; }
+        @media print { .toolbar { display: none; } }
       </style></head><body>
       <div class="toolbar">
         <button onclick="window.close()">✕ Fechar</button>
         <button class="print" onclick="window.print()">🖨 Imprimir / PDF</button>
       </div>
-      ${projectHeader}
-      <h1>${esc(setlist.name)}</h1>
-      ${meta ? `<div class="meta">${esc(meta)}</div>` : ''}
-      <div class="total">${songs.length} músicas${totalMin > 0 ? ` · duração total ≈ ${durationLabel}` : ''}</div>
+      <div class="header">
+        ${logoBlock}
+        <div class="concertName">${esc(setlist.name)}</div>
+      </div>
       <hr class="divider" />
-      <table>${rows}</table>
+      <div class="songs">${rows}</div>
       <script>
         window.onload = () => {
-          const img = document.querySelector('img.projImg')
+          const img = document.querySelector('img.logo')
           const go = () => setTimeout(() => window.print(), 100)
           if (img && !img.complete) {
             let done = false
