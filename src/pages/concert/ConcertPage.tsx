@@ -466,6 +466,7 @@ export default function ConcertPage() {
                 accentColor={theme.accent_color}
                 fontSize={displayFontSize}
                 lineHeight={displayLineHeight}
+                noPadding
               />
             )}
           </div>

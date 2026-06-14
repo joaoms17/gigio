@@ -12,12 +12,16 @@ const PAD_H = 20
  */
 export default function AnnotatedLyrics({
   songId, lyrics, userId, bgColor, textColor, activeLine, accentColor, fontSize, lineHeight,
+  noPadding = false,
 }: {
   songId: string; lyrics: string; userId?: string
   bgColor?: string; textColor?: string
   activeLine?: number; accentColor?: string
   fontSize?: number; lineHeight?: number
+  noPadding?: boolean
 }) {
+  const padH = noPadding ? 0 : PAD_H
+  const padV = noPadding ? 0 : PAD_V
   const outerRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
   const [data, setData] = useState<SavedAnnotations | null>(null)
@@ -51,7 +55,7 @@ export default function AnnotatedLyrics({
   }, [data])
 
   // Width of the drawing area (inside padding)
-  const contentW = Math.max(0, outerW - PAD_H * 2)
+  const contentW = Math.max(0, outerW - padH * 2)
   const baseW = data?.w && data.w > 0 ? data.w : contentW
   const scale = contentW > 0 && baseW > 0 ? contentW / baseW : 1
 
@@ -64,8 +68,8 @@ export default function AnnotatedLyrics({
         background: bgColor ?? '#ffffff',
         borderRadius: isDark ? 0 : 12,
         overflow: 'hidden',
-        padding: `${PAD_V}px ${PAD_H}px`,
-        height: innerH > 0 ? innerH * scale + PAD_V * 2 : undefined,
+        padding: `${padV}px ${padH}px`,
+        height: innerH > 0 ? innerH * scale + padV * 2 : undefined,
         color: textColor ?? '#0f0f14',
         ['--text' as any]: textColor ?? '#0f0f14',
         ['--text2' as any]: isDark ? 'rgba(255,255,255,0.55)' : '#5c5c78',
