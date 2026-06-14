@@ -410,30 +410,31 @@ export default function SongPage() {
                     </button>
                   </div>
 
-                  <div className={`${styles.previewPane} ${!annScrollMode ? styles.previewPaneLocked : ''}`}>
-                    <div className={styles.previewInner}>
-                      <LyricsView lyrics={lyrics} fontSize={32} lineHeight={1.6} />
-                      {song && (
-                        <AnnotationLayer
-                          ref={annLayerRef}
-                          songId={song.id}
-                          userId={user?.id}
-                          tool={annTool}
-                          color={annColor}
-                          strokeWidth={annWidth}
-                          clearTrigger={annClear}
-                          disabled={annScrollMode}
-                        />
-                      )}
+                  <div className={styles.previewWrap}>
+                    <div className={`${styles.previewPane} ${!annScrollMode ? styles.previewPaneLocked : ''}`}>
+                      <div className={styles.previewInner}>
+                        <LyricsView lyrics={lyrics} fontSize={32} lineHeight={1.6} />
+                        {song && (
+                          <AnnotationLayer
+                            ref={annLayerRef}
+                            songId={song.id}
+                            userId={user?.id}
+                            tool={annTool}
+                            color={annColor}
+                            strokeWidth={annWidth}
+                            clearTrigger={annClear}
+                            disabled={annScrollMode}
+                          />
+                        )}
+                      </div>
                     </div>
-                    {/* Floating scroll/draw toggle */}
+                    {/* Floating scroll/draw toggle — outside scrollable pane so it's never covered */}
                     <button
                       className={`${styles.floatBtn} ${annScrollMode ? styles.floatBtnScroll : styles.floatBtnDraw}`}
-                      style={{ position: 'sticky', bottom: '72px', float: 'right', marginRight: '-4px' }}
                       onClick={() => setAnnScrollMode(m => !m)}
-                      title={annScrollMode ? 'Scroll — clica para desenhar' : 'Desenho — clica para scroll'}
+                      title={annScrollMode ? 'Modo scroll — toca para anotar' : 'Modo anotação — toca para scroll'}
                     >
-                      {annScrollMode ? '↕' : '✏'}
+                      {annScrollMode ? <><span className={styles.floatIcon}>↕</span><span className={styles.floatLabel}>Scroll</span></> : <><span className={styles.floatIcon}>✏</span><span className={styles.floatLabel}>Anotar</span></>}
                     </button>
                   </div>
                 </>

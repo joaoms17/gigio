@@ -173,8 +173,17 @@
 }
 .lyricsEditor::placeholder { color: var(--text3); }
 
-.previewPane {
+/* Wrapper: relative so floatBtn can be absolute-positioned on top */
+.previewWrap {
   flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.previewPane {
+  width: 100%;
+  height: 100%;
   overflow-y: scroll;
   padding: 16px 20px;
   position: relative;
@@ -544,37 +553,42 @@
 }
 .annClear:hover { background: #FF4D6D18; color: var(--gig); border-color: var(--gig); }
 
-/* Floating scroll/draw toggle */
+/* Floating scroll/draw toggle — absolute on top of previewWrap */
 .floatBtn {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border);
-  background: var(--bg2);
-  color: var(--text2);
-  font-size: 20px;
-  cursor: pointer;
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 30;
   display: flex;
   align-items: center;
-  justify-content: center;
-  box-shadow: 0 3px 12px rgba(0,0,0,0.18);
-  transition: transform 0.12s, background 0.15s;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: none;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.28);
+  touch-action: manipulation;
+  transition: transform 0.1s, opacity 0.15s;
+  white-space: nowrap;
+  user-select: none;
 }
-.floatBtn:active { transform: scale(0.9); }
-.floatBtnActive {
-  background: var(--gig);
-  border-color: var(--gig);
-  color: white;
-}
+.floatBtn:active { transform: scale(0.93); }
+
 .floatBtnDraw {
   background: var(--gig);
-  border-color: var(--gig);
   color: white;
 }
 .floatBtnScroll {
   background: var(--bg2);
   color: var(--text2);
+  border: 1.5px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
 }
+
+.floatIcon { font-size: 16px; line-height: 1; }
+.floatLabel { font-size: 13px; font-weight: 700; }
 
 .annExit {
   height: 34px;
