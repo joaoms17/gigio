@@ -2,7 +2,7 @@
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  padding: 0;
+  padding: 0 0 env(safe-area-inset-bottom, 0px);
   user-select: none;
   overflow: hidden;
 }
@@ -178,7 +178,7 @@
 .songNav {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
+  padding: 4px 12px 6px;
   gap: 6px;
   flex-shrink: 0;
 }
@@ -218,16 +218,16 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 10px 20px 6px;
+  padding: 6px 16px 4px;
   flex-shrink: 0;
 }
 .seekBtn {
   flex: 1;
-  max-width: 120px;
-  height: 52px;
+  max-width: 130px;
+  height: 48px;
   background: rgba(255,255,255,0.07);
   border: 1px solid;
-  border-radius: 26px;
+  border-radius: 24px;
   font-size: 13px;
   font-weight: 800;
   cursor: pointer;
@@ -239,14 +239,15 @@
   letter-spacing: 0.02em;
 }
 .seekBtn:hover { background: rgba(255,255,255,0.13); }
+.seekBtn:active { background: rgba(255,255,255,0.18); }
 .seekArrow { font-size: 15px; opacity: 0.6; line-height: 1; }
 .seekLabel { font-size: 14px; font-weight: 800; }
 .playBtn {
   border: none;
-  width: 64px;
-  height: 64px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
-  font-size: 22px;
+  font-size: 20px;
   color: white;
   cursor: pointer;
   flex-shrink: 0;
