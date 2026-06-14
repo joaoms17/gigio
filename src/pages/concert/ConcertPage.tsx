@@ -584,21 +584,27 @@ export default function ConcertPage() {
       <div className={styles.songNav}>
         <button
           className={styles.songNavBtn}
-          style={{ color: theme.active_color, opacity: prevSong ? 0.45 : 0.12 }}
+          style={{ color: theme.active_color }}
           onClick={() => prevSong && setSongIdx(s => s - 1)}
           disabled={!prevSong}
         >
           <span className={styles.navArrow}>‹</span>
-          <span className={styles.navSongName}>{prevSong?.title ?? ''}</span>
+          <span className={styles.navSongInfo}>
+            <span className={styles.navSongLabel}>Anterior</span>
+            <span className={styles.navSongName}>{prevSong?.title ?? '—'}</span>
+          </span>
         </button>
         <button
           className={styles.songNavBtn}
-          style={{ color: theme.active_color, opacity: nextSong ? 0.45 : 0.12, textAlign: 'right' }}
+          style={{ color: theme.active_color, flexDirection: 'row-reverse' }}
           onClick={() => nextSong && setSongIdx(s => s + 1)}
           disabled={!nextSong}
         >
-          <span className={styles.navSongName}>{nextSong?.title ?? ''}</span>
           <span className={styles.navArrow}>›</span>
+          <span className={styles.navSongInfo} style={{ textAlign: 'right' }}>
+            <span className={styles.navSongLabel}>Próxima</span>
+            <span className={styles.navSongName}>{nextSong?.title ?? '—'}</span>
+          </span>
         </button>
       </div>
 

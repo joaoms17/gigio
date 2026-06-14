@@ -177,40 +177,58 @@
 /* Prev / Next song navigation */
 .songNav {
   display: flex;
-  align-items: center;
-  padding: 4px 12px 6px;
-  gap: 6px;
+  align-items: stretch;
+  padding: 6px 12px 8px;
+  gap: 8px;
   flex-shrink: 0;
 }
 .songNavBtn {
   flex: 1;
   min-width: 0;
-  background: none;
-  border: none;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 8px 6px;
-  border-radius: 8px;
+  gap: 8px;
+  padding: 10px 14px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
   overflow: hidden;
 }
-.songNavBtn:hover { background: rgba(255,255,255,0.06); }
-.songNavBtn:disabled { cursor: default; }
-.songNavBtn:disabled:hover { background: none; }
+.songNavBtn:hover:not(:disabled) { background: rgba(255,255,255,0.11); border-color: rgba(255,255,255,0.22); }
+.songNavBtn:active:not(:disabled) { background: rgba(255,255,255,0.16); }
+.songNavBtn:disabled { opacity: 0.2; cursor: default; }
 .navArrow {
-  font-size: 22px;
-  font-weight: 400;
+  font-size: 20px;
+  font-weight: 300;
   line-height: 1;
   flex-shrink: 0;
+  opacity: 0.7;
+}
+.navSongLabel {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.4;
+  display: block;
+  margin-bottom: 1px;
 }
 .navSongName {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: block;
+  line-height: 1.2;
+}
+.navSongInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 /* Controls row (sync + semi) */
 .controls {
@@ -427,9 +445,11 @@
   .playBtn { width: 96px; height: 96px; font-size: 36px; }
   .pauseIcon::before, .pauseIcon::after { width: 6px; height: 30px; }
 
-  .songNav { padding: 12px 24px; }
-  .navArrow { font-size: 32px; }
-  .navSongName { font-size: 17px; }
+  .songNav { padding: 8px 24px 12px; gap: 12px; }
+  .songNavBtn { padding: 12px 18px; border-radius: 18px; gap: 12px; }
+  .navArrow { font-size: 28px; }
+  .navSongLabel { font-size: 11px; }
+  .navSongName { font-size: 18px; }
 
   .setlistItem { font-size: 17px; padding: 14px 16px; }
   .setlistNum { font-size: 13px; min-width: 22px; }
