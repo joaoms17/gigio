@@ -426,7 +426,7 @@ export default function SongPage() {
                     </button>
                   </div>
 
-                  <div className={styles.previewPane}>
+                  <div className={`${styles.previewPane} ${!annScrollMode ? styles.previewPaneLocked : ''}`}>
                     <div className={styles.previewInner}>
                       <LyricsView lyrics={lyrics} fontSize={32} lineHeight={1.6} />
                       {song && (
@@ -442,6 +442,14 @@ export default function SongPage() {
                         />
                       )}
                     </div>
+                    {/* Floating scroll/draw toggle */}
+                    <button
+                      className={`${styles.floatToggle} ${annScrollMode ? styles.floatToggleScroll : styles.floatToggleDraw}`}
+                      onClick={() => setAnnScrollMode(m => !m)}
+                      title={annScrollMode ? 'Modo scroll — clica para desenhar' : 'Modo desenho — clica para scroll'}
+                    >
+                      {annScrollMode ? '↕' : '✏'}
+                    </button>
                   </div>
                 </>
               ) : (

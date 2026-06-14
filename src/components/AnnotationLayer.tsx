@@ -230,13 +230,17 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   }
 
   return (
-    <div ref={layerRef} className={styles.layer} style={disabled ? { pointerEvents: 'none' } : {}}>
+    <div ref={layerRef} className={styles.layer}>
       {svgW > 0 && (
         <svg
           className={styles.svg}
           viewBox={`0 0 ${svgW} ${svgH}`}
           preserveAspectRatio="none"
-          style={{ cursor: tool === 'eraser' ? 'none' : 'crosshair' }}
+          style={{
+            cursor: disabled ? 'default' : tool === 'eraser' ? 'none' : 'crosshair',
+            pointerEvents: disabled ? 'none' : 'all',
+            touchAction: disabled ? 'auto' : 'none',
+          }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}

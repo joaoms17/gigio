@@ -175,9 +175,22 @@
 
 .previewPane {
   flex: 1;
-  overflow-y: auto;
+  overflow-y: scroll;
   padding: 16px 20px;
   position: relative;
+  /* Always-visible wide scrollbar */
+  scrollbar-width: thick;
+  scrollbar-color: var(--border) transparent;
+}
+.previewPane::-webkit-scrollbar { width: 14px; }
+.previewPane::-webkit-scrollbar-track { background: var(--bg2); border-radius: 8px; }
+.previewPane::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; border: 3px solid var(--bg2); }
+.previewPane::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+/* In draw mode: block ALL touch scroll — only scrollbar works */
+.previewPaneLocked {
+  touch-action: none;
+  overflow-y: scroll;
 }
 
 .previewInner {
@@ -530,6 +543,37 @@
   flex-shrink: 0;
 }
 .annClear:hover { background: #FF4D6D18; color: var(--gig); border-color: var(--gig); }
+
+/* Floating scroll/draw toggle — always visible over the lyrics */
+.floatToggle {
+  position: sticky;
+  bottom: 16px;
+  right: 20px;
+  float: right;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.18);
+  transition: transform 0.12s, background 0.15s;
+  z-index: 20;
+  margin-right: -8px;
+}
+.floatToggle:active { transform: scale(0.9); }
+.floatToggleDraw {
+  background: var(--gig);
+  color: white;
+}
+.floatToggleScroll {
+  background: var(--bg2);
+  color: var(--text2);
+  border: 1.5px solid var(--border);
+}
 
 .annExit {
   height: 34px;
