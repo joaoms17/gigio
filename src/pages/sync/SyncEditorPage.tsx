@@ -183,13 +183,15 @@ export default function SyncEditorPage() {
       </div>
 
       {/* Audio player */}
-      <div className={styles.playerBar}>
+      <div className={styles.playerWrap}>
         {!audioUrl ? (
-          <label className={styles.uploadLabel}>
-            🎵 Carregar áudio (MP3, M4A, WAV, OGG)
-            <input type="file" accept="audio/*" hidden
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleAudioFile(f) }} />
-          </label>
+          <div className={styles.playerBar}>
+            <label className={styles.uploadLabel}>
+              🎵 Carregar áudio (MP3, M4A, WAV, OGG)
+              <input type="file" accept="audio/*" hidden
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleAudioFile(f) }} />
+            </label>
+          </div>
         ) : (
           <>
             <audio
@@ -200,34 +202,54 @@ export default function SyncEditorPage() {
               onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime ?? 0)}
               onLoadedMetadata={() => setAudioDur(audioRef.current?.duration ?? 0)}
             />
-            <button className={styles.playBtn} onClick={togglePlay}>
-              {playing ? '⏸' : '▶'}
-            </button>
-            <button className={styles.seekBtn} onClick={() => seek(-5)} title="−5s (←)">−5s</button>
-            <button className={styles.seekBtn} onClick={() => seek(5)} title="+5s (→)">+5s</button>
-            <span className={styles.timeLabel}>{msToStr(currentTime * 1000)}</span>
-            <input className={styles.scrubber} type="range"
-              min={0} max={audioDur || 100} step={0.05} value={currentTime}
-              onChange={e => {
-                const t = parseFloat(e.target.value)
-                if (audioRef.current) audioRef.current.currentTime = t
-                setCurrentTime(t)
-              }}
-            />
-            <span className={styles.durLabel}>{msToStr(audioDur * 1000)}</span>
-            <div className={styles.speedGroup}>
-              {[0.5, 0.75, 1].map(s => (
-                <button key={s}
-                  className={`${styles.speedBtn} ${speed === s ? styles.speedActive : ''}`}
-                  onClick={() => { setSpeed(s); if (audioRef.current) audioRef.current.playbackRate = s }}
-                >{s}×</button>
-              ))}
+            {/* Scrubber row */}
+            <div className={styles.scrubRow}>
+              <span className={styles.timeLabel}>{msToStr(currentTime * 1000)}</span>
+              <input className={styles.scrubber} type="range"
+                min={0} max={audioDur || 100} step={0.05} value={currentTime}
+                onChange={e => {
+                  const t = parseFloat(e.target.value)
+                  if (audioRef.current) audioRef.current.currentTime = t
+                  setCurrentTime(t)
+                }}
+              />
+              <span className={styles.durLabel}>{msToStr(audioDur * 1000)}</span>
+              <div className={styles.speedGroup}>
+                {[0.5, 0.75, 1].map(s => (
+                  <button key={s}
+                    className={`${styles.speedBtn} ${speed === s ? styles.speedActive : ''}`}
+                    onClick={() => { setSpeed(s); if (audioRef.current) audioRef.current.playbackRate = s }}
+                  >{s}×</button>
+                ))}
+              </div>
+              <label className={styles.changeAudio} title="Mudar ficheiro">
+                📂
+                <input type="file" accept="audio/*" hidden
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleAudioFile(f) }} />
+              </label>
             </div>
-            <label className={styles.changeAudio} title="Mudar ficheiro">
-              📂
-              <input type="file" accept="audio/*" hidden
-                onChange={e => { const f = e.target.files?.[0]; if (f) handleAudioFile(f) }} />
-            </label>
+            {/* Transport row */}
+            <div className={styles.transportRow}>
+              <button className={styles.seekBig} onClick={() => seek(-10)}>
+                <span className={styles.seekArrow}>«</span>
+                <span className={styles.seekLabel}>10s</span>
+              </button>
+              <button className={styles.seekBig} onClick={() => seek(-5)}>
+                <span className={styles.seekArrow}>‹</span>
+                <span className={styles.seekLabel}>5s</span>
+              </button>
+              <button className={styles.playBig} onClick={togglePlay}>
+                {playing ? '⏸' : '▶'}
+              </button>
+              <button className={styles.seekBig} onClick={() => seek(5)}>
+                <span className={styles.seekLabel}>5s</span>
+                <span className={styles.seekArrow}>›</span>
+              </button>
+              <button className={styles.seekBig} onClick={() => seek(10)}>
+                <span className={styles.seekLabel}>10s</span>
+                <span className={styles.seekArrow}>»</span>
+              </button>
+            </div>
           </>
         )}
       </div>
@@ -235,16 +257,23 @@ export default function SyncEditorPage() {
       {/* Tap controls */}
       {audioUrl && (
         <div className={styles.tapRow}>
+          <button className={styles.lineNavBtn}
+            onClick={() => setCursor(c => Math.max(0, c - 1))}
+            disabled={cursor === 0}
+          >
+            ↑ Anterior
+          </button>
           <button className={styles.tapBtn} onClick={tap}>
             TAP
+            <span className={styles.tapSub}>#{cursor + 1} · Espaço</span>
           </button>
-          <div className={styles.tapCurrent}>
-            {cursor < lines.length
-              ? <><span className={styles.tapLineNum}>#{cursor + 1}</span> {lines[cursor]?.text}</>
-              : '✓ Todas marcadas'}
-          </div>
-          <button className={styles.undoBtn} onClick={undoLast}>↩</button>
-          <span className={styles.tapHint}>Espaço = tap · P = play · ← → = ±5s · ↑↓ = linha</span>
+          <button className={styles.lineNavBtn}
+            onClick={() => setCursor(c => Math.min(lines.length - 1, c + 1))}
+            disabled={cursor >= lines.length - 1}
+          >
+            Próxima ↓
+          </button>
+          <button className={styles.undoBtn} onClick={undoLast} title="Desfazer">↩</button>
         </div>
       )}
 

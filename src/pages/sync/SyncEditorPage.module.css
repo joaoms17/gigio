@@ -37,84 +37,105 @@
 .saveBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 .saveBtnOk { background: #10b981; }
 
-/* ── Player bar ── */
-.playerBar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
+/* ── Player wrapper ── */
+.playerWrap {
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
+.playerBar {
+  display: flex; align-items: center;
+  padding: 12px 16px;
+}
 .uploadLabel {
   display: flex; align-items: center; gap: 8px;
-  padding: 10px 18px; border: 1.5px dashed var(--border);
+  padding: 12px 20px; border: 1.5px dashed var(--border);
   border-radius: 12px; cursor: pointer; font-size: 14px; font-weight: 600;
   color: var(--text2); transition: border-color 0.15s, color 0.15s;
   margin: 0 auto;
 }
 .uploadLabel:hover { border-color: var(--gig); color: var(--gig); }
-.playBtn {
-  width: 36px; height: 36px; border-radius: 50%; border: none;
-  background: var(--gig); color: white; font-size: 16px;
-  cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+
+/* Scrubber row */
+.scrubRow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px 4px;
 }
 .timeLabel { font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 52px; }
 .durLabel { font-size: 12px; color: var(--text3); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 52px; }
-.scrubber { flex: 1; accent-color: var(--gig); min-width: 80px; }
+.scrubber { flex: 1; accent-color: var(--gig); min-width: 60px; }
 .speedGroup { display: flex; gap: 4px; flex-shrink: 0; }
 .speedBtn {
-  padding: 5px 8px; border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 5px 9px; border: 1.5px solid var(--border); border-radius: 8px;
   background: none; color: var(--text3); font-size: 11px; font-weight: 700; cursor: pointer;
 }
 .speedActive { background: var(--gig); border-color: var(--gig); color: white; }
 .changeAudio {
   padding: 6px 8px; border: 1.5px solid var(--border); border-radius: 8px;
-  cursor: pointer; font-size: 14px; color: var(--text3);
-  flex-shrink: 0;
+  cursor: pointer; font-size: 14px; color: var(--text3); flex-shrink: 0;
 }
 
-/* ── Player seek buttons ── */
-.seekBtn {
-  padding: 5px 9px; border: 1.5px solid var(--border); border-radius: 8px;
-  background: none; color: var(--text2); font-size: 11px; font-weight: 700;
-  cursor: pointer; flex-shrink: 0; white-space: nowrap;
+/* Transport row */
+.transportRow {
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px; padding: 8px 16px 12px;
 }
-.seekBtn:hover { border-color: var(--gig); color: var(--gig); }
+.playBig {
+  width: 56px; height: 56px; border-radius: 50%; border: none;
+  background: var(--gig); color: white; font-size: 22px;
+  cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--gig) 35%, transparent);
+  transition: transform 0.1s;
+}
+.playBig:active { transform: scale(0.93); }
+.seekBig {
+  display: flex; align-items: center; gap: 3px;
+  padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 12px;
+  background: var(--bg); color: var(--text2);
+  font-size: 14px; font-weight: 700; cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.seekBig:hover { border-color: var(--gig); color: var(--gig); }
+.seekBig:active { background: var(--bg2); }
+.seekArrow { font-size: 16px; font-weight: 900; line-height: 1; }
+.seekLabel { font-size: 12px; font-weight: 800; }
 
 /* ── Tap row ── */
 .tapRow {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-  background: var(--bg2);
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 .tapBtn {
-  padding: 11px 28px; border: none; border-radius: 12px;
+  flex: 1;
+  padding: 14px 10px; border: none; border-radius: 14px;
   background: var(--gig); color: white;
-  font-size: 16px; font-weight: 900; cursor: pointer; letter-spacing: 0.04em;
-  flex-shrink: 0; transition: transform 0.08s;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--gig) 40%, transparent);
+  font-size: 18px; font-weight: 900; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  transition: transform 0.08s;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--gig) 35%, transparent);
 }
-.tapBtn:active { transform: scale(0.94); }
-.tapCurrent {
-  flex: 1; font-size: 13px; color: var(--text2);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-weight: 600;
+.tapBtn:active { transform: scale(0.96); }
+.tapSub { font-size: 10px; font-weight: 600; opacity: 0.8; }
+.lineNavBtn {
+  padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 12px;
+  background: var(--bg2); color: var(--text2);
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  white-space: nowrap; transition: border-color 0.12s, color 0.12s;
 }
-.tapLineNum { color: var(--gig); font-weight: 800; margin-right: 6px; }
+.lineNavBtn:hover:not(:disabled) { border-color: var(--gig); color: var(--gig); }
+.lineNavBtn:disabled { opacity: 0.3; cursor: not-allowed; }
 .undoBtn {
-  padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 10px;
-  background: none; color: var(--text2); font-size: 15px;
+  padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 12px;
+  background: none; color: var(--text2); font-size: 16px;
   cursor: pointer; flex-shrink: 0;
 }
 .undoBtn:hover { border-color: var(--text2); }
-.tapHint { font-size: 11px; color: var(--text3); white-space: nowrap; }
-@media (max-width: 600px) { .tapHint { display: none; } }
 
 /* ── Lines list ── */
 .linesList {
