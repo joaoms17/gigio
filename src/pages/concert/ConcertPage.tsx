@@ -552,16 +552,16 @@ export default function ConcertPage() {
         </div>
       )}
 
-      {/* ── Controls (semi + syncLines only) ── */}
-      {contentView !== 'chords' && viewMode === 'semi' && syncLines && (
+      {/* ── Controls (semi mode always — play/seek; line advance only with syncLines) ── */}
+      {contentView !== 'chords' && viewMode === 'semi' && (
         <div className={styles.controls}>
           <button
             className={styles.seekBtn}
-            style={{ color: theme.active_color, borderColor: `${theme.active_color}20` }}
-            onClick={() => seekDelta(-5)}
+            style={{ color: theme.active_color, borderColor: `${theme.active_color}20`, opacity: syncLines ? 1 : 0.35 }}
+            onClick={() => syncLines && seekDelta(-5)}
           >
             <span className={styles.seekArrow}>‹‹</span>
-            <span className={styles.seekLabel}>5</span>
+            <span className={styles.seekLabel}>5s</span>
           </button>
           <button
             className={styles.playBtn}
@@ -572,10 +572,10 @@ export default function ConcertPage() {
           </button>
           <button
             className={styles.seekBtn}
-            style={{ color: theme.active_color, borderColor: `${theme.active_color}20` }}
-            onClick={() => seekDelta(5)}
+            style={{ color: theme.active_color, borderColor: `${theme.active_color}20`, opacity: syncLines ? 1 : 0.35 }}
+            onClick={() => syncLines && seekDelta(5)}
           >
-            <span className={styles.seekLabel}>5</span>
+            <span className={styles.seekLabel}>5s</span>
             <span className={styles.seekArrow}>››</span>
           </button>
         </div>
