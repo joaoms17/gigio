@@ -26,6 +26,10 @@ export default function AuthPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    if (!navigator.onLine) {
+      setError('Sem internet — não é possível entrar offline')
+      return
+    }
     setLoading(true)
     try {
       if (mode === 'login') {
@@ -43,7 +47,12 @@ export default function AuthPage() {
         }
       }
     } catch (err: any) {
-      setError(friendlyError(err.message ?? 'Erro desconhecido'))
+      const msg = err.message ?? ''
+      if (msg.includes('fetch') || msg.includes('network') || !navigator.onLine) {
+        setError('Sem internet — não é possível entrar offline')
+      } else {
+        setError(friendlyError(msg || 'Erro desconhecido'))
+      }
     } finally {
       setLoading(false)
     }

@@ -9,15 +9,36 @@ interface AuthContextValue {
 
 export const AuthContext = createContext<AuthContextValue>({ user: null, loading: true })
 
+function readCachedUser(): User | null {
+  try {
+    const key = Object.keys(localStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'))
+    if (!key) return null
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    // Supabase stores { access_token, refresh_token, user, ... } or { session: {...} }
+    return parsed?.user ?? parsed?.session?.user ?? null
+  } catch { return null }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      console.warn('Supabase getSession timeout — assuming logged out')
+    // Offline: skip network refresh and use cached session directly
+    if (!navigator.onLine) {
+      const cached = readCachedUser()
+      setUser(cached)
       setLoading(false)
-    }, 6000)
+      return
+    }
+
+    const timeout = setTimeout(() => {
+      console.warn('Supabase getSession timeout — trying cache')
+      setUser(readCachedUser())
+      setLoading(false)
+    }, 4000)
 
     supabase.auth.getSession().then(({ data, error }) => {
       clearTimeout(timeout)
@@ -27,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }).catch((err) => {
       clearTimeout(timeout)
       console.error('getSession threw:', err)
+      setUser(readCachedUser())
       setLoading(false)
     })
 
