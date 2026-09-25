@@ -91,6 +91,9 @@ export default function SongPage() {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isDirtyRef = useRef(false)
+  // Always points at the latest save(): the debounce timer and the unmount
+  // cleanup must not capture a stale closure (stale `song`/fields never save)
+  const saveRef = useRef<() => Promise<void>>(async () => {})
   // Conflict detection: updated_at as seen at load/last save
   const baseUpdatedAtRef = useRef<string | null>(null)
 
@@ -150,7 +153,7 @@ export default function SongPage() {
   const scheduleSave = useCallback(() => {
     isDirtyRef.current = true
     if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(save, 2000)
+    saveTimer.current = setTimeout(() => saveRef.current(), 2000)
   }, [])
 
   async function save() {
@@ -179,7 +182,7 @@ export default function SongPage() {
     setSaving(true)
     const hasEdited = lyrics !== (song.original_lyrics ?? song.lyrics ?? '')
     const newUpdatedAt = new Date().toISOString()
-    await supabase.from('songs').update({
+    const { error } = await supabase.from('songs').update({
       title: title.trim(),
       artist: artist.trim(),
       lyrics: lyrics,
@@ -197,18 +200,25 @@ export default function SongPage() {
       updated_by: user.id,
       updated_at: newUpdatedAt,
     }).eq('id', song.id)
-    baseUpdatedAtRef.current = newUpdatedAt
     setSaving(false)
+    if (error) {
+      isDirtyRef.current = true
+      alert('Erro ao guardar: ' + error.message)
+      return
+    }
+    baseUpdatedAtRef.current = newUpdatedAt
     setSavedAt(new Date())
   }
+
+  useEffect(() => { saveRef.current = save })
 
   // Save on unmount if dirty
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current)
-      if (isDirtyRef.current && song) save()
+      if (isDirtyRef.current) saveRef.current()
     }
-  }, [song, lyrics, title, artist, chords, performanceKey, originalKey, bpm, duration, capo, tuning, tags, notes])
+  }, [])
 
   function addTag(t: string) {
     const tag = t.trim()
