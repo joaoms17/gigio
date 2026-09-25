@@ -128,9 +128,14 @@ export default function SearchPage() {
   }
 
   async function addToSetlist(setlistId: string, songId: string) {
-    const { count } = await supabase.from('setlist_songs')
-      .select('*', { count: 'exact', head: true }).eq('setlist_id', setlistId)
-    await supabase.from('setlist_songs').insert({ setlist_id: setlistId, song_id: songId, position: count ?? 0 })
+    // positions can have gaps after removals, so the row count would collide
+    // with the unique (setlist_id, position) constraint — use max position + 1
+    const { data: last } = await supabase.from('setlist_songs')
+      .select('position').eq('setlist_id', setlistId)
+      .order('position', { ascending: false }).limit(1).maybeSingle()
+    const { error } = await supabase.from('setlist_songs')
+      .insert({ setlist_id: setlistId, song_id: songId, position: (last?.position ?? -1) + 1 })
+    if (error) alert('Erro ao adicionar ao concerto: ' + error.message)
   }
 
   async function doAdd(r: SearchResult, setlistId: string | null, toProject = false) {
