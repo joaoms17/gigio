@@ -189,10 +189,13 @@ export default function SetlistPage() {
   async function addSelectedSongs() {
     if (!id || libSelection.size === 0) return
     const toAdd = library.filter(s => libSelection.has(s.id))
-    const basePos = songs.length
-    await supabase.from('setlist_songs').insert(
+    // positions can have gaps after removals, so length would collide with
+    // the unique (setlist_id, position) constraint — use max position + 1
+    const basePos = songs.reduce((m, s) => Math.max(m, s.position), -1) + 1
+    const { error } = await supabase.from('setlist_songs').insert(
       toAdd.map((s, i) => ({ setlist_id: id, song_id: s.id, position: basePos + i }))
     )
+    if (error) { alert('Erro ao adicionar: ' + error.message); return }
     await loadSongs()
     closeLibrary()
   }
