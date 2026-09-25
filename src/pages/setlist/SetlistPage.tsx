@@ -85,6 +85,7 @@ export default function SetlistPage() {
   const [date, setDate] = useState('')
   const [duplicating, setDuplicating] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showExportChoice, setShowExportChoice] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
   const [canDelete, setCanDelete] = useState(false)
 
@@ -314,10 +315,23 @@ export default function SetlistPage() {
     if (newSl) navigate(`/setlist/${newSl.id}`)
   }
 
-  function exportPdf() {
+  function exportPdf(withLyrics: boolean) {
     if (!setlist) return
+    setShowExportChoice(false)
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const rows = songs.map((ss, i) => `
+    const rows = withLyrics
+      ? songs.map((ss, i) => {
+          const lyrics = (ss.song?.edited_lyrics ?? ss.song?.lyrics ?? '').replace(/\r\n/g, '\n').trim()
+          return `
+      <div class="songBlock">
+        <div class="song">
+          <span class="num">${i + 1}</span>
+          <span class="title">${esc(ss.song?.title ?? '')}</span>
+        </div>
+        ${lyrics ? `<div class="lyrics">${esc(lyrics)}</div>` : '<div class="noLyrics">— sem letra —</div>'}
+      </div>`
+        }).join('')
+      : songs.map((ss, i) => `
       <div class="song">
         <span class="num">${i + 1}</span>
         <span class="title">${esc(ss.song?.title ?? '')}</span>
@@ -368,6 +382,13 @@ export default function SetlistPage() {
         }
         .num { font-size: 11px; color: #bbb; font-weight: 700; min-width: 18px; text-align: right; flex-shrink: 0; }
         .title { font-size: 17px; font-weight: 700; }
+        .songBlock { page-break-before: always; padding-top: 6px; }
+        .songBlock:first-child { page-break-before: auto; }
+        .lyrics {
+          white-space: pre-wrap; font-size: 13.5px; line-height: 1.55;
+          margin-top: 10px; text-align: center;
+        }
+        .noLyrics { margin-top: 10px; font-size: 12px; color: #bbb; font-style: italic; }
         @media print { .toolbar { display: none; } }
       </style></head><body>
       <div class="toolbar">
@@ -496,7 +517,7 @@ export default function SetlistPage() {
               {setlist?.band_id && (
                 <button className={styles.dupBtn} onClick={() => setShowImport(true)}>Importar PDF</button>
               )}
-              <button className={styles.dupBtn} onClick={exportPdf}>Exportar PDF</button>
+              <button className={styles.dupBtn} onClick={() => setShowExportChoice(true)}>Exportar PDF</button>
               <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>Duplicar</button>
               {canDelete && <button className={styles.deleteBtn} onClick={deleteSetlist}>Apagar</button>}
             </div>
@@ -589,6 +610,25 @@ export default function SetlistPage() {
 
             <button className={styles.ovSaveBtn} onClick={saveOverrides} disabled={ovSaving}>
               {ovSaving ? 'A guardar...' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showExportChoice && (
+        <div className={styles.overlay} onClick={() => setShowExportChoice(false)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <span className={styles.modalTitle}>Exportar PDF</span>
+              <button className={styles.closeBtn} onClick={() => setShowExportChoice(false)}>✕</button>
+            </div>
+            <button className={styles.exportOption} onClick={() => exportPdf(false)}>
+              <span className={styles.exportOptionTitle}>📋 Só resumo</span>
+              <span className={styles.exportOptionDesc}>Lista das músicas pela ordem do concerto</span>
+            </button>
+            <button className={styles.exportOption} onClick={() => exportPdf(true)}>
+              <span className={styles.exportOptionTitle}>📝 Com letras</span>
+              <span className={styles.exportOptionDesc}>Título de cada música seguido da letra completa</span>
             </button>
           </div>
         </div>
