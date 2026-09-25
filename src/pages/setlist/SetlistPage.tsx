@@ -85,7 +85,6 @@ export default function SetlistPage() {
   const [date, setDate] = useState('')
   const [duplicating, setDuplicating] = useState(false)
   const [showImport, setShowImport] = useState(false)
-  const [showExportChoice, setShowExportChoice] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
   const [canDelete, setCanDelete] = useState(false)
 
@@ -317,7 +316,6 @@ export default function SetlistPage() {
 
   function exportPdf(withLyrics: boolean) {
     if (!setlist) return
-    setShowExportChoice(false)
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     const rows = withLyrics
       ? songs.map((ss, i) => {
@@ -517,7 +515,8 @@ export default function SetlistPage() {
               {setlist?.band_id && (
                 <button className={styles.dupBtn} onClick={() => setShowImport(true)}>Importar PDF</button>
               )}
-              <button className={styles.dupBtn} onClick={() => setShowExportChoice(true)}>Exportar PDF</button>
+              <button className={styles.dupBtn} onClick={() => exportPdf(false)}>Exportar lista</button>
+              <button className={styles.dupBtn} onClick={() => exportPdf(true)}>Exportar repertório</button>
               <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>Duplicar</button>
               {canDelete && <button className={styles.deleteBtn} onClick={deleteSetlist}>Apagar</button>}
             </div>
@@ -610,25 +609,6 @@ export default function SetlistPage() {
 
             <button className={styles.ovSaveBtn} onClick={saveOverrides} disabled={ovSaving}>
               {ovSaving ? 'A guardar...' : 'Guardar'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showExportChoice && (
-        <div className={styles.overlay} onClick={() => setShowExportChoice(false)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <span className={styles.modalTitle}>Exportar PDF</span>
-              <button className={styles.closeBtn} onClick={() => setShowExportChoice(false)}>✕</button>
-            </div>
-            <button className={styles.exportOption} onClick={() => exportPdf(false)}>
-              <span className={styles.exportOptionTitle}>📋 Só resumo</span>
-              <span className={styles.exportOptionDesc}>Lista das músicas pela ordem do concerto</span>
-            </button>
-            <button className={styles.exportOption} onClick={() => exportPdf(true)}>
-              <span className={styles.exportOptionTitle}>📝 Com letras</span>
-              <span className={styles.exportOptionDesc}>Título de cada música seguido da letra completa</span>
             </button>
           </div>
         </div>

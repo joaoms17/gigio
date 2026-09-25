@@ -145,20 +145,7 @@
 .modalHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .modalTitle { font-size: 16px; font-weight: 800; }
 .closeBtn { background: none; border: none; font-size: 18px; color: var(--text3); }
-.modalEmpty { text-align: center; padding: 24px; color: var(--text3); font-size: 13px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
-
-/* Export PDF chooser */
-.exportOption {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
-  width: 100%; padding: 14px 16px; margin-bottom: 10px;
-  border: 1.5px solid var(--border); border-radius: 12px;
-  background: var(--bg2); cursor: pointer; text-align: left;
-  transition: border-color 0.15s;
-}
-.exportOption:hover { border-color: var(--gig); }
-.exportOptionTitle { font-size: 15px; font-weight: 700; color: var(--text); }
-.exportOptionDesc { font-size: 12px; color: var(--text3); }
-.libraryRow { display: flex; align-items: center; padding: 10px 6px; border-radius: 8px; cursor: pointer; gap: 10px; transition: background 0.1s; }
+.modalEmpty { text-align: center; padding: 24px; color: var(--text3); font-size: 13px; display: flex; flex-direction: column; gap: 12px; align-items: center; }.libraryRow { display: flex; align-items: center; padding: 10px 6px; border-radius: 8px; cursor: pointer; gap: 10px; transition: background 0.1s; }
 .libraryRow:hover { background: var(--bg2); }
 .libraryRowSelected { background: #7C3AED0f; outline: 2px solid var(--io); outline-offset: -2px; }
 .selIcon { font-size: 18px; color: var(--text3); flex-shrink: 0; width: 24px; text-align: center; }
