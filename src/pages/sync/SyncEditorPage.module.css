@@ -103,7 +103,9 @@
 }
 .speedActive { background: var(--gig); border-color: var(--gig); color: white; }
 .changeAudio {
-  padding: 6px 8px; border: 1.5px solid var(--border); border-radius: 8px;
+  min-width: 44px; min-height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--border); border-radius: 10px;
   cursor: pointer; font-size: 14px; color: var(--text3); flex-shrink: 0;
 }
 
@@ -143,19 +145,26 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
+/* Os 3 botões da tapRow partilham a mesma altura e radius */
 .tapBtn {
   flex: 1;
-  padding: 14px 10px; border: none; border-radius: 14px;
+  min-height: 56px;
+  padding: 6px 10px; border: none; border-radius: 12px;
   background: var(--gig); color: white;
   font-size: 18px; font-weight: 900; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   transition: transform 0.08s;
   box-shadow: 0 3px 10px color-mix(in srgb, var(--gig) 35%, transparent);
 }
 .tapBtn:active { transform: scale(0.96); }
 .tapSub { font-size: 10px; font-weight: 600; opacity: 0.8; }
+/* O atalho de teclado é inútil num tablet sem teclado */
+@media (pointer: coarse) {
+  .spaceHint { display: none; }
+}
 .lineNavBtn {
-  padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 12px;
+  min-height: 56px;
+  padding: 0 14px; border: 1.5px solid var(--border); border-radius: 12px;
   background: var(--bg2); color: var(--text2);
   font-size: 13px; font-weight: 700; cursor: pointer;
   white-space: nowrap; transition: border-color 0.12s, color 0.12s;
@@ -163,7 +172,8 @@
 .lineNavBtn:hover:not(:disabled) { border-color: var(--gig); color: var(--gig); }
 .lineNavBtn:disabled { opacity: 0.3; cursor: not-allowed; }
 .undoBtn {
-  padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 12px;
+  min-height: 56px; min-width: 48px;
+  padding: 0 14px; border: 1.5px solid var(--border); border-radius: 12px;
   background: none; color: var(--text2); font-size: 16px;
   cursor: pointer; flex-shrink: 0;
 }
@@ -210,3 +220,14 @@
 .jumpBtn:hover { background: var(--gig); color: white; }
 
 .empty { padding: 40px 24px; text-align: center; color: var(--text3); font-size: 14px; }
+
+/* Skeleton enquanto a letra carrega (usa a classe global .skeleton) */
+.skeletonList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+.skeletonLine { height: 20px; }
+.skeletonLine:nth-child(2n) { width: 85%; }
+.skeletonLine:nth-child(3n) { width: 70%; }

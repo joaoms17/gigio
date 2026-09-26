@@ -97,6 +97,8 @@
   padding: 2px;
 }
 .cell:hover { background: var(--bg2); }
+.cell:active { background: var(--bg3); }
+.cell:focus-visible { outline: 2px solid var(--gig); outline-offset: -2px; }
 
 .cellOtherMonth .cellNum { opacity: 0.28; }
 
@@ -163,8 +165,26 @@
 .noEvents {
   font-size: 13px;
   color: var(--text3);
-  padding: 4px 0;
+  padding: 4px 0 12px;
 }
+
+.createDayBtn {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 2px dashed var(--border2);
+  border-radius: 10px;
+  background: none;
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.createDayBtn:hover { border-color: var(--gig); color: var(--gig); }
+.createDayBtn:active { transform: scale(0.99); }
+.createDayBtn:disabled { opacity: 0.5; cursor: default; }
 
 .eventList {
   display: flex;
@@ -178,9 +198,28 @@
   border-left: 4px solid;
   padding: 10px 14px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   transition: background 0.12s;
 }
 .eventRow:hover { background: var(--bg3); }
+.eventRow:active { background: var(--bg3); transform: scale(0.995); }
+.eventRow:focus-visible { outline: 2px solid var(--gig); outline-offset: 2px; }
+
+.eventInfo { flex: 1; min-width: 0; }
+
+.playBtn {
+  width: 44px; height: 44px; min-width: 44px; min-height: 44px;
+  border-radius: 50%; border: 1.5px solid var(--border);
+  background: var(--bg2); color: var(--text2);
+  font-size: 14px; line-height: 1; cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding-left: 3px; /* optical centering of ▶ */
+  transition: border-color 0.15s, color 0.15s, transform 0.1s;
+}
+.playBtn:hover { border-color: var(--gig); color: var(--gig); }
+.playBtn:active { transform: scale(0.92); }
 
 .eventName {
   font-size: 14px;
@@ -226,6 +265,8 @@
   background: var(--bg2);
 }
 .monthEventRow:hover { background: var(--bg3); }
+.monthEventRow:active { background: var(--bg3); transform: scale(0.995); }
+.monthEventRow:focus-visible { outline: 2px solid var(--gig); outline-offset: 2px; }
 
 .mDateBadge {
   width: 50px;

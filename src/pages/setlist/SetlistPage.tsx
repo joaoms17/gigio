@@ -14,6 +14,7 @@ import { useToast } from '../../components/Toast'
 import ProjectPickerModal from '../../components/ProjectPickerModal'
 import SetlistImportModal from '../../components/SetlistImportModal'
 import { supabase } from '../../lib/supabase'
+import { exportSongsPdf } from '../../lib/pdfExport'
 import { useAuth } from '../../hooks/useAuth'
 import {
   cacheSetlistMeta, getCachedSetlistMeta,
@@ -31,6 +32,7 @@ function SortableSongRow({ ss, index, onEdit, onRemove, onOverrides }: {
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: ss.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+  const hasOverrides = !!(ss.performance_key || ss.notes || ss.custom_intro || ss.custom_ending)
   return (
     <div ref={setNodeRef} style={style} className={`${styles.songRow} ${isDragging ? styles.dragging : ''}`}>
       <button
@@ -45,10 +47,11 @@ function SortableSongRow({ ss, index, onEdit, onRemove, onOverrides }: {
         <div className={styles.songTitle}>{ss.song?.title}</div>
         <div className={styles.songArtist}>
           {ss.song?.artist}
-          {ss.performance_key && <span className={styles.keyChip}>{ss.performance_key}</span>}
-          {ss.notes && <span className={styles.notesIndicator} title={ss.notes}>📝</span>}
-          {(ss.custom_intro || ss.custom_ending) && <span className={styles.notesIndicator} title="Tem intro/final custom">🎬</span>}
-          {ss.song?.has_sync && <span className={styles.syncBadge}>sync ✓</span>}
+          {ss.performance_key && <span className={styles.keyChip} aria-label={`Tom nesta setlist: ${ss.performance_key}`}>{ss.performance_key}</span>}
+          {ss.notes && <span className={styles.notesIndicator} role="img" aria-label={`Notas: ${ss.notes}`} title={ss.notes}>📝</span>}
+          {(ss.custom_intro || ss.custom_ending) && <span className={styles.notesIndicator} role="img" aria-label="Tem intro/final custom" title="Tem intro/final custom">🎬</span>}
+          {ss.song?.has_sync && <span className={styles.syncBadge} aria-label="Letra sincronizada">sync ✓</span>}
+          {!hasOverrides && <span className={styles.ghostChip}>＋ Tom · Notas</span>}
         </div>
       </div>
       <div className={styles.songDur}>
@@ -79,6 +82,8 @@ export default function SetlistPage() {
   const [librarySearch, setLibrarySearch] = useState('')
   const [libSelection, setLibSelection] = useState<Set<string>>(new Set())
   const [showLibrary, setShowLibrary] = useState(false)
+  const [libraryLoading, setLibraryLoading] = useState(false)
+  const [songsLoading, setSongsLoading] = useState(true)
   const [editingName, setEditingName] = useState(false)
   const [name, setName] = useState('')
   const [venue, setVenue] = useState('')
@@ -87,6 +92,7 @@ export default function SetlistPage() {
   const venueDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [date, setDate] = useState('')
   const [duplicating, setDuplicating] = useState(false)
+  const [dupBusy, setDupBusy] = useState(false)
   const [removedSong, setRemovedSong] = useState<Row | null>(null)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showImport, setShowImport] = useState(false)
@@ -167,10 +173,17 @@ export default function SetlistPage() {
       const cached = getCachedSetlistSongs<Row>(id)
       if (cached) setSongs(cached)
     }
+    setSongsLoading(false)
   }
 
   async function loadLibrary() {
-    if (!user) return
+    if (!user || libraryLoading) return
+    // Abre o modal já com skeleton — o fetch pode demorar 1-3s em rede lenta
+    setLibrary([])
+    setLibSelection(new Set())
+    setLibrarySearch('')
+    setLibraryLoading(true)
+    setShowLibrary(true)
     const existingIds = songs.map(s => s.song_id)
     let all: Song[]
     if (setlist?.band_id) {
@@ -181,9 +194,7 @@ export default function SetlistPage() {
       all = data ?? []
     }
     setLibrary(all.filter(s => !existingIds.includes(s.id)))
-    setLibSelection(new Set())
-    setLibrarySearch('')
-    setShowLibrary(true)
+    setLibraryLoading(false)
   }
 
   function closeLibrary() {
@@ -191,8 +202,8 @@ export default function SetlistPage() {
     setLibSelection(new Set())
   }
 
-  async function addSelectedSongs() {
-    if (!id || libSelection.size === 0) return
+  async function addSelectedSongs(): Promise<boolean> {
+    if (!id || libSelection.size === 0) return true
     const toAdd = library.filter(s => libSelection.has(s.id))
     // positions can have gaps after removals, so length would collide with
     // the unique (setlist_id, position) constraint — use max position + 1
@@ -200,9 +211,22 @@ export default function SetlistPage() {
     const { error } = await supabase.from('setlist_songs').insert(
       toAdd.map((s, i) => ({ setlist_id: id, song_id: s.id, position: basePos + i }))
     )
-    if (error) { toast('Erro ao adicionar: ' + error.message, { type: 'error' }); return }
+    if (error) { toast('Erro ao adicionar: ' + error.message, { type: 'error' }); return false }
     await loadSongs()
     closeLibrary()
+    return true
+  }
+
+  // Atalho para a pesquisa: adiciona primeiro as músicas já selecionadas
+  // (antes descartava-as sem aviso) e só depois navega
+  async function goToSearch() {
+    if (libSelection.size > 0) {
+      const ok = await addSelectedSongs()
+      if (!ok) return
+    } else {
+      closeLibrary()
+    }
+    navigate(setlist?.band_id ? `/search?project=${setlist.band_id}&setlist=${id}` : `/search?setlist=${id}`)
   }
 
   function toggleSelection(songId: string) {
@@ -310,16 +334,34 @@ export default function SetlistPage() {
   }
 
   async function persistOrder(order: Row[]) {
-    await Promise.all(order.map((ss, i) =>
-      supabase.from('setlist_songs').update({ position: 10000 + i }).eq('id', ss.id)))
-    await Promise.all(order.map((ss, i) =>
-      supabase.from('setlist_songs').update({ position: i }).eq('id', ss.id)))
+    // 2 upserts em lote em vez de 2×N updates. As duas fases são obrigatórias:
+    // unique(setlist_id, position) — primeiro afasta tudo (10000+i), depois assenta (i)
+    const rowsAt = (offset: number) => order.map((ss, i) => ({
+      id: ss.id, setlist_id: ss.setlist_id, song_id: ss.song_id, position: offset + i,
+    }))
+    const { error: e1 } = await supabase.from('setlist_songs').upsert(rowsAt(10000), { onConflict: 'id' })
+    if (e1) {
+      toast('Erro ao reordenar: ' + e1.message, { type: 'error' })
+      await loadSongs()
+      return
+    }
+    const { error: e2 } = await supabase.from('setlist_songs').upsert(rowsAt(0), { onConflict: 'id' })
+    if (e2) {
+      toast('Erro ao reordenar: ' + e2.message, { type: 'error' })
+      await loadSongs()
+    }
   }
 
   async function saveName() {
     if (!id || !name.trim()) return
+    if (name === setlist?.name) { setEditingName(false); return }
     await supabase.from('setlists').update({ name }).eq('id', id)
     setSetlist(prev => prev ? { ...prev, name } : prev)
+    setEditingName(false)
+  }
+
+  function cancelNameEdit() {
+    setName(setlist?.name ?? '')
     setEditingName(false)
   }
 
@@ -334,126 +376,46 @@ export default function SetlistPage() {
   }
 
   async function duplicateTo(projectId: string) {
-    if (!user || !setlist) return
-    setDuplicating(false)
+    if (!user || !setlist || dupBusy) return
+    // Mantém o picker aberto com busy — evita re-toques que criam duplicados
+    setDupBusy(true)
     const { data: newSl, error } = await supabase
       .from('setlists')
       .insert({ name: `${setlist.name} (cópia)`, owner_id: user.id, band_id: projectId, is_shared: true })
       .select()
       .single()
-    if (error) { toast('Erro ao duplicar: ' + error.message, { type: 'error' }); return }
+    if (error) {
+      setDupBusy(false)
+      toast('Erro ao duplicar: ' + error.message, { type: 'error' })
+      return
+    }
     if (newSl && songs.length) {
       await supabase.from('setlist_songs').insert(
         songs.map((s, i) => ({ setlist_id: newSl.id, song_id: s.song_id, position: i }))
       )
     }
+    setDupBusy(false)
+    setDuplicating(false)
     if (newSl) navigate(`/setlist/${newSl.id}`)
   }
 
   function exportPdf(withLyrics: boolean) {
     if (!setlist) return
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const rows = withLyrics
-      ? songs.map((ss, i) => {
-          const lyrics = (ss.song?.edited_lyrics ?? ss.song?.lyrics ?? '').replace(/\r\n/g, '\n').trim()
-          return `
-      <div class="songBlock">
-        <div class="song">
-          <span class="num">${i + 1}</span>
-          <span class="title">${esc(ss.song?.title ?? '')}</span>
-        </div>
-        ${lyrics ? `<div class="lyrics">${esc(lyrics)}</div>` : '<div class="noLyrics">— sem letra —</div>'}
-      </div>`
-        }).join('')
-      : songs.map((ss, i) => `
-      <div class="song">
-        <span class="num">${i + 1}</span>
-        <span class="title">${esc(ss.song?.title ?? '')}</span>
-      </div>`
-    ).join('')
-    const accent = projectColor ?? '#FF4D6D'
-    const logoBlock = projectName
-      ? projectImage
-        ? `<img class="logo" src="${esc(projectImage)}" alt="${esc(projectName)}" />`
-        : `<div class="logoInitial">${esc(projectName.charAt(0).toUpperCase())}</div>`
-      : ''
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(setlist.name)}</title>
-      <style>
-        @page { size: A4; margin: 18mm 20mm; }
-        * { box-sizing: border-box; }
-        body {
-          font-family: -apple-system, 'Segoe UI', sans-serif;
-          color: #111; margin: 0; text-align: center;
-        }
-        .toolbar {
-          position: sticky; top: 0; display: flex; gap: 10px; justify-content: flex-end;
-          padding: 10px 16px 10px; background: #fff; border-bottom: 1px solid #eee;
-        }
-        .toolbar button {
-          font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
-          padding: 9px 20px; border-radius: 10px; border: 1px solid #ccc; background: #f5f5f5;
-        }
-        .toolbar .print { background: ${accent}; border-color: ${accent}; color: #fff; }
-        .header {
-          padding: 14px 0 10px;
-          display: flex; align-items: center; justify-content: center; gap: 16px;
-        }
-        .logo { width: 64px; height: 64px; border-radius: 14px; object-fit: cover; flex-shrink: 0; }
-        .logoInitial {
-          width: 64px; height: 64px; border-radius: 14px; flex-shrink: 0;
-          background: ${accent}; color: #fff;
-          font-size: 28px; font-weight: 900;
-          display: flex; align-items: center; justify-content: center;
-        }
-        .headerText { text-align: left; }
-        .concertName { font-size: 22px; font-weight: 900; letter-spacing: -0.3px; line-height: 1.2; }
-        .divider { width: 36px; height: 2.5px; background: ${accent}; border: none; border-radius: 2px; margin: 10px auto; }
-        .songs { padding: 0; }
-        .song {
-          display: flex; align-items: baseline; justify-content: center; gap: 7px;
-          padding: 2px 0;
-          page-break-inside: avoid;
-        }
-        .num { font-size: 11px; color: #bbb; font-weight: 700; min-width: 18px; text-align: right; flex-shrink: 0; }
-        .title { font-size: 17px; font-weight: 700; }
-        .songBlock { page-break-before: always; padding-top: 6px; }
-        .songBlock:first-child { page-break-before: auto; }
-        .lyrics {
-          white-space: pre-wrap; font-size: 13.5px; line-height: 1.55;
-          margin-top: 10px; text-align: center;
-        }
-        .noLyrics { margin-top: 10px; font-size: 12px; color: #bbb; font-style: italic; }
-        @media print { .toolbar { display: none; } }
-      </style></head><body>
-      <div class="toolbar">
-        <button onclick="window.close()">✕ Fechar</button>
-        <button class="print" onclick="window.print()">🖨 Imprimir / PDF</button>
-      </div>
-      <div class="header">
-        ${logoBlock}
-        <div class="headerText">
-          <div class="concertName">${esc(setlist.name)}</div>
-        </div>
-      </div>
-      <hr class="divider" />
-      <div class="songs">${rows}</div>
-      <script>
-        window.onload = () => {
-          const img = document.querySelector('img.logo')
-          const go = () => setTimeout(() => window.print(), 100)
-          if (img && !img.complete) {
-            let done = false
-            const once = () => { if (!done) { done = true; go() } }
-            img.onload = once; img.onerror = once
-            setTimeout(once, 1500)
-          } else go()
-        }
-      <\/script>
-      </body></html>`
-    const w = window.open('', '_blank')
-    if (!w) { toast('Permite pop-ups para exportar o PDF.', { type: 'error' }); return }
-    w.document.write(html)
-    w.document.close()
+    const ok = exportSongsPdf(
+      songs.map(ss => ({
+        title: ss.song?.title ?? '',
+        lyrics: ss.song?.edited_lyrics ?? ss.song?.lyrics,
+      })),
+      {
+        title: setlist.name,
+        accent: projectColor,
+        logoUrl: projectName ? projectImage : null,
+        logoInitial: projectName,
+        withLyrics,
+      }
+    )
+    // false = pop-up bloqueado; o utilizador pode permitir e tocar de novo
+    if (!ok) toast('Permite pop-ups para exportar o PDF.', { type: 'error' })
   }
 
   const totalSec = songs.reduce((acc, s) => acc + (s.song?.duration_sec ?? 0), 0)
@@ -493,7 +455,10 @@ export default function SetlistPage() {
                 value={name}
                 onChange={e => setName(e.target.value)}
                 onBlur={saveName}
-                onKeyDown={e => e.key === 'Enter' && saveName()}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') saveName()
+                  else if (e.key === 'Escape') cancelNameEdit()
+                }}
                 autoFocus
               />
             ) : (
@@ -563,13 +528,21 @@ export default function SetlistPage() {
         <div className={styles.songList}>
           <div className={styles.listHeader}>
             <span className={styles.listTitle}>Ordem das músicas</span>
-            <button className={styles.addBtn} onClick={loadLibrary}>+ Adicionar</button>
+            <button className={styles.addBtn} onClick={loadLibrary} disabled={libraryLoading}>
+              {libraryLoading ? 'A carregar...' : '+ Adicionar'}
+            </button>
           </div>
 
-          {songs.length === 0 ? (
+          {songsLoading ? (
+            <div aria-hidden="true">
+              {[0, 1, 2, 3, 4].map(i => (
+                <div key={i} className={`skeleton ${styles.skeletonRow}`} />
+              ))}
+            </div>
+          ) : songs.length === 0 ? (
             <div className={styles.empty}>
               <p>Sem músicas ainda</p>
-              <button className={styles.addBtn} onClick={loadLibrary}>+ Adicionar música</button>
+              <button className={styles.addBtn} onClick={loadLibrary} disabled={libraryLoading}>+ Adicionar música</button>
             </div>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -599,7 +572,7 @@ export default function SetlistPage() {
                 <span className={styles.modalTitle}>{overrideRow.song?.title}</span>
                 <div className={styles.ovSubtitle}>Só neste concerto — não altera a música original</div>
               </div>
-              <button className={styles.closeBtn} onClick={() => setOverrideRow(null)}>✕</button>
+              <button className={styles.closeBtn} onClick={() => setOverrideRow(null)} aria-label="Fechar">✕</button>
             </div>
 
             <div className={styles.ovField}>
@@ -664,7 +637,8 @@ export default function SetlistPage() {
         <ProjectPickerModal
           title="Duplicar concerto para que projeto?"
           onPick={duplicateTo}
-          onClose={() => setDuplicating(false)}
+          onClose={() => !dupBusy && setDuplicating(false)}
+          busy={dupBusy}
         />
       )}
 
@@ -673,7 +647,7 @@ export default function SetlistPage() {
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <span className={styles.modalTitle}>Biblioteca</span>
-              <button className={styles.closeBtn} onClick={closeLibrary}>✕</button>
+              <button className={styles.closeBtn} onClick={closeLibrary} aria-label="Fechar">✕</button>
             </div>
             <input
               className={styles.librarySearch}
@@ -682,21 +656,24 @@ export default function SetlistPage() {
               onChange={e => setLibrarySearch(e.target.value)}
               autoFocus
             />
-            {library.length === 0 ? (
+            {libraryLoading ? (
+              <div aria-hidden="true">
+                {[0, 1, 2, 3].map(i => (
+                  <div key={i} className={`skeleton ${styles.skeletonRow}`} />
+                ))}
+              </div>
+            ) : library.length === 0 ? (
               <div className={styles.modalEmpty}>
                 <p>{setlist?.band_id ? 'Nenhuma música no repertório do projeto.' : 'Sem músicas na biblioteca.'}</p>
-                <button
-                  className={styles.addBtn}
-                  onClick={() => {
-                    closeLibrary()
-                    navigate(setlist?.band_id ? `/search?project=${setlist.band_id}&setlist=${id}` : `/search?setlist=${id}`)
-                  }}
-                >
+                <button className={styles.addBtn} onClick={goToSearch}>
                   🔍 Pesquisar música nova
                 </button>
               </div>
             ) : (
               <>
+                <button className={styles.searchNewBtn} onClick={goToSearch}>
+                  🔍 Pesquisar música que não está aqui
+                </button>
                 {filteredLibrary.map(song => (
                   <div
                     key={song.id}
@@ -712,15 +689,6 @@ export default function SetlistPage() {
                     </span>
                   </div>
                 ))}
-                <button
-                  className={styles.searchNewBtn}
-                  onClick={() => {
-                    closeLibrary()
-                    navigate(setlist?.band_id ? `/search?project=${setlist.band_id}&setlist=${id}` : `/search?setlist=${id}`)
-                  }}
-                >
-                  🔍 Pesquisar música que não está aqui
-                </button>
                 {libSelection.size > 0 && (
                   <div className={styles.modalAddBar}>
                     <button className={styles.addSelectedBtn} onClick={addSelectedSongs}>

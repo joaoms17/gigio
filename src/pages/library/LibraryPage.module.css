@@ -55,7 +55,6 @@
   background: var(--bg2);
   color: var(--text);
   font-size: 14px;
-  margin-bottom: 16px;
   box-sizing: border-box;
   transition: border-color 0.15s;
 }
@@ -87,6 +86,13 @@
 
 .row:hover {
   background: var(--bg2);
+}
+.row:active {
+  background: var(--bg3);
+}
+.row:focus-visible {
+  outline: 2px solid var(--gig);
+  outline-offset: -2px;
 }
 
 .rowInfo {
@@ -196,7 +202,8 @@
   text-decoration: underline;
 }
 
-.filterRow { display: flex; gap: 8px; align-items: stretch; }
+/* O espaçamento vertical vive no contentor para input e select ficarem alinhados */
+.filterRow { display: flex; gap: 8px; align-items: stretch; margin-bottom: 14px; }
 .filterRow .searchInput { flex: 1; }
 .sortSelect {
   padding: 0 12px;
@@ -207,7 +214,6 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  margin-bottom: 14px;
   flex-shrink: 0;
 }
 .sortSelect:focus { outline: none; border-color: var(--gig); }
@@ -252,6 +258,29 @@
   border-color: var(--gig);
   color: var(--gig);
 }
+
+/* Export toolbar */
+.exportRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.exportBtn {
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg2);
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.exportBtn:hover { border-color: var(--gig); color: var(--gig); }
+.exportBtn:active { transform: scale(0.98); }
 
 /* Bulk selection */
 .rowSelected { background: linear-gradient(135deg, #FF4D6D10, #7C3AED08); }
@@ -300,6 +329,7 @@
 
 @media (min-width: 768px) {
   .chip { font-size: 14px; padding: 7px 16px; }
+  .exportBtn { font-size: 15px; }
   .bulkCount { font-size: 15px; }
   .bulkDeleteBtn { font-size: 15px; padding: 11px 22px; }
 }

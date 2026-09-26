@@ -6,6 +6,7 @@ import { searchGenius } from '../lib/genius'
 import { getLyricsOvh } from '../lib/lyricsovh'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from './Toast'
+import { useConfirm } from './ConfirmDialog'
 import type { Song, SearchResult, LyricLine } from '../types'
 import styles from './SetlistImportModal.module.css'
 
@@ -57,6 +58,10 @@ function findMatch(query: string, library: Song[]): Song | null {
 
 async function fetchResults(query: string): Promise<SearchResult[]> {
   const [lrc, genius] = await Promise.allSettled([searchLrclib(query), searchGenius(query)])
+  // Todas as fontes falharam → erro de rede, não "sem correspondência"
+  if (lrc.status === 'rejected' && genius.status === 'rejected') {
+    throw new Error('Sem ligação — não foi possível pesquisar.')
+  }
   const combined = [
     ...(lrc.status === 'fulfilled' ? lrc.value : []),
     ...(genius.status === 'fulfilled' ? genius.value : []),
@@ -68,6 +73,7 @@ async function fetchResults(query: string): Promise<SearchResult[]> {
 export default function SetlistImportModal({ setlistId, projectId, currentPosition, onClose, onImported }: Props) {
   const { user } = useAuth()
   const toast = useToast()
+  const confirm = useConfirm()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<Step>('upload')
   const [parsing, setParsing] = useState(false)
@@ -78,7 +84,8 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
   const [missed, setMissed] = useState<string[]>([])
 
   // Pre-loaded search results — populated in background after import
-  const [preloaded, setPreloaded] = useState<Record<string, SearchResult[]>>({})
+  // null = a pesquisa falhou (rede), diferente de [] = sem correspondências
+  const [preloaded, setPreloaded] = useState<Record<string, SearchResult[] | null>>({})
   const [preloadDone, setPreloadDone] = useState(0)   // how many have finished
   const preloadTotal = useRef(0)
 
@@ -88,6 +95,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState(false)
   const [savingKey, setSavingKey] = useState<string | null>(null)
   const [addedFromSearch, setAddedFromSearch] = useState(0)
   const [lyricsPreview, setLyricsPreview] = useState<LyricsPreview | null>(null)
@@ -96,10 +104,30 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
   const [bulkOverrides, setBulkOverrides] = useState<Record<string, SearchResult | null>>({})
   const [bulkExpanded, setBulkExpanded] = useState<string | null>(null)
   const [bulkImporting, setBulkImporting] = useState(false)
+  // Progresso item a item do import em lote
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number; current: string } | null>(null)
+  // Nomes já guardados com sucesso — nunca reprocessados (evita duplicados ao repetir)
+  const [bulkAdded, setBulkAdded] = useState<Set<string>>(new Set())
 
   function handleClose() {
-    if (addedCount > 0 || addedFromSearch > 0) onImported()
+    if (addedCount > 0 || addedFromSearch > 0 || bulkAdded.size > 0) onImported()
     else onClose()
+  }
+
+  // Só o ✕ fecha a meio do fluxo, com confirmação quando há estado por terminar
+  async function requestClose() {
+    if (importing || bulkImporting) return
+    const hasWorkInProgress = step === 'review' || step === 'search' || step === 'bulk'
+    if (hasWorkInProgress) {
+      const ok = await confirm({
+        title: 'Descartar importação?',
+        message: 'As músicas já adicionadas ficam guardadas, mas o resto da importação será descartado.',
+        confirmLabel: 'Descartar',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    handleClose()
   }
 
   async function handleFile(file: File) {
@@ -137,7 +165,8 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
         const results = await fetchResults(name)
         setPreloaded(prev => ({ ...prev, [name]: results }))
       } catch {
-        setPreloaded(prev => ({ ...prev, [name]: [] }))
+        // Falha de rede — marcada como null para não passar por "sem correspondência"
+        setPreloaded(prev => ({ ...prev, [name]: null }))
       }
       setPreloadDone(n => n + 1)
     })
@@ -164,27 +193,38 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
     if (missedNames.length > 0) preloadAll(missedNames)
   }
 
-  function getResultsFor(name: string): SearchResult[] | undefined {
+  function getResultsFor(name: string): SearchResult[] | null | undefined {
     return preloaded[name]
   }
 
+  // Carrega resultados para a query atual; distingue falha de rede de "sem correspondência"
+  function loadResults(q: string, force = false) {
+    setSearchError(false)
+    if (!force) {
+      const cached = getResultsFor(q)
+      if (cached != null) {
+        setSearchResults(cached)
+        setSearchLoading(false)
+        return
+      }
+    }
+    setSearchResults([])
+    setSearchLoading(true)
+    fetchResults(q)
+      .then(r => { setSearchResults(r); setSearchLoading(false) })
+      .catch(() => { setSearchError(true); setSearchLoading(false) })
+  }
+
   function startSearch() {
-    const queue = missed
+    const queue = missed.filter(n => !bulkAdded.has(n))
+    if (queue.length === 0) { onImported(); return }
     setSearchQueue(queue)
     setSearchIndex(0)
     setAddedFromSearch(0)
     setLyricsPreview(null)
     const first = queue[0]
     setSearchQuery(first ?? '')
-    const cached = getResultsFor(first)
-    if (cached !== undefined) {
-      setSearchResults(cached)
-      setSearchLoading(false)
-    } else {
-      setSearchResults([])
-      setSearchLoading(true)
-      fetchResults(first).then(r => { setSearchResults(r); setSearchLoading(false) }).catch(() => setSearchLoading(false))
-    }
+    if (first) loadResults(first)
     setStep('search')
   }
 
@@ -196,21 +236,12 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
     setSearchIndex(next)
     const q = searchQueue[next]
     setSearchQuery(q)
-    const cached = getResultsFor(q)
-    if (cached !== undefined) {
-      setSearchResults(cached)
-      setSearchLoading(false)
-    } else {
-      setSearchResults([])
-      setSearchLoading(true)
-      fetchResults(q).then(r => { setSearchResults(r); setSearchLoading(false) }).catch(() => setSearchLoading(false))
-    }
+    loadResults(q)
   }
 
-  async function runManualSearch() {
+  function runManualSearch() {
     if (!searchQuery.trim()) return
-    setSearchLoading(true); setSearchResults([])
-    fetchResults(searchQuery).then(r => { setSearchResults(r); setSearchLoading(false) }).catch(() => setSearchLoading(false))
+    loadResults(searchQuery, true)
   }
 
   async function openPreview(r: SearchResult) {
@@ -271,13 +302,14 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
 
   async function addEmpty(name: string): Promise<void> {
     if (!user) throw new Error('not logged in')
-    const { data: song } = await supabase.from('songs').insert({
+    const { data: song, error: songErr } = await supabase.from('songs').insert({
       owner_id: user.id, title: name, artist: '',
       lyrics: '', original_lyrics: '', edited_lyrics: '',
       source: 'manual', source_provider: 'manual',
       has_sync: false, duration_sec: null,
       project_id: projectId ?? null, is_user_edited: false,
     }).select().single()
+    if (songErr) throw songErr
     if (song) {
       const { count } = await supabase.from('setlist_songs').select('*', { count: 'exact', head: true }).eq('setlist_id', setlistId)
       await supabase.from('setlist_songs').insert({ setlist_id: setlistId, song_id: song.id, position: count ?? 0 })
@@ -286,16 +318,31 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
 
   async function handleBulkImport() {
     setBulkImporting(true)
-    try {
-      const toProcess = missed.filter(n => bulkChecked[n] !== false)
-      for (const name of toProcess) {
+    // Salta o que já foi adicionado numa tentativa anterior — sem duplicados
+    const toProcess = missed.filter(n => bulkChecked[n] !== false && !bulkAdded.has(n))
+    let okCount = 0
+    let failCount = 0
+    for (let i = 0; i < toProcess.length; i++) {
+      const name = toProcess[i]
+      setBulkProgress({ done: i, total: toProcess.length, current: name })
+      try {
         const result = getBulkResult(name)
         if (result) { await saveSongAndAdd(result) } else { await addEmpty(name) }
+        okCount++
+        setBulkAdded(prev => { const next = new Set(prev); next.add(name); return next })
+      } catch {
+        // Continua nas falhas individuais; o resumo sai no fim
+        failCount++
       }
+    }
+    setBulkProgress(null)
+    setBulkImporting(false)
+    const okMsg = `${okCount} adicionada${okCount === 1 ? '' : 's'}`
+    if (failCount > 0) {
+      toast(`${okMsg}, ${failCount} falh${failCount === 1 ? 'ou' : 'aram'}`, { type: 'error' })
+    } else {
+      toast(okMsg, { type: 'success' })
       onImported()
-    } catch (err: any) {
-      toast('Erro ao guardar: ' + (err?.message ?? err), { type: 'error' })
-      setBulkImporting(false)
     }
   }
 
@@ -312,6 +359,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
   }
 
   const isPreloadingDone = preloadDone >= preloadTotal.current && preloadTotal.current > 0
+  const bulkSelected = missed.filter(n => bulkChecked[n] !== false && !bulkAdded.has(n))
   const stepTitle =
     step === 'upload' ? 'Importar concerto de PDF' :
     step === 'review' ? 'Rever entradas' :
@@ -320,11 +368,14 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
     `Pesquisar (${searchIndex + 1}/${searchQueue.length})`
 
   return (
-    <div className={styles.overlay} onClick={handleClose}>
+    <div
+      className={styles.overlay}
+      onClick={() => { if (step === 'upload' && !parsing) handleClose() }}
+    >
       <div className={styles.modal} onClick={e => e.stopPropagation()}>
         <div className={styles.header}>
           <span className={styles.title}>{stepTitle}</span>
-          <button className={styles.close} onClick={handleClose}>✕</button>
+          <button className={styles.close} onClick={requestClose}>✕</button>
         </div>
 
         {step === 'upload' && (
@@ -390,14 +441,17 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
             {missed.length > 0 ? (
               <div className={styles.missedSection}>
                 <div className={styles.missedTitle}>{missed.length} não encontrada{missed.length !== 1 ? 's' : ''} na biblioteca</div>
-                {missed.map((name, i) => (
-                  <div key={i} className={styles.missedItem}>
-                    {name}
-                    {preloaded[name] !== undefined && (
-                      <span className={styles.preloadReady}> · {preloaded[name].length} resultado{preloaded[name].length !== 1 ? 's' : ''}</span>
-                    )}
-                  </div>
-                ))}
+                {missed.map((name, i) => {
+                  const pre = preloaded[name]
+                  return (
+                    <div key={i} className={styles.missedItem}>
+                      {name}
+                      {Array.isArray(pre) && (
+                        <span className={styles.preloadReady}> · {pre.length} resultado{pre.length !== 1 ? 's' : ''}</span>
+                      )}
+                    </div>
+                  )
+                })}
                 {!isPreloadingDone && preloadTotal.current > 0 && (
                   <div className={styles.preloadProgress}>
                     A pré-carregar pesquisas... {preloadDone}/{preloadTotal.current}
@@ -463,6 +517,18 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
 
                 {searchLoading
                   ? <div className={styles.parseSpinner}>A pesquisar...</div>
+                  : searchError
+                    ? (
+                      <div className={styles.noResults}>
+                        <div>Sem ligação — não foi possível pesquisar.</div>
+                        <button
+                          className={styles.retryBtn}
+                          onClick={() => loadResults(searchQuery.trim() || searchQueue[searchIndex], true)}
+                        >
+                          Tentar de novo
+                        </button>
+                      </div>
+                    )
                   : searchResults.length > 0
                     ? (
                       <div className={styles.resultList}>
@@ -504,39 +570,58 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
 
         {step === 'bulk' && (
           <div className={styles.searchStep}>
-            <div className={styles.bulkSummary}>
-              <div className={styles.bulkSummaryRow}>
-                <span>{missed.filter(n => bulkChecked[n] !== false).length} de {missed.length} selecionadas</span>
-                {preloadTotal.current > 0 && (
-                  <span className={styles.preloadProgress}>
-                    {isPreloadingDone
-                      ? `${missed.filter(n => (preloaded[n]?.length ?? 0) > 0).length} com resultado`
-                      : `A carregar... ${preloadDone}/${preloadTotal.current}`}
+            {bulkProgress ? (
+              /* Progresso item a item durante o import em lote */
+              <div className={styles.bulkSummary}>
+                <div className={styles.bulkSummaryRow}>
+                  <span className={styles.bulkProgressLabel}>
+                    {bulkProgress.done + 1}/{bulkProgress.total} — {bulkProgress.current}
                   </span>
-                )}
-              </div>
-              {preloadTotal.current > 0 && !isPreloadingDone && (
+                </div>
                 <div className={styles.bulkProgressBar}>
                   <div className={styles.bulkProgressFill}
-                    style={{ width: `${Math.round(preloadDone / preloadTotal.current * 100)}%` }} />
+                    style={{ width: `${Math.round(bulkProgress.done / bulkProgress.total * 100)}%` }} />
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className={styles.bulkSummary}>
+                <div className={styles.bulkSummaryRow}>
+                  <span>{bulkSelected.length} de {missed.length} selecionadas</span>
+                  {preloadTotal.current > 0 && (
+                    <span className={styles.preloadProgress}>
+                      {isPreloadingDone
+                        ? `${missed.filter(n => (preloaded[n]?.length ?? 0) > 0).length} com resultado`
+                        : `A carregar... ${preloadDone}/${preloadTotal.current}`}
+                    </span>
+                  )}
+                </div>
+                {preloadTotal.current > 0 && !isPreloadingDone && (
+                  <div className={styles.bulkProgressBar}>
+                    <div className={styles.bulkProgressFill}
+                      style={{ width: `${Math.round(preloadDone / preloadTotal.current * 100)}%` }} />
+                  </div>
+                )}
+              </div>
+            )}
             <div className={styles.bulkList}>
               {missed.map(name => {
+                const isAdded = bulkAdded.has(name)
                 const checked = bulkChecked[name] !== false
                 const results = preloaded[name]
                 const topResult = getBulkResult(name)
                 const isExpanded = bulkExpanded === name
                 return (
                   <div key={name}>
-                    <label className={`${styles.bulkRow} ${!checked ? styles.bulkUnchecked : ''}`}>
+                    <label className={`${styles.bulkRow} ${!checked && !isAdded ? styles.bulkUnchecked : ''}`}>
                       <input type="checkbox" className={styles.checkbox}
-                        checked={checked}
+                        checked={isAdded || checked}
+                        disabled={isAdded || bulkImporting}
                         onChange={() => setBulkChecked(prev => ({ ...prev, [name]: !checked }))} />
                       <div className={styles.bulkMain}>
                         <div className={styles.bulkName}>{name}</div>
-                        {topResult ? (
+                        {isAdded ? (
+                          <div className={styles.bulkAddedNote}>✓ Adicionada ao concerto</div>
+                        ) : topResult ? (
                           <div className={styles.bulkMatchInfo}>
                             <span className={styles.bulkMatchTitle}>{topResult.title}</span>
                             <span className={styles.bulkMatchArtist}> · {topResult.artist}</span>
@@ -547,11 +632,13 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
                           </div>
                         ) : results === undefined ? (
                           <div className={styles.bulkLoading}>A carregar...</div>
+                        ) : results === null ? (
+                          <div className={styles.bulkNoResult}>Sem ligação — a pesquisa falhou; será adicionada sem letra</div>
                         ) : (
                           <div className={styles.bulkNoResult}>Sem resultado — será adicionada sem letra</div>
                         )}
                       </div>
-                      {results !== undefined && results.length > 0 && (
+                      {!isAdded && !!results && results.length > 0 && (
                         <button className={styles.bulkChangeBtn} type="button"
                           aria-label={isExpanded ? 'Fechar alternativas' : 'Trocar correspondência'}
                           onClick={() => setBulkExpanded(isExpanded ? null : name)}>
@@ -589,13 +676,13 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
               })}
             </div>
             <div className={styles.footer}>
-              <button className={styles.cancelBtn} onClick={startSearch}>Um a um →</button>
+              <button className={styles.cancelBtn} onClick={startSearch} disabled={bulkImporting}>Um a um →</button>
               <button className={styles.importBtn}
-                disabled={bulkImporting || missed.filter(n => bulkChecked[n] !== false).length === 0}
+                disabled={bulkImporting || bulkSelected.length === 0}
                 onClick={handleBulkImport}>
                 {bulkImporting
                   ? 'A guardar...'
-                  : `Importar ${missed.filter(n => bulkChecked[n] !== false).length} músicas`}
+                  : `Importar ${bulkSelected.length} música${bulkSelected.length === 1 ? '' : 's'}`}
               </button>
             </div>
           </div>

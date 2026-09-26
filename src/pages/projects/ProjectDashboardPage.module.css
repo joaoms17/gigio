@@ -243,10 +243,29 @@
 }
 .tabTitle { font-size: 19px; font-weight: 800; letter-spacing: -0.3px; color: var(--text); margin: 0 0 3px; }
 .tabSub { font-size: 13px; color: var(--text3); margin: 0; }
-.tabActions { display: flex; gap: 8px; flex-shrink: 0; }
+.tabActions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+.exportBtn {
+  padding: 9px 14px;
+  min-height: 44px;
+  background: var(--bg2);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text2);
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s;
+}
+.exportBtn:hover { border-color: var(--gig); color: var(--gig); }
+.exportBtn:active { transform: scale(0.98); }
+.exportBtn:disabled { opacity: 0.5; cursor: default; }
 
 .addBtn {
   padding: 9px 18px;
+  min-height: 44px;
   background: linear-gradient(135deg, var(--gig), var(--io));
   color: #fff;
   border: none;
@@ -660,6 +679,7 @@
   .tabTitle { font-size: 23px; }
   .tabSub { font-size: 15px; }
   .addBtn { font-size: 15px; }
+  .exportBtn { font-size: 15px; }
   .songSearchInput { font-size: 16px; }
   .songRow { padding: 14px 12px; }
   .songTitle { font-size: 17px; }
@@ -741,6 +761,7 @@
   margin-bottom: 12px;
   text-align: center;
 }
-@media (prefers-color-scheme: dark) {
-  .offlineBanner { color: #ffba5a; background: rgba(255,160,0,0.08); }
+:global([data-theme="dark"]) .offlineBanner {
+  color: #ffba5a;
+  background: rgba(255,160,0,0.08);
 }

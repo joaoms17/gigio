@@ -11,16 +11,20 @@ import type { Song } from '../../types'
 import styles from './SongPage.module.css'
 
 const ANN_COLORS = [
-  { id: 'red',    value: '#FF4D6D' },
-  { id: 'blue',   value: '#2563EB' },
-  { id: 'green',  value: '#16A34A' },
-  { id: 'orange', value: '#F59E0B' },
-  { id: 'dark',   value: '#1e1e2e' },
+  { id: 'red',    value: '#FF4D6D', label: 'Vermelho' },
+  { id: 'blue',   value: '#2563EB', label: 'Azul' },
+  { id: 'green',  value: '#16A34A', label: 'Verde' },
+  { id: 'orange', value: '#F59E0B', label: 'Laranja' },
+  { id: 'dark',   value: '#1e1e2e', label: 'Escuro' },
 ]
+// No tema escuro o swatch escuro (#1e1e2e) é invisível — troca-se por um claro
+const ANN_COLORS_DARK = ANN_COLORS.map(c =>
+  c.id === 'dark' ? { ...c, value: '#f0f0f5', label: 'Claro' } : c
+)
 const ANN_WIDTHS = [
-  { id: 'thin',   value: 2,  size: 4 },
-  { id: 'mid',    value: 4,  size: 7 },
-  { id: 'thick',  value: 8,  size: 11 },
+  { id: 'thin',   value: 2,  size: 4,  label: 'Traço fino' },
+  { id: 'mid',    value: 4,  size: 7,  label: 'Traço médio' },
+  { id: 'thick',  value: 8,  size: 11, label: 'Traço grosso' },
 ]
 
 type Tab = 'lyrics' | 'chords' | 'details'
@@ -85,6 +89,8 @@ export default function SongPage() {
   const [tagInput, setTagInput] = useState('')
 
   // Annotation state
+  // Paleta consciente do tema (lida no render; a página remonta ao mudar de tema)
+  const annPalette = document.documentElement.dataset.theme === 'dark' ? ANN_COLORS_DARK : ANN_COLORS
   const [annTool, setAnnTool] = useState<'pen' | 'eraser'>('pen')
   const [annColor, setAnnColor] = useState(ANN_COLORS[0].value)
   const [annWidth, setAnnWidth] = useState(ANN_WIDTHS[0].value)
@@ -303,17 +309,22 @@ export default function SongPage() {
 
       {/* Header editable */}
       <div className={styles.songHeader}>
-        <input
-          className={styles.titleInput}
-          value={title}
-          onChange={e => { setTitle(e.target.value); scheduleSave() }}
-          placeholder="Título da música"
-        />
+        <div className={styles.titleRow}>
+          <input
+            className={styles.titleInput}
+            value={title}
+            onChange={e => { setTitle(e.target.value); scheduleSave() }}
+            placeholder="Título da música"
+            aria-label="Título da música (editável)"
+          />
+          <span className={styles.editHint} aria-hidden="true">✎</span>
+        </div>
         <input
           className={styles.artistInput}
           value={artist}
           onChange={e => { setArtist(e.target.value); scheduleSave() }}
           placeholder="Artista"
+          aria-label="Artista (editável)"
         />
         <div className={styles.quickMeta}>
           {song.duration_sec ? <span>{durationLabel(song.duration_sec)}</span> : null}
@@ -379,6 +390,7 @@ export default function SongPage() {
                 className={styles.syncEditorBtn}
                 onClick={() => navigate(`/songs/${id}/sync${projectId ? `?project=${projectId}` : ''}`)}
                 title="Editor de sincronização de letra"
+                aria-label="Abrir editor de sincronização de letra"
               >
                 🎵 Sincronizar
               </button>
@@ -390,13 +402,13 @@ export default function SongPage() {
                 <div className={styles.rehearsalBar}>
                   {/* Colors */}
                   <div className={styles.annColors}>
-                    {ANN_COLORS.map(c => (
+                    {annPalette.map(c => (
                       <button
                         key={c.id}
                         className={`${styles.annColor} ${annTool === 'pen' && annColor === c.value ? styles.annColorActive : ''}`}
                         style={{ backgroundColor: c.value, borderColor: annTool === 'pen' && annColor === c.value ? '#fff' : 'transparent' }}
                         onClick={() => { setAnnColor(c.value); setAnnTool('pen'); setAnnScrollMode(false) }}
-                        aria-label={`Cor ${c.id}`}
+                        aria-label={`Cor ${c.label.toLowerCase()}`}
                       />
                     ))}
                   </div>
@@ -410,6 +422,8 @@ export default function SongPage() {
                         key={w.id}
                         className={`${styles.annWidth} ${annWidth === w.value && annTool === 'pen' ? styles.annWidthActive : ''}`}
                         onClick={() => { setAnnWidth(w.value); setAnnTool('pen'); setAnnScrollMode(false) }}
+                        aria-label={w.label}
+                        title={w.label}
                       >
                         <span className={styles.annWidthDot} style={{ width: w.size, height: w.size }} />
                       </button>
@@ -423,6 +437,8 @@ export default function SongPage() {
                     className={`${styles.annTool} ${annTool === 'eraser' && !annScrollMode ? styles.annToolActive : ''}`}
                     onClick={() => { setAnnTool(t => t === 'eraser' ? 'pen' : 'eraser'); setAnnScrollMode(false) }}
                     title="Borracha"
+                    aria-label="Borracha"
+                    aria-pressed={annTool === 'eraser' && !annScrollMode}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M20 20H7L3 16l9-9 8 8-4 4z"/>
@@ -644,16 +660,19 @@ export default function SongPage() {
         )}
       </div>
 
-      {/* Save button — fixed footer */}
-      <div className={styles.saveBar}>
-        <button
-          className={styles.saveBtn}
-          onClick={async () => { await save(); navigate(backPath()) }}
-          disabled={saving}
-        >
-          {saving ? 'A guardar...' : 'Guardar'}
-        </button>
-      </div>
+      {/* "Concluído" — o autosave já grava; a barra só confirma e sai.
+          Escondida no modo ensaio para devolver ~70px de letra. */}
+      {mode !== 'ensaio' && (
+        <div className={styles.saveBar}>
+          <button
+            className={styles.saveBtn}
+            onClick={async () => { await save(); navigate(backPath()) }}
+            disabled={saving}
+          >
+            {saving ? 'A guardar...' : 'Concluído'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

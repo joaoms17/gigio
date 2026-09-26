@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useConfirm } from '../../components/ConfirmDialog'
+import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
+import { exportSongsPdf } from '../../lib/pdfExport'
 import { useAuth } from '../../hooks/useAuth'
 import type { Song } from '../../types'
 import styles from './LibraryPage.module.css'
@@ -12,6 +14,7 @@ export default function LibraryPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const confirmDialog = useConfirm()
+  const toast = useToast()
   const [songs, setSongs] = useState<Song[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -119,6 +122,15 @@ export default function LibraryPage() {
 
   const allFilteredSelected = filtered.length > 0 && filtered.every(s => selection.has(s.id))
 
+  /** Exporta as músicas filtradas atuais, pela ordem da vista */
+  function exportPdf(withLyrics: boolean) {
+    const ok = exportSongsPdf(
+      filtered.map(s => ({ title: s.title, lyrics: s.edited_lyrics ?? s.lyrics })),
+      { title: 'A minha biblioteca', withLyrics }
+    )
+    if (!ok) toast('Permite pop-ups para exportar o PDF.', { type: 'error' })
+  }
+
   function toggleSelectAll() {
     setSelection(allFilteredSelected ? new Set() : new Set(filtered.map(s => s.id)))
   }
@@ -179,6 +191,13 @@ export default function LibraryPage() {
         </button>
       </div>
 
+      {!loading && filtered.length > 0 && !selecting && (
+        <div className={styles.exportRow}>
+          <button className={styles.exportBtn} onClick={() => exportPdf(false)}>⤓ Exportar lista</button>
+          <button className={styles.exportBtn} onClick={() => exportPdf(true)}>⤓ Exportar repertório</button>
+        </div>
+      )}
+
       <div className={styles.list}>
         {loading ? (
           <>
@@ -204,7 +223,10 @@ export default function LibraryPage() {
             <div
               key={song.id}
               className={`${styles.row} ${selecting && selection.has(song.id) ? styles.rowSelected : ''}`}
+              role="button"
+              tabIndex={0}
               onClick={() => selecting ? toggleSelect(song.id) : navigate(`/songs/${song.id}`)}
+              onKeyDown={e => { if (e.key === 'Enter') { selecting ? toggleSelect(song.id) : navigate(`/songs/${song.id}`) } }}
             >
               {selecting && (
                 <span className={selection.has(song.id) ? styles.selChecked : styles.selCircle}>

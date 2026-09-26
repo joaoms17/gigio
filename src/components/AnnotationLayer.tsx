@@ -55,13 +55,22 @@ export async function pullAnnotations(songId: string, userId: string): Promise<S
   } catch { return null }
 }
 
-export async function pushAnnotations(songId: string, userId: string, payload: SavedAnnotations) {
+export async function pushAnnotations(
+  songId: string,
+  userId: string,
+  payload: SavedAnnotations,
+  retry = true
+) {
   try {
-    await supabase.from('song_annotations').upsert(
+    const { error } = await supabase.from('song_annotations').upsert(
       { song_id: songId, user_id: userId, strokes: payload, updated_at: new Date().toISOString() },
       { onConflict: 'song_id,user_id' }
     )
-  } catch {}
+    if (error) throw error
+  } catch {
+    // Rede fraca em palco: uma retentativa única após 2s em vez de falhar em silêncio
+    if (retry) setTimeout(() => pushAnnotations(songId, userId, payload, false), 2000)
+  }
 }
 
 export function annotationPath(pts: number[]): string {
@@ -94,6 +103,19 @@ function dist(x1: number, y1: number, x2: number, y2: number) {
   return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 }
 
+/** Nearest scrollable ancestor — the pane the two-finger pan should move. */
+function getScrollParent(el: HTMLElement | null): HTMLElement | null {
+  let node = el?.parentElement ?? null
+  while (node) {
+    const { overflowY } = getComputedStyle(node)
+    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+      return node
+    }
+    node = node.parentElement
+  }
+  return null
+}
+
 /** Scale stroke coordinates from the width they were drawn at to the current width. */
 function scaleStrokes(strokes: Stroke[], fromW: number, toW: number): Stroke[] {
   if (!fromW || !toW || fromW === toW) return strokes
@@ -120,7 +142,12 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
 
   const loadedRef = useRef(false)
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Payload à espera do debounce — para flush em pagehide/visibilitychange
+  const pendingPushRef = useRef<SavedAnnotations | null>(null)
   const historyRef = useRef<Stroke[][]>([])  // undo snapshots
+  // Pan com 2 dedos: posições dos pointers ativos + estado do gesto de scroll
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+  const panRef = useRef<{ el: HTMLElement | null; lastY: number } | null>(null)
 
   useImperativeHandle(ref, () => ({
     undo() {
@@ -165,9 +192,37 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     try { localStorage.setItem(ANN_STORAGE_KEY(songId), JSON.stringify(payload)) } catch {}
     if (userId) {
       if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
-      pushTimerRef.current = setTimeout(() => pushAnnotations(songId, userId, payload), 1500)
+      pendingPushRef.current = payload
+      pushTimerRef.current = setTimeout(() => {
+        pushTimerRef.current = null
+        pendingPushRef.current = null
+        pushAnnotations(songId, userId, payload)
+      }, 1500)
     }
   }, [strokes, songId, userId])
+
+  // Flush do debounce ao fechar/esconder a página — as anotações têm de
+  // chegar à cloud antes de o tablet ser fechado no fim do ensaio
+  useEffect(() => {
+    if (!userId) return
+    const flush = () => {
+      if (!pushTimerRef.current || !pendingPushRef.current) return
+      clearTimeout(pushTimerRef.current)
+      pushTimerRef.current = null
+      const payload = pendingPushRef.current
+      pendingPushRef.current = null
+      pushAnnotations(songId, userId, payload)
+    }
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush() }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onVisibility)
+      // Navegação interna (unmount): não deixar o push pendente perder-se
+      flush()
+    }
+  }, [songId, userId])
 
   useEffect(() => {
     if (clearTrigger !== prevClearRef.current) {
@@ -207,11 +262,30 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
 
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
     e.preventDefault()
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    e.currentTarget.setPointerCapture(e.pointerId)
+
+    // Segundo dedo: touch-action:none bloqueia o scroll nativo, por isso o
+    // gesto de 2 dedos cancela o stroke em curso e passa a fazer pan manual
+    if (pointersRef.current.size >= 2) {
+      drawingRef.current = false
+      currentRef.current = null
+      setCurrent(null)
+      setEraserPos(null)
+      activePointerRef.current = null
+      const ys = [...pointersRef.current.values()].map(p => p.y)
+      panRef.current = {
+        el: getScrollParent(layerRef.current),
+        lastY: ys.reduce((a, b) => a + b, 0) / ys.length,
+      }
+      return
+    }
+    if (panRef.current) return
+
     // Palm rejection: follow only the first active pointer; ignore extra
     // simultaneous touches (resting palm, second finger) until it lifts
     if (activePointerRef.current !== null && activePointerRef.current !== e.pointerId) return
     activePointerRef.current = e.pointerId
-    e.currentTarget.setPointerCapture(e.pointerId)
     const { x, y } = getXY(e)
     drawingRef.current = true
 
@@ -226,6 +300,19 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   }
 
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    const tracked = pointersRef.current.get(e.pointerId)
+    if (tracked) { tracked.x = e.clientX; tracked.y = e.clientY }
+
+    // Pan de 2 dedos ativo: traduz o scrollTop do contentor e não desenha
+    if (panRef.current && pointersRef.current.size >= 2) {
+      const ys = [...pointersRef.current.values()].map(p => p.y)
+      const avgY = ys.reduce((a, b) => a + b, 0) / ys.length
+      const dy = avgY - panRef.current.lastY
+      panRef.current.lastY = avgY
+      if (panRef.current.el) panRef.current.el.scrollTop -= dy
+      return
+    }
+
     // While drawing, only the tracked pointer may contribute points
     if (drawingRef.current && activePointerRef.current !== null && e.pointerId !== activePointerRef.current) return
     const { x, y } = getXY(e)
@@ -249,6 +336,15 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   }
 
   function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    pointersRef.current.delete(e.pointerId)
+
+    // Fim (ou redução) do gesto de pan: sem 2 dedos deixa de haver scroll,
+    // e o dedo restante não retoma o desenho (o stroke foi cancelado)
+    if (panRef.current) {
+      if (pointersRef.current.size < 2) panRef.current = null
+      return
+    }
+
     // A lifted palm/extra finger must not end the tracked stroke
     if (activePointerRef.current !== null && e.pointerId !== activePointerRef.current) return
     activePointerRef.current = null

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
@@ -21,7 +21,9 @@ export default function SettingsPage() {
   const toast = useToast()
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_THEME)
   const [appTheme, setAppTheme] = useState<ThemePref>(getThemePref())
-  const [themeSaved, setThemeSaved] = useState(false)
+  const [themeSaveState, setThemeSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const themeSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingTheme = useRef<ConcertTheme | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [nameSaved, setNameSaved] = useState(false)
   const [savingName, setSavingName] = useState(false)
@@ -35,18 +37,39 @@ export default function SettingsPage() {
       })
   }, [user])
 
+  /** Grava imediatamente ao escolher (debounce curto para os sliders) */
   function pick(key: keyof ConcertTheme, value: string | number) {
-    setTheme(prev => ({ ...prev, [key]: value }))
-    setThemeSaved(false)
+    const next = { ...theme, [key]: value }
+    setTheme(next)
+    setThemeSaveState('saving')
+    pendingTheme.current = next
+    if (themeSaveTimer.current) clearTimeout(themeSaveTimer.current)
+    themeSaveTimer.current = setTimeout(() => persistTheme(next), 500)
   }
 
-  async function saveTheme() {
+  async function persistTheme(next: ConcertTheme) {
     if (!user) return
-    const { error } = await supabase.from('profiles').update({ concert_theme: theme }).eq('id', user.id)
-    if (error) { toast('Erro ao guardar as preferências: ' + error.message, { type: 'error' }); return }
-    setThemeSaved(true)
-    setTimeout(() => setThemeSaved(false), 2000)
+    pendingTheme.current = null
+    const { error } = await supabase.from('profiles').update({ concert_theme: next }).eq('id', user.id)
+    if (error) {
+      setThemeSaveState('idle')
+      toast('Erro ao guardar as preferências: ' + error.message, { type: 'error' })
+      return
+    }
+    setThemeSaveState('saved')
+    setTimeout(() => setThemeSaveState(s => (s === 'saved' ? 'idle' : s)), 2000)
   }
+
+  // Se a página desmontar antes do debounce disparar, grava o que ficou pendente
+  useEffect(() => {
+    return () => {
+      if (themeSaveTimer.current) clearTimeout(themeSaveTimer.current)
+      if (pendingTheme.current && user) {
+        supabase.from('profiles').update({ concert_theme: pendingTheme.current }).eq('id', user.id)
+          .then(() => { pendingTheme.current = null })
+      }
+    }
+  }, [user])
 
   async function saveName() {
     if (!user || !displayName.trim()) return
@@ -162,7 +185,7 @@ export default function SettingsPage() {
                 <button
                   key={c} onClick={() => pick('active_color', c)}
                   className={`${styles.swatch} ${theme.active_color === c ? styles.swatchSel : ''}`}
-                  style={{ background: c, border: c === '#ffffff' ? '1.5px solid var(--border)' : undefined }}
+                  style={{ background: c }}
                 />
               ))}
             </div>
@@ -239,13 +262,13 @@ export default function SettingsPage() {
           })}
         </div>
 
-        <button
-          className={styles.saveBtn}
-          style={{ background: themeSaved ? '#10b981' : undefined }}
-          onClick={saveTheme}
-        >
-          {themeSaved ? '✓ Guardado' : 'Guardar preferências do concerto'}
-        </button>
+        <div className={styles.autoSaveHint} role="status" data-state={themeSaveState}>
+          {themeSaveState === 'saving'
+            ? 'A guardar…'
+            : themeSaveState === 'saved'
+              ? '✓ Preferências guardadas'
+              : 'As alterações são guardadas automaticamente'}
+        </div>
       </section>
 
       {/* Guide */}

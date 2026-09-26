@@ -29,6 +29,7 @@
 
 .createBtn {
   padding: 10px 20px;
+  min-height: 44px;
   background: linear-gradient(135deg, var(--gig), var(--io));
   color: #fff;
   border: none;
@@ -364,7 +365,15 @@
   border-radius: 10px;
   border: 2.5px solid transparent;
   cursor: pointer;
+  position: relative;
   transition: transform 0.12s, box-shadow 0.12s;
+}
+/* Hit-area ≥44px sem mudar o tamanho visual */
+.colorSwatch::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 12px;
 }
 .colorSwatch:hover { transform: scale(1.1); }
 .colorActive {
@@ -490,9 +499,11 @@
 
 .headerBtns { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 .joinBtn {
+  /* Mesma altura e raio do createBtn ao lado */
   padding: 10px 16px;
+  min-height: 44px;
   border: 1.5px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 12px;
   background: none;
   color: var(--text2);
   font-size: 13px;
@@ -550,6 +561,7 @@
   margin-bottom: 12px;
   text-align: center;
 }
-@media (prefers-color-scheme: dark) {
-  .offlineBanner { color: #ffba5a; background: rgba(255,160,0,0.08); }
+:global([data-theme="dark"]) .offlineBanner {
+  color: #ffba5a;
+  background: rgba(255,160,0,0.08);
 }

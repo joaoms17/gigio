@@ -17,7 +17,7 @@ const SECTION_MAP: Record<string, string> = {
   interlude: 'INTERLÚDIO',
 }
 
-function fmtSection(raw: string) {
+export function fmtSection(raw: string) {
   const numMatch = raw.match(/(\d+)\s*$/)
   const num = numMatch ? ' ' + numMatch[1] : ''
   const key = raw.replace(/\d+\s*$/, '').replace(/[:]/g, '').trim().toLowerCase()

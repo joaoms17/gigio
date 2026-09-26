@@ -38,6 +38,7 @@ export default function SyncEditorPage() {
   const toast = useToast()
 
   const [song, setSong] = useState<{ title: string; artist: string } | null>(null)
+  const [loading, setLoading] = useState(true)
   const [lines, setLines] = useState<SyncLine[]>([])
   const [cursor, setCursor] = useState(0)
   // Draft while typing in a time input; committed on blur/Enter
@@ -65,7 +66,7 @@ export default function SyncEditorPage() {
     if (!id || !user) return
     supabase.from('songs').select('title, artist, lyrics').eq('id', id).single()
       .then(({ data }) => {
-        if (!data) return
+        if (!data) { setLoading(false); return }
         setSong({ title: data.title, artist: data.artist })
         const rawLines = (data.lyrics ?? '').split('\n').filter((l: string) => l.trim())
         supabase.from('lyric_syncs').select('lines').eq('song_id', id).maybeSingle()
@@ -75,11 +76,15 @@ export default function SyncEditorPage() {
               text,
               time_ms: existing[i]?.time_ms ?? null,
             })))
+            setLoading(false)
           })
       })
   }, [id, user])
 
   useEffect(() => {
+    // Enquanto se edita um input de tempo o scroll automático deslocava a
+    // lista debaixo do dedo — só centrar quando a linha muda por tap/▶/setas
+    if (document.activeElement instanceof HTMLInputElement) return
     lineRefs.current[cursor]?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }, [cursor])
 
@@ -265,7 +270,7 @@ export default function SyncEditorPage() {
                   >{s}×</button>
                 ))}
               </div>
-              <label className={styles.changeAudio} title="Mudar ficheiro">
+              <label className={styles.changeAudio} title="Mudar ficheiro" aria-label="Mudar ficheiro de áudio">
                 📂
                 <input type="file" accept="audio/*" hidden
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleAudioFile(f) }} />
@@ -308,7 +313,7 @@ export default function SyncEditorPage() {
           </button>
           <button className={styles.tapBtn} onClick={tap}>
             TAP
-            <span className={styles.tapSub}>#{cursor + 1} · Espaço</span>
+            <span className={styles.tapSub}>#{cursor + 1}<span className={styles.spaceHint}> · Espaço</span></span>
           </button>
           <button className={styles.lineNavBtn}
             onClick={() => setCursor(c => Math.min(lines.length - 1, c + 1))}
@@ -316,7 +321,7 @@ export default function SyncEditorPage() {
           >
             Próxima ↓
           </button>
-          <button className={styles.undoBtn} onClick={undoLast} title="Desfazer">↩</button>
+          <button className={styles.undoBtn} onClick={undoLast} title="Desfazer" aria-label="Desfazer última marcação de tempo">↩</button>
         </div>
       )}
 
@@ -346,13 +351,24 @@ export default function SyncEditorPage() {
               onClick={e => e.stopPropagation()}
             />
             {line.time_ms !== null && audioUrl && (
-              <button className={styles.jumpBtn} onClick={e => { e.stopPropagation(); jumpTo(line.time_ms!) }}>
+              <button
+                className={styles.jumpBtn}
+                onClick={e => { e.stopPropagation(); jumpTo(line.time_ms!) }}
+                aria-label={`Ouvir a partir da linha ${i + 1}`}
+              >
                 ▶
               </button>
             )}
           </div>
         ))}
-        {lines.length === 0 && (
+        {loading && lines.length === 0 && (
+          <div className={styles.skeletonList} aria-hidden="true">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className={`skeleton ${styles.skeletonLine}`} />
+            ))}
+          </div>
+        )}
+        {!loading && lines.length === 0 && (
           <div className={styles.empty}>Esta música não tem letra guardada ainda.</div>
         )}
       </div>

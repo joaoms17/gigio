@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './CalendarPage.module.css'
@@ -42,6 +43,7 @@ function buildCalendarDays(year: number, month: number) {
 export default function CalendarPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
   const todayStr = toYMD(new Date())
 
   const [year, setYear] = useState(() => new Date().getFullYear())
@@ -49,6 +51,7 @@ export default function CalendarPage() {
   const [selected, setSelected] = useState<string | null>(todayStr)
   const [events, setEvents] = useState<Setlist[]>([])
   const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -110,6 +113,22 @@ export default function CalendarPage() {
     setSelected(todayStr)
   }
 
+  async function createOnSelectedDay() {
+    if (!user || !selected || creating) return
+    setCreating(true)
+    const { data, error } = await supabase
+      .from('setlists')
+      .insert({ name: 'Novo Concerto', owner_id: user.id, date: selected, status: 'draft' })
+      .select()
+      .single()
+    setCreating(false)
+    if (error || !data) {
+      toast('Erro ao criar concerto: ' + (error?.message ?? 'erro desconhecido'), { type: 'error' })
+      return
+    }
+    navigate(`/setlist/${data.id}?add=1`)
+  }
+
   const now = new Date()
   const viewingCurrentMonth = year === now.getFullYear() && month === now.getMonth()
 
@@ -155,7 +174,11 @@ export default function CalendarPage() {
                 isSelected && styles.cellSelected,
                 hasEvent && styles.cellHasEvent,
               ].filter(Boolean).join(' ')}
+              role="button"
+              tabIndex={0}
+              aria-label={parseLocal(dateStr).toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' })}
               onClick={() => setSelected(isSelected ? null : dateStr)}
+              onKeyDown={e => { if (e.key === 'Enter') setSelected(isSelected ? null : dateStr) }}
             >
               <span className={styles.cellNum}>{date.getDate()}</span>
               {hasEvent && (
@@ -181,7 +204,18 @@ export default function CalendarPage() {
             {selected === todayStr ? 'Hoje' : parseLocal(selected).toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
           {selectedEvents.length === 0 ? (
-            <p className={styles.noEvents}>Sem eventos neste dia.</p>
+            <>
+              <p className={styles.noEvents}>Sem eventos neste dia.</p>
+              <button
+                className={styles.createDayBtn}
+                onClick={createOnSelectedDay}
+                disabled={creating}
+              >
+                {creating
+                  ? 'A criar...'
+                  : `＋ Criar concerto a ${parseLocal(selected).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' })}`}
+              </button>
+            </>
           ) : (
             <div className={styles.eventList}>
               {selectedEvents.map(ev => {
@@ -190,14 +224,27 @@ export default function CalendarPage() {
                   <div
                     key={ev.id}
                     className={styles.eventRow}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => navigate(`/setlist/${ev.id}`)}
+                    onKeyDown={e => { if (e.key === 'Enter') navigate(`/setlist/${ev.id}`) }}
                     style={{ borderLeftColor: accent }}
                   >
-                    <div className={styles.eventName}>{ev.name}</div>
-                    <div className={styles.eventMeta}>
-                      {ev.band?.name && <span style={{ color: accent }}>{ev.band.name}</span>}
-                      {ev.venue && <span className={styles.eventVenue}> · {ev.venue}</span>}
+                    <div className={styles.eventInfo}>
+                      <div className={styles.eventName}>{ev.name}</div>
+                      <div className={styles.eventMeta}>
+                        {ev.band?.name && <span style={{ color: accent }}>{ev.band.name}</span>}
+                        {ev.venue && <span className={styles.eventVenue}> · {ev.venue}</span>}
+                      </div>
                     </div>
+                    <button
+                      className={styles.playBtn}
+                      aria-label={`Iniciar concerto ${ev.name}`}
+                      title="Iniciar concerto"
+                      onClick={e => { e.stopPropagation(); navigate(`/setlist/${ev.id}/concert`) }}
+                    >
+                      ▶
+                    </button>
                   </div>
                 )
               })}
@@ -221,7 +268,10 @@ export default function CalendarPage() {
                 <div
                   key={ev.id}
                   className={styles.monthEventRow}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => navigate(`/setlist/${ev.id}`)}
+                  onKeyDown={e => { if (e.key === 'Enter') navigate(`/setlist/${ev.id}`) }}
                 >
                   <div className={styles.mDateBadge} style={{ background: accent + '22', color: accent }}>
                     <span className={styles.mDay}>{d.getDate()}</span>
