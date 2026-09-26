@@ -61,15 +61,16 @@
 .resultArtist { font-size: 11px; color: var(--text3); margin-top: 2px; }
 
 .badge {
-  font-size: 9px; font-weight: 700; padding: 2px 5px;
+  font-size: 11px; font-weight: 700; padding: 2px 6px;
   border-radius: 4px;
 }
-.badge.lrclib { background: #7C3AED20; color: #5b21b6; }
-.badge.text { background: #FF4D6D20; color: #be123c; }
+.badge.lrclib { background: #7C3AED20; color: var(--io); }
+.badge.text { background: #f59e0b1f; color: var(--warn-fg); }
+:global([data-theme="dark"]) .badge.lrclib { color: #a78bfa; }
 
 .syncBadge {
-  font-size: 9px; font-weight: 700; padding: 2px 6px;
-  border-radius: 4px; background: #10b98120; color: #065f46;
+  font-size: 11px; font-weight: 700; padding: 2px 6px;
+  border-radius: 4px; background: #10b98120; color: var(--success-fg);
 }
 
 .addBtn, .savedBtn {
@@ -109,6 +110,7 @@
 .noResults { text-align: center; padding: 32px 16px; }
 .noResultsSub { font-size: 13px; color: var(--text3); margin-top: 6px; margin-bottom: 16px; }
 .manualBtn {
+  min-height: 44px;
   padding: 9px 20px; border-radius: 10px; border: 1.5px solid var(--border);
   background: var(--bg2); color: var(--text2); font-size: 13px; font-weight: 600;
   cursor: pointer; transition: border-color 0.15s;
@@ -148,7 +150,13 @@
 .modalHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .modalTitle { font-size: 17px; font-weight: 800; color: var(--text); }
 .modalArtist { font-size: 13px; color: var(--text3); margin-top: 2px; }
-.closeBtn { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--text3); }
+.closeBtn {
+  width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg2); border: none; font-size: 18px; cursor: pointer;
+  color: var(--text3); margin: -6px -6px 0 0;
+}
+.closeBtn:hover { background: var(--bg3); color: var(--text); }
 
 .previewBody {
   overflow-y: auto; flex: 1; font-size: 14px; line-height: 1.6; color: var(--text2);
@@ -219,7 +227,7 @@
 }
 .targetList { display: flex; flex-direction: column; max-height: 260px; overflow-y: auto; }
 .newSetlistRow {
-  width: 100%; padding: 11px; border-radius: 10px; border: 1.5px dashed var(--border);
+  width: 100%; min-height: 44px; padding: 11px; border-radius: 10px; border: 1.5px dashed var(--border);
   background: none; color: var(--gig); font-size: 13px; font-weight: 700;
   cursor: pointer; margin-top: 6px;
 }

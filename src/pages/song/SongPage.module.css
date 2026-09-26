@@ -28,15 +28,6 @@
   padding: 12px 20px 0;
   flex-shrink: 0;
 }
-.backBtn {
-  background: none; border: none;
-  font-size: 13px; font-weight: 600;
-  color: var(--text3); cursor: pointer;
-  transition: color 0.12s;
-  padding: 0;
-}
-.backBtn:hover { color: var(--gig); }
-
 .saveState { font-size: 12px; }
 .saving { color: var(--text3); }
 .saved { color: #059669; font-weight: 600; }
@@ -46,10 +37,26 @@
   padding: 12px 20px 0;
   flex-shrink: 0;
 }
+/* Título/artista são editáveis: ✎ discreto + borda subtil no focus como affordance */
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.editHint {
+  font-size: 15px;
+  color: var(--text3);
+  opacity: 0.6;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+.titleRow:focus-within .editHint { opacity: 0; }
+
 .titleInput {
   display: block;
   width: 100%;
   border: none;
+  border-bottom: 1.5px solid transparent;
   background: none;
   font-size: 22px;
   font-weight: 800;
@@ -58,20 +65,27 @@
   outline: none;
   padding: 0;
   margin-bottom: 4px;
+  transition: border-color 0.15s;
 }
+.titleInput:hover { border-bottom-color: var(--border2); }
+.titleInput:focus { outline: none; border-bottom-color: var(--gig); }
 .titleInput::placeholder { color: var(--text3); }
 
 .artistInput {
   display: block;
   width: 100%;
   border: none;
+  border-bottom: 1.5px solid transparent;
   background: none;
   font-size: 15px;
   color: var(--text2);
   outline: none;
   padding: 0;
   margin-bottom: 10px;
+  transition: border-color 0.15s;
 }
+.artistInput:hover { border-bottom-color: var(--border2); }
+.artistInput:focus { outline: none; border-bottom-color: var(--gig); }
 .artistInput::placeholder { color: var(--text3); }
 
 .quickMeta {
@@ -138,31 +152,17 @@
   padding: 12px 20px 0;
 }
 
-.editedBanner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  background: #F59E0B12;
-  border: 1px solid #F59E0B30;
-  border-radius: 10px;
-  padding: 10px 14px;
-  font-size: 12px;
-  color: #92400E;
-  margin-bottom: 10px;
-  flex-shrink: 0;
-}
 .resetBtn {
   min-height: 44px;
   padding: 0 14px;
   background: none;
-  border: 1.5px solid rgba(239, 68, 68, 0.45);
+  border: 1.5px solid color-mix(in srgb, var(--danger) 45%, transparent);
   border-radius: 10px;
-  color: #ef4444;
-  font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  color: var(--danger);
+  font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
   transition: background 0.12s, border-color 0.12s;
 }
-.resetBtn:hover { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; }
+.resetBtn:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); border-color: var(--danger); }
 
 .lyricsEditor {
   flex: 1;
@@ -194,7 +194,7 @@
   padding: 16px 20px;
   position: relative;
   /* Always-visible wide scrollbar */
-  scrollbar-width: thick;
+  scrollbar-width: auto;
   scrollbar-color: var(--border) transparent;
 }
 .previewPane::-webkit-scrollbar { width: 14px; }
@@ -255,7 +255,7 @@
 .fieldGroup { display: flex; flex-direction: column; gap: 5px; }
 .fullWidth { grid-column: 1 / -1; }
 .fieldLabel {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text3);
   text-transform: uppercase;
@@ -399,16 +399,16 @@
 .modeToggle {
   display: flex;
   border: 1.5px solid var(--border);
-  border-radius: 9px;
+  border-radius: 10px;
   overflow: hidden;
   margin-left: auto;
 }
 .modeBtn {
   background: none;
   border: none;
-  min-height: 42px;
-  padding: 8px 14px;
-  font-size: 12px;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text3);
   cursor: pointer;
@@ -423,32 +423,18 @@
 
 .syncEditorBtn {
   min-height: 44px;
-  padding: 8px 14px;
+  padding: 0 14px;
   border: 1.5px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: none;
   color: var(--text3);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: border-color 0.15s, color 0.15s;
 }
 .syncEditorBtn:hover { border-color: var(--gig); color: var(--gig); }
-
-.previewToggle {
-  background: none;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  padding: 5px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text3);
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-}
-.previewToggle:hover { border-color: var(--gig); color: var(--gig); }
-.previewToggleActive { border-color: var(--gig); color: var(--gig); }
 
 /* Rehearsal bar */
 .rehearsalBar {
@@ -463,16 +449,6 @@
   position: sticky;
   top: 0;
   z-index: 10;
-}
-
-.rehearsalLabel {
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--gig);
-  margin-right: 4px;
-  flex-shrink: 0;
 }
 
 .annColors {
@@ -605,35 +581,6 @@
 .floatIcon { font-size: 16px; line-height: 1; }
 .floatLabel { font-size: 13px; font-weight: 700; }
 
-.annExit {
-  height: 34px;
-  padding: 0 10px;
-  border-radius: 9px;
-  border: none;
-  background: var(--bg3);
-  color: var(--text2);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.12s;
-  flex-shrink: 0;
-}
-.annExit:hover { background: var(--border2); }
-
-.rehearsalBtn {
-  background: none;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  padding: 5px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text3);
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
-.rehearsalBtn:hover { border-color: var(--io); color: var(--io); }
-.rehearsalBtnActive { border-color: var(--io); color: var(--io); background: #7C3AED12; }
-
 /* Tablet */
 @media (min-width: 768px) {
   .annColor { width: 48px; height: 48px; padding: 9px; }
@@ -688,9 +635,8 @@
   .chordsEditor { font-size: 16px; }
   .fieldLabel { font-size: 13px; }
   .fieldInput { font-size: 16px; }
-  .previewToggle { font-size: 15px; }
-  .modeBtn { font-size: 15px; padding: 10px 18px; min-height: 44px; }
-  .syncEditorBtn { font-size: 15px; padding: 10px 16px; }
-  .resetBtn { font-size: 14px; }
+  .modeBtn { font-size: 15px; padding: 0 18px; }
+  .syncEditorBtn { font-size: 15px; padding: 0 16px; }
+  .resetBtn { font-size: 15px; }
   .saveBtn { font-size: 16px; }
 }

@@ -314,11 +314,13 @@ export default function ProjectsPage() {
         )}
       </div>
 
-      {/* Version bar */}
-      <div className={styles.versionBar}>
-        <span className={styles.versionHash}>v {__COMMIT_HASH__}</span>
-        <button className={styles.refreshBtn} onClick={hardRefresh}>⟳ Hard refresh</button>
-      </div>
+      {/* Version bar — só em desenvolvimento */}
+      {import.meta.env.DEV && (
+        <div className={styles.versionBar}>
+          <span className={styles.versionHash}>v {__COMMIT_HASH__}</span>
+          <button className={styles.refreshBtn} onClick={hardRefresh}>⟳ Hard refresh</button>
+        </div>
+      )}
 
       {showJoin && (
         <div className={styles.overlay} onClick={() => { setShowJoin(false); setJoinCode(''); setJoinError(null) }}>

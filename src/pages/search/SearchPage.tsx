@@ -40,6 +40,7 @@ export default function SearchPage() {
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
+  const [searchError, setSearchError] = useState(false)
   const [saving, setSaving] = useState<string | null>(null)
   const [saved, setSaved] = useState<string[]>([])
   const [preview, setPreview] = useState<PreviewState | null>(null)
@@ -64,21 +65,30 @@ export default function SearchPage() {
     }
   }, [user, projectId])
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault()
+  async function runSearch() {
     if (!query.trim()) return
-    setLoading(true); setSearched(true); setResults([])
+    setLoading(true); setSearched(true); setResults([]); setSearchError(false)
     const geniusQuery = artistQuery.trim() ? `${query} ${artistQuery}` : query
     const [lrc, genius] = await Promise.allSettled([
       searchLrclib(query, artistQuery),
       searchGenius(geniusQuery),
     ])
+    // Todas as fontes falharam → erro de rede, não "sem resultados"
+    if (lrc.status === 'rejected' && genius.status === 'rejected') {
+      setSearchError(true); setLoading(false)
+      return
+    }
     const combined: SearchResult[] = [
       ...(lrc.status === 'fulfilled' ? lrc.value : []),
       ...(genius.status === 'fulfilled' ? genius.value : []),
     ]
     combined.sort((a, b) => (b.has_sync ? 1 : 0) - (a.has_sync ? 1 : 0))
     setResults(combined); setLoading(false)
+  }
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault()
+    runSearch()
   }
 
   async function fetchLyrics(r: SearchResult) {
@@ -221,6 +231,38 @@ export default function SearchPage() {
     }
   }
 
+  // Cria uma setlist pessoal a partir do picker e adiciona logo a música
+  async function createSetlistAndAdd(r: SearchResult) {
+    if (!user) return
+    const { data, error } = await supabase.from('setlists')
+      .insert({ name: 'Novo Concerto', owner_id: user.id })
+      .select().single()
+    if (error || !data) {
+      toast('Erro ao criar concerto: ' + (error?.message ?? 'tenta de novo'), { type: 'error' })
+      return
+    }
+    setSetlists(prev => [data, ...prev])
+    doAdd(r, data.id)
+  }
+
+  // Fechar o modal manual sem descartar letra por engano:
+  // clique no overlay só fecha com o campo vazio; o ✕ confirma quando há texto
+  async function closeManual(viaOverlay: boolean) {
+    if (!manual) return
+    const hasLyrics = manual.lyrics.trim().length > 0
+    if (hasLyrics) {
+      if (viaOverlay) return
+      const ok = await confirm({
+        title: 'Descartar letra?',
+        message: 'A letra que escreveste ou colaste será perdida.',
+        confirmLabel: 'Descartar',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    setManual(null)
+  }
+
   async function saveManual() {
     if (!manual || !manual.title.trim() || !manual.artist.trim()) return
     setSavingManual(true)
@@ -357,7 +399,17 @@ export default function SearchPage() {
             )
           })}
 
-          {!loading && searched && results.length === 0 && (
+          {!loading && searched && searchError && (
+            <div className={styles.noResults}>
+              <p>Sem ligação — não foi possível pesquisar.</p>
+              <p className={styles.noResultsSub}>Verifica a internet e tenta de novo.</p>
+              <button className={styles.manualBtn} onClick={runSearch}>
+                Tentar de novo
+              </button>
+            </div>
+          )}
+
+          {!loading && searched && !searchError && results.length === 0 && (
             <div className={styles.noResults}>
               <p>Não encontrei letra para "{query}".</p>
               <p className={styles.noResultsSub}>Tenta outro título/artista ou adiciona manualmente.</p>
@@ -414,6 +466,9 @@ export default function SearchPage() {
                 </button>
               ))}
             </div>
+            <button className={styles.newSetlistRow} onClick={() => createSetlistAndAdd(picker)}>
+              + Novo concerto
+            </button>
           </div>
         </div>
       )}
@@ -456,11 +511,11 @@ export default function SearchPage() {
 
       {/* MODAL MANUAL */}
       {manual && (
-        <div className={styles.overlay} onClick={() => setManual(null)}>
+        <div className={styles.overlay} onClick={() => closeManual(true)}>
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div className={styles.modalTitle}>Nova música</div>
-              <button className={styles.closeBtn} onClick={() => setManual(null)}>✕</button>
+              <button className={styles.closeBtn} onClick={() => closeManual(false)}>✕</button>
             </div>
             <div className={styles.manualForm}>
               <div className={styles.manualRow}>

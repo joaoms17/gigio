@@ -4,6 +4,7 @@ import Breadcrumbs from '../../components/Breadcrumbs'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
+import { exportSongsPdf } from '../../lib/pdfExport'
 import { uploadProjectImage } from '../../lib/uploadImage'
 import { useAuth } from '../../hooks/useAuth'
 import {
@@ -78,6 +79,7 @@ export default function ProjectDashboardPage() {
   const [songSearch, setSongSearch] = useState('')
   const [deletingSong, setDeletingSong] = useState<string | null>(null)
   const [songPlayCounts, setSongPlayCounts] = useState<Record<string, number>>({})
+  const [exporting, setExporting] = useState(false)
 
   // Settings form
   const [settingsName, setSettingsName] = useState('')
@@ -333,6 +335,33 @@ export default function ProjectDashboardPage() {
     setSongs(prev => prev.filter(s => s.id !== songId))
   }
 
+  /** Exporta o repertório do projeto (filtrado como na vista) em PDF */
+  async function exportRepertoirePdf(withLyrics: boolean) {
+    if (!project || exporting) return
+    const visible = songs.filter(s => !songSearch || `${s.title} ${s.artist}`.toLowerCase().includes(songSearch.toLowerCase()))
+    if (visible.length === 0) return
+    let items: { title: string; lyrics?: string | null }[] = visible.map(s => ({ title: s.title }))
+    if (withLyrics) {
+      setExporting(true)
+      const { data, error } = await supabase
+        .from('songs')
+        .select('id, lyrics, edited_lyrics')
+        .in('id', visible.map(s => s.id))
+      setExporting(false)
+      if (error) { toast('Erro ao carregar as letras: ' + error.message, { type: 'error' }); return }
+      const byId = new Map((data ?? []).map((r: any) => [r.id as string, (r.edited_lyrics ?? r.lyrics) as string | null]))
+      items = visible.map(s => ({ title: s.title, lyrics: byId.get(s.id) ?? null }))
+    }
+    const ok = exportSongsPdf(items, {
+      title: project.name,
+      accent: project.color ?? PROJECT_COLORS[0],
+      logoUrl: project.image_url ?? null,
+      logoInitial: project.name,
+      withLyrics,
+    })
+    if (!ok) toast('Permite pop-ups para exportar o PDF.', { type: 'error' })
+  }
+
   function onVenueInput(val: string) {
     setNewSetlistVenue(val)
     if (venueDebounceRef.current) clearTimeout(venueDebounceRef.current)
@@ -467,6 +496,7 @@ export default function ProjectDashboardPage() {
         {/* Tabs */}
         <div className={styles.tabs} style={{ '--tab-color': projectColor } as React.CSSProperties}>
           {([
+            ['overview', 'Resumo'],
             ['setlists', 'Concertos'],
             ['repertoire', 'Repertório'],
             ['members', 'Membros'],
@@ -570,13 +600,23 @@ export default function ProjectDashboardPage() {
                   <h2 className={styles.tabTitle}>Repertório</h2>
                   <p className={styles.tabSub}>{songs.length} música{songs.length !== 1 ? 's' : ''} no projeto</p>
                 </div>
-                {canEdit && (
-                  <div className={styles.tabActions}>
-                    <button className={styles.addBtn} onClick={() => navigate(`/search?project=${project.id}`)}>
+                <div className={styles.tabActions}>
+                  {songs.length > 0 && (
+                    <>
+                      <button className={styles.exportBtn} onClick={() => exportRepertoirePdf(false)} disabled={exporting}>
+                        Exportar lista
+                      </button>
+                      <button className={styles.exportBtn} onClick={() => exportRepertoirePdf(true)} disabled={exporting}>
+                        {exporting ? 'A preparar…' : 'Exportar repertório'}
+                      </button>
+                    </>
+                  )}
+                  {canEdit && (
+                    <button className={styles.addBtn} style={{ background: projectColor }} onClick={() => navigate(`/search?project=${project.id}`)}>
                       + Pesquisar letra
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               {songs.length === 0 ? (

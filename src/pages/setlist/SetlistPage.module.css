@@ -6,12 +6,12 @@
 .back:hover { color: var(--gig); }
 .title { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
 .editHint { font-size: 14px; color: var(--text3); font-weight: 400; }
-.nameInput { font-size: 22px; font-weight: 800; border: none; border-bottom: 2px solid var(--gig); outline: none; background: transparent; width: 300px; max-width: 100%; }
+.nameInput { font-size: 22px; font-weight: 800; border: none; border-bottom: 2px solid var(--gig); outline: none; background: transparent; width: 100%; max-width: 100%; }
 .meta { font-size: 12px; color: var(--text3); margin-top: 4px; }
 .metaRow { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
-.dateVenueGroup { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: nowrap; }
-.dateVenueGroup .metaField { flex: 1; min-width: 0; }
-.venueWrap { position: relative; flex: 1; min-width: 0; }
+.dateVenueGroup { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.dateVenueGroup .metaField { flex: 1; min-width: 200px; }
+.venueWrap { position: relative; flex: 1; min-width: 200px; }
 .venueWrap .metaField { display: flex; width: 100%; box-sizing: border-box; }
 .venueDrop { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 200; overflow: hidden; }
 .venueDropItem { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border); }
@@ -62,8 +62,9 @@
 .headerActions { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 220px; }
 .secondaryActions { display: flex; gap: 6px; flex-wrap: wrap; }
 .secondaryActions .dupBtn, .secondaryActions .deleteBtn { flex: 1 1 calc(50% - 3px); min-width: 0; font-size: 13px; padding: 8px 10px; }
-.deleteBtn { flex: 1; min-height: 44px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: var(--text3); font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
-.deleteBtn:hover { border-color: #ef4444; color: #ef4444; }
+/* Perigo visível em repouso — não depende de hover (inútil em touch) */
+.deleteBtn { flex: 1; min-height: 44px; padding: 10px 14px; border: 1px solid var(--danger); border-radius: var(--radius); background: transparent; color: var(--danger); font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
+.deleteBtn:hover { background: rgba(220, 38, 38, 0.08); }
 .dupBtn { flex: 1; min-height: 44px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
 .dupBtn:hover { border-color: var(--gig); color: var(--gig); }
 .concertBtn { width: 100%; padding: 14px 18px; border: none; border-radius: var(--radius); background: linear-gradient(135deg, var(--gig), var(--io)); color: white; font-size: 16px; font-weight: 800; white-space: nowrap; cursor: pointer; box-shadow: 0 4px 16px rgba(255,77,109,0.25); transition: opacity 0.15s; }
@@ -78,6 +79,11 @@
 .listHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .listTitle { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; }
 .addBtn { min-height: 44px; padding: 7px 16px; border: none; border-radius: 8px; background: var(--gig); color: white; font-size: 12px; font-weight: 700; }
+.addBtn:disabled { opacity: 0.6; cursor: default; }
+
+/* Linhas placeholder durante o load (usa a .skeleton global de index.css) */
+.skeletonRow { height: 48px; margin-bottom: 8px; }
+.skeletonRow:last-child { margin-bottom: 0; }
 
 .songRow { display: flex; align-items: center; gap: 8px; padding: 9px 6px; border-radius: 8px; background: var(--bg2); transition: background 0.1s; }
 .songRow:hover { background: var(--bg3); }
@@ -85,6 +91,9 @@
 .dragging { box-shadow: 0 6px 16px rgba(0,0,0,0.15); z-index: 10; position: relative; }
 .keyChip { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #7C3AED18; color: var(--io); }
 :global([data-theme="dark"]) .keyChip { background: #A78BFA1f; color: #A78BFA; }
+/* Chip discreto que revela o atalho de tom/notas quando ainda não há overrides */
+.ghostChip { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 4px; border: 1px dashed var(--border); color: var(--text3); white-space: nowrap; }
+.songRow:hover .ghostChip { border-color: var(--io); color: var(--io); }
 .dragHandle {
   cursor: grab; color: var(--text3); background: none; border: none;
   font-size: 15px; line-height: 0.7; letter-spacing: -3px; touch-action: none; flex-shrink: 0;
@@ -124,6 +133,7 @@
   .songArtist { font-size: 14px; gap: 6px; }
   .songDur { font-size: 14px; }
   .keyChip { font-size: 12px; padding: 2px 8px; }
+  .ghostChip { font-size: 12px; padding: 2px 8px; }
   .syncBadge { font-size: 11px; padding: 2px 7px; }
   .dragHandle { font-size: 20px; }
   .iconBtn { font-size: 18px; }
@@ -157,7 +167,13 @@
 @media (min-width: 600px) { .modal { border-radius: 20px; } }
 .modalHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .modalTitle { font-size: 16px; font-weight: 800; }
-.closeBtn { background: none; border: none; font-size: 18px; color: var(--text3); }
+/* Círculo 44px — alvo táctil confortável nos modais desta página */
+.closeBtn {
+  background: var(--bg2); border: none; font-size: 18px; color: var(--text3);
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.closeBtn:hover { background: var(--bg3); color: var(--text); }
 .modalEmpty { text-align: center; padding: 24px; color: var(--text3); font-size: 13px; display: flex; flex-direction: column; gap: 12px; align-items: center; }.libraryRow { display: flex; align-items: center; min-height: 48px; padding: 10px 6px; border-radius: 8px; cursor: pointer; gap: 10px; transition: background 0.1s; }
 .libraryRow:hover { background: var(--bg2); }
 .libraryRowSelected { background: #7C3AED0f; outline: 2px solid var(--io); outline-offset: -2px; }
@@ -165,7 +181,7 @@
 .selIconChecked { font-size: 16px; font-weight: 800; color: var(--io); flex-shrink: 0; width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 
 .searchNewBtn {
-  width: 100%; margin-top: 10px; padding: 11px; border-radius: 10px;
+  width: 100%; margin-bottom: 10px; min-height: 44px; padding: 11px; border-radius: 10px;
   border: 1.5px dashed var(--border); background: none;
   color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
@@ -232,9 +248,7 @@
   margin-bottom: 12px;
   text-align: center;
 }
-@media (prefers-color-scheme: dark) {
-  .offlineBanner { color: #ffba5a; background: rgba(255,160,0,0.08); }
-}
+:global([data-theme="dark"]) .offlineBanner { color: #ffba5a; background: rgba(255,160,0,0.08); }
 
 /* Snackbar "Música removida · Anular" */
 .undoSnackbar {

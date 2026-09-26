@@ -11,6 +11,8 @@ import {
 import AnnotatedLyrics from '../../components/AnnotatedLyrics'
 import { loadAnnotations, pullAnnotations } from '../../components/AnnotationLayer'
 import { useConfirm } from '../../components/ConfirmDialog'
+import { useToast } from '../../components/Toast'
+import { fmtSection } from '../../components/LyricsView'
 import type { SetlistSong, Song, ConcertTheme, LyricLine } from '../../types'
 import styles from './ConcertPage.module.css'
 
@@ -21,11 +23,17 @@ const DEFAULT_THEME: ConcertTheme = {
 type Row = SetlistSong & { song: Song }
 type ContentView = 'lyrics' | 'chords' | 'annotations'
 
+function fmtTime(secs: number) {
+  const s = Math.max(0, Math.floor(secs))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
 export default function ConcertPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const navigate = useNavigate()
   const confirmDialog = useConfirm()
+  const toast = useToast()
 
   const [songs, setSongs] = useState<Row[]>([])
   // Restore the position in this setlist (kept per concert in sessionStorage,
@@ -66,6 +74,8 @@ export default function ConcertPage() {
   const programmaticScrollRef = useRef(false)
   const scrollTimerRef        = useRef<ReturnType<typeof setTimeout> | null>(null)
   const syncLinesRef          = useRef<LyricLine[] | null>(null)
+  const progressTrackRef      = useRef<HTMLDivElement>(null)
+  const scrubbingRef          = useRef(false)
 
   useEffect(() => { syncLinesRef.current = syncLines }, [syncLines])
 
@@ -264,6 +274,24 @@ export default function ConcertPage() {
 
   function seekDelta(delta: number) { seekTo(elapsed + delta) }
 
+  // ── Scrubbing on the progress bar ────────────────────────────────────────
+  function scrubToClientX(clientX: number) {
+    const track = progressTrackRef.current
+    if (!track || duration <= 0) return
+    const rect = track.getBoundingClientRect()
+    const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+    seekTo(frac * duration)
+  }
+  function handleScrubStart(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    scrubbingRef.current = true
+    scrubToClientX(e.clientX)
+  }
+  function handleScrubMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (scrubbingRef.current) scrubToClientX(e.clientX)
+  }
+  function handleScrubEnd() { scrubbingRef.current = false }
+
   // ── Exit (with confirmation — a stray tap must never end the show) ──────
   async function exitConcert() {
     const ok = await confirmDialog({
@@ -312,6 +340,8 @@ export default function ConcertPage() {
   // ── Reorder inside concert (setlist panel ↑↓) ───────────────────────────
   async function moveSong(from: number, to: number) {
     if (to < 0 || to >= songs.length) return
+    const prevSongs = songs
+    const prevIdx = songIdx
     const next = [...songs]
     const [moved] = next.splice(from, 1)
     next.splice(to, 0, moved)
@@ -323,9 +353,23 @@ export default function ConcertPage() {
     setSongs(next)
     setSongIdx(newIdx)
     if (id) cacheSetlistSongs(id, next)
-    // Persist (two-phase to dodge unique constraints)
-    await Promise.all(next.map((ss, i) => supabase.from('setlist_songs').update({ position: 10000 + i }).eq('id', ss.id)))
-    await Promise.all(next.map((ss, i) => supabase.from('setlist_songs').update({ position: i }).eq('id', ss.id)))
+    // Persist in two batched upserts — the unique(setlist_id, position)
+    // constraint forces the two phases (park at 10000+, then land at final).
+    // setlist_id/song_id incluídos porque o tuplo do INSERT é validado
+    // (NOT NULL) antes de o conflito virar UPDATE.
+    const rows = (offset: number) => next.map((ss, i) => ({
+      id: ss.id, setlist_id: ss.setlist_id, song_id: ss.song_id, position: offset + i,
+    }))
+    let { error } = await supabase.from('setlist_songs').upsert(rows(10000), { onConflict: 'id' })
+    if (!error) {
+      ({ error } = await supabase.from('setlist_songs').upsert(rows(0), { onConflict: 'id' }))
+    }
+    if (error) {
+      setSongs(prevSongs)
+      setSongIdx(prevIdx)
+      if (id) cacheSetlistSongs(id, prevSongs)
+      toast('Não foi possível guardar a nova ordem', { type: 'error' })
+    }
   }
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -346,6 +390,13 @@ export default function ConcertPage() {
 
   const hasAnnotations = annAvailable
   const bpm = currentSong?.bpm ?? null
+
+  // Progress bar: song duration, falling back to the last synced line
+  const songDur = currentSong?.duration_sec ?? 0
+  const duration = songDur > 0
+    ? songDur
+    : (syncLines && syncLines.length > 0 ? syncLines[syncLines.length - 1].time_ms / 1000 + 5 : 0)
+  const progressPct = duration > 0 ? Math.min(100, (elapsed / duration) * 100) : 0
 
   // Map the active sync line onto the plain-lyrics line shown in the
   // annotations view (occurrence-aware so repeated chorus lines resolve
@@ -386,7 +437,7 @@ export default function ConcertPage() {
 
       {/* ── Header ── */}
       <div className={styles.header}>
-        <button className={styles.exitBtn} title="Sair do concerto" onClick={exitConcert}>✕</button>
+        <button className={styles.exitBtn} title="Sair do concerto" aria-label="Sair do concerto" onClick={exitConcert}>✕</button>
         <span className={styles.counter} style={{ color: theme.accent_color }}>
           {songIdx + 1} / {songs.length}
         </span>
@@ -399,6 +450,8 @@ export default function ConcertPage() {
             onClick={() => setMetronomeOn(m => !m)}
             disabled={!bpm}
             title={bpm ? `Metrónomo visual — ${bpm} bpm` : 'Sem BPM definido'}
+            aria-label={bpm ? `Metrónomo visual — ${bpm} bpm` : 'Metrónomo (sem BPM definido)'}
+            aria-pressed={metronomeOn && !!bpm}
           >
             {metronomeOn && bpm
               ? <span className={styles.metroDot} style={{ background: theme.accent_color, animationDuration: `${60 / bpm}s` }} />
@@ -410,6 +463,8 @@ export default function ConcertPage() {
             onClick={() => setContentView(v => v === 'chords' ? 'lyrics' : 'chords')}
             disabled={!rawChords}
             title={rawChords ? 'Acordes' : 'Sem acordes'}
+            aria-label={rawChords ? 'Acordes' : 'Acordes (sem acordes guardados)'}
+            aria-pressed={contentView === 'chords'}
           >♩</button>
           <button
             className={styles.modeBtn}
@@ -417,19 +472,43 @@ export default function ConcertPage() {
             onClick={() => setContentView(v => v === 'annotations' ? 'lyrics' : 'annotations')}
             disabled={!hasAnnotations}
             title={hasAnnotations ? 'Anotações de ensaio' : 'Sem anotações'}
+            aria-label={hasAnnotations ? 'Anotações de ensaio' : 'Anotações (sem anotações)'}
+            aria-pressed={contentView === 'annotations'}
           >✏</button>
           <button
-            className={styles.modeSwitchBtn}
-            style={{ color: theme.accent_color, borderColor: theme.accent_color + '40' }}
-            onClick={() => setViewMode(m => m === 'semi' ? 'manual' : 'semi')}
-          >
-            {viewMode === 'semi' ? 'Semi' : 'Manual'}
-          </button>
+            className={styles.modeBtn}
+            style={{ color: 'rgba(255,255,255,0.55)' }}
+            onClick={() => currentSong && navigate(`/songs/${currentSong.id}?setlist=${id}`)}
+            disabled={!currentSong}
+            title="Editar letra"
+            aria-label="Editar letra"
+          >✎</button>
+          {/* Segmented control: both modes visible, active one highlighted */}
+          <div className={styles.modeSeg} role="group" aria-label="Modo de avanço">
+            <button
+              className={styles.modeSegBtn}
+              style={viewMode === 'semi'
+                ? { background: theme.accent_color + '33', color: theme.accent_color }
+                : { color: 'rgba(255,255,255,0.55)' }}
+              aria-pressed={viewMode === 'semi'}
+              onClick={() => setViewMode('semi')}
+            >Semi</button>
+            <button
+              className={styles.modeSegBtn}
+              style={viewMode === 'manual'
+                ? { background: theme.accent_color + '33', color: theme.accent_color }
+                : { color: 'rgba(255,255,255,0.55)' }}
+              aria-pressed={viewMode === 'manual'}
+              onClick={() => setViewMode('manual')}
+            >Manual</button>
+          </div>
           <button
             className={styles.modeBtn}
             style={{ color: showSetlist ? theme.accent_color : 'rgba(255,255,255,0.55)' }}
             onClick={() => setShowSetlist(s => !s)}
             title="Alinhamento"
+            aria-label="Alinhamento"
+            aria-pressed={showSetlist}
           >≡</button>
         </div>
       </div>
@@ -517,30 +596,48 @@ export default function ConcertPage() {
             <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
               Sem letra disponível
             </div>
-          ) : lines.map((line, i) => line.trim() === '' ? (
-            <div key={i} style={{ height: `${displayFontSize * displayLineHeight * 1.8}px`, flexShrink: 0 }} />
-          ) : (
-            <div
-              key={i}
-              ref={i === lineIdx ? activeLineRef : null}
-              className={styles.lyricLineManual}
-              style={{
-                color: theme.active_color,
-                lineHeight: displayLineHeight,
-                fontWeight: i === lineIdx ? 800 : 400,
-                opacity: i < lineIdx ? 0.35 : 1,
-                background: i === lineIdx ? `${theme.accent_color}22` : 'transparent',
-              }}
-              onClick={() => {
-                // With sync, jump the clock too — otherwise the timer snaps
-                // the highlight back within <100ms (+1ms guards float rounding)
-                if (syncLines?.[i]) seekTo((syncLines[i].time_ms + 1) / 1000)
-                else setLineIdx(i)
-              }}
-            >
-              {line}
-            </div>
-          ))}
+          ) : lines.map((line, i) => {
+            const t = line.trim()
+            if (t === '') {
+              // Stanza gap ≈ 0.9× the font — anything bigger reads as a page break
+              return <div key={i} style={{ height: `${Math.round(displayFontSize * 0.9)}px`, flexShrink: 0 }} />
+            }
+            // With sync, jump the clock too — otherwise the timer snaps
+            // the highlight back within <100ms (+1ms guards float rounding)
+            const jump = () => {
+              if (syncLines?.[i]) seekTo((syncLines[i].time_ms + 1) / 1000)
+              else setLineIdx(i)
+            }
+            const sec = t.match(/^\[(.+?)\]$/)
+            if (sec) return (
+              <div
+                key={i}
+                ref={i === lineIdx ? activeLineRef : null}
+                className={styles.sectionLabel}
+                style={{ color: theme.accent_color, opacity: i < lineIdx ? 0.35 : 0.85 }}
+                onClick={jump}
+              >
+                {fmtSection(sec[1])}
+              </div>
+            )
+            return (
+              <div
+                key={i}
+                ref={i === lineIdx ? activeLineRef : null}
+                className={styles.lyricLineManual}
+                style={{
+                  color: theme.active_color,
+                  lineHeight: displayLineHeight,
+                  fontWeight: i === lineIdx ? 800 : 400,
+                  opacity: i < lineIdx ? 0.35 : 1,
+                  background: i === lineIdx ? `${theme.accent_color}22` : 'transparent',
+                }}
+                onClick={jump}
+              >
+                {line}
+              </div>
+            )
+          })}
           <div style={{ height: '50vh' }} />
         </div>
       ) : (
@@ -555,22 +652,32 @@ export default function ConcertPage() {
             <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
               Sem letra disponível
             </div>
-          ) : lines.map((line, i) => line.trim() === '' ? (
-            <div key={i} style={{ height: `${displayFontSize * displayLineHeight * 1.8}px`, flexShrink: 0 }} />
-          ) : (
-            <div
-              key={i}
-              className={styles.lyricLineManual}
-              style={{
-                color: theme.active_color,
-                lineHeight: displayLineHeight,
-                fontWeight: 400,
-                opacity: 1,
-              }}
-            >
-              {line}
-            </div>
-          ))}
+          ) : lines.map((line, i) => {
+            const t = line.trim()
+            if (t === '') {
+              return <div key={i} style={{ height: `${Math.round(displayFontSize * 0.9)}px`, flexShrink: 0 }} />
+            }
+            const sec = t.match(/^\[(.+?)\]$/)
+            if (sec) return (
+              <div key={i} className={styles.sectionLabel} style={{ color: theme.accent_color, opacity: 0.85 }}>
+                {fmtSection(sec[1])}
+              </div>
+            )
+            return (
+              <div
+                key={i}
+                className={styles.lyricLineManual}
+                style={{
+                  color: theme.active_color,
+                  lineHeight: displayLineHeight,
+                  fontWeight: 400,
+                  opacity: 1,
+                }}
+              >
+                {line}
+              </div>
+            )
+          })}
           <div style={{ height: '50vh' }} />
         </div>
       )}
@@ -588,13 +695,49 @@ export default function ConcertPage() {
         </div>
       )}
 
-      {/* ── Controls (semi mode always — play/seek; line advance only with syncLines) ── */}
-      {contentView !== 'chords' && viewMode === 'semi' && (
+      {/* ── Progress bar (scrubbable) — only when the song has sync ── */}
+      {contentView !== 'chords' && viewMode === 'semi' && syncLines && duration > 0 && (
+        <div className={styles.progressWrap}>
+          <div
+            className={styles.progressHit}
+            onPointerDown={handleScrubStart}
+            onPointerMove={handleScrubMove}
+            onPointerUp={handleScrubEnd}
+            onPointerCancel={handleScrubEnd}
+            role="slider"
+            aria-label="Posição na música"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(duration)}
+            aria-valuenow={Math.round(Math.min(elapsed, duration))}
+            aria-valuetext={`${fmtTime(elapsed)} de ${fmtTime(duration)}`}
+          >
+            <div ref={progressTrackRef} className={styles.progressBg}>
+              <div
+                className={styles.progressFill}
+                style={{ width: `${progressPct}%`, background: theme.accent_color }}
+              />
+              <div
+                className={styles.progressThumb}
+                style={{ left: `${progressPct}%`, background: theme.accent_color }}
+              />
+            </div>
+          </div>
+          <div className={styles.progressLabels} style={{ color: theme.active_color }}>
+            <span>{fmtTime(Math.min(elapsed, duration))}</span>
+            <span>{fmtTime(duration)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Controls — playback only makes sense with sync; without it the
+             timer would run invisibly, so show a hint instead ── */}
+      {contentView !== 'chords' && viewMode === 'semi' && (syncLines ? (
         <div className={styles.controls}>
           <button
             className={styles.seekBtn}
-            style={{ color: theme.active_color, borderColor: `${theme.active_color}20`, opacity: syncLines ? 1 : 0.35 }}
-            onClick={() => syncLines && seekDelta(-5)}
+            style={{ color: theme.active_color, borderColor: `${theme.active_color}20` }}
+            onClick={() => seekDelta(-5)}
+            aria-label="Recuar 5 segundos"
           >
             <span className={styles.seekArrow}>‹‹</span>
             <span className={styles.seekLabel}>5s</span>
@@ -603,19 +746,25 @@ export default function ConcertPage() {
             className={styles.playBtn}
             style={{ background: theme.accent_color }}
             onClick={togglePlay}
+            aria-label={playing ? 'Pausar' : 'Reproduzir'}
           >
             {playing ? <span className={styles.pauseIcon} /> : '▶'}
           </button>
           <button
             className={styles.seekBtn}
-            style={{ color: theme.active_color, borderColor: `${theme.active_color}20`, opacity: syncLines ? 1 : 0.35 }}
-            onClick={() => syncLines && seekDelta(5)}
+            style={{ color: theme.active_color, borderColor: `${theme.active_color}20` }}
+            onClick={() => seekDelta(5)}
+            aria-label="Avançar 5 segundos"
           >
             <span className={styles.seekLabel}>5s</span>
             <span className={styles.seekArrow}>››</span>
           </button>
         </div>
-      )}
+      ) : (
+        <div className={styles.noSyncNote} style={{ color: theme.active_color }}>
+          Sem sincronização — usa o scroll
+        </div>
+      ))}
 
       {/* ── Prev / Next song ── */}
       <div className={styles.songNav}>
