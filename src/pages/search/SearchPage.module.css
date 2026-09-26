@@ -75,6 +75,7 @@
 .addBtn, .savedBtn {
   padding: 7px 14px; border-radius: 8px; font-size: 12px;
   font-weight: 700; border: none; white-space: nowrap; flex-shrink: 0;
+  min-height: 44px;
 }
 .addBtn { background: var(--gig); color: white; cursor: pointer; }
 .addBtn:disabled { opacity: 0.5; }
@@ -84,6 +85,7 @@
   padding: 7px 12px; border-radius: 8px; font-size: 12px;
   font-weight: 600; white-space: nowrap; flex-shrink: 0; cursor: pointer;
   background: transparent; border: 1.5px solid var(--border); color: var(--text2);
+  min-height: 44px;
 }
 .previewBtn:hover { border-color: var(--gig); color: var(--gig); }
 .previewBtn:disabled { opacity: 0.5; }
@@ -234,4 +236,30 @@
   background: #2563EB14;
   color: #2563EB;
   flex-shrink: 0;
+}
+
+/* toast discreto: adicionada à setlist, sem sair da pesquisa */
+.addedToast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 6px 8px 6px 16px; z-index: 150;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  font-size: 13px; font-weight: 600; color: var(--text);
+  white-space: nowrap; max-width: calc(100vw - 32px);
+  animation: sheetIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.addedToastLink {
+  background: none; border: none; color: var(--gig); font-size: 13px;
+  font-weight: 700; cursor: pointer; padding: 12px 12px; min-height: 44px;
+  white-space: nowrap;
+}
+.addedToastLink:hover { text-decoration: underline; }
+@media (max-width: 768px) {
+  /* acima da bottom nav */
+  .addedToast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (min-width: 768px) {
+  .addedToast { font-size: 15px; }
+  .addedToastLink { font-size: 15px; }
 }

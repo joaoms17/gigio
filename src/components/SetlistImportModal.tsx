@@ -5,6 +5,7 @@ import { searchLrclib, getLrclibLyrics } from '../lib/lrclib'
 import { searchGenius } from '../lib/genius'
 import { getLyricsOvh } from '../lib/lyricsovh'
 import { useAuth } from '../hooks/useAuth'
+import { useToast } from './Toast'
 import type { Song, SearchResult, LyricLine } from '../types'
 import styles from './SetlistImportModal.module.css'
 
@@ -66,6 +67,7 @@ async function fetchResults(query: string): Promise<SearchResult[]> {
 
 export default function SetlistImportModal({ setlistId, projectId, currentPosition, onClose, onImported }: Props) {
   const { user } = useAuth()
+  const toast = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<Step>('upload')
   const [parsing, setParsing] = useState(false)
@@ -292,7 +294,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
       }
       onImported()
     } catch (err: any) {
-      alert('Erro ao guardar: ' + (err?.message ?? err))
+      toast('Erro ao guardar: ' + (err?.message ?? err), { type: 'error' })
       setBulkImporting(false)
     }
   }
@@ -305,7 +307,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
       await saveSongAndAdd(r)
       advanceSearch(true)
     } catch (err: any) {
-      alert('Erro ao guardar: ' + (err?.message ?? err))
+      toast('Erro ao guardar: ' + (err?.message ?? err), { type: 'error' })
     } finally { setSavingKey(null) }
   }
 
@@ -349,7 +351,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
             </div>
             <div className={styles.entryList}>
               {entries.map(e => (
-                <div key={e.id} className={`${styles.entryRow} ${!e.checked ? styles.entryUnchecked : ''}`}>
+                <label key={e.id} className={`${styles.entryRow} ${!e.checked ? styles.entryUnchecked : ''}`}>
                   <input type="checkbox" className={styles.checkbox} checked={e.checked}
                     onChange={() => setEntries(prev => prev.map(x => x.id === e.id ? { ...x, checked: !x.checked } : x))} />
                   <div className={styles.entryInfo}>
@@ -369,7 +371,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
                       <div key={i} className={styles.matchMissed}>? não encontrada</div>
                     ))}
                   </div>
-                </div>
+                </label>
               ))}
             </div>
             <div className={styles.footer}>
@@ -528,7 +530,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
                 const isExpanded = bulkExpanded === name
                 return (
                   <div key={name}>
-                    <div className={`${styles.bulkRow} ${!checked ? styles.bulkUnchecked : ''}`}>
+                    <label className={`${styles.bulkRow} ${!checked ? styles.bulkUnchecked : ''}`}>
                       <input type="checkbox" className={styles.checkbox}
                         checked={checked}
                         onChange={() => setBulkChecked(prev => ({ ...prev, [name]: !checked }))} />
@@ -550,12 +552,13 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
                         )}
                       </div>
                       {results !== undefined && results.length > 0 && (
-                        <button className={styles.bulkChangeBtn}
+                        <button className={styles.bulkChangeBtn} type="button"
+                          aria-label={isExpanded ? 'Fechar alternativas' : 'Trocar correspondência'}
                           onClick={() => setBulkExpanded(isExpanded ? null : name)}>
                           {isExpanded ? '▲' : '▾'}
                         </button>
                       )}
-                    </div>
+                    </label>
                     {isExpanded && (
                       <div className={styles.bulkExpandWrap}>
                         {results?.slice(0, 6).map(r => {

@@ -94,6 +94,13 @@ function dist(x1: number, y1: number, x2: number, y2: number) {
   return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 }
 
+/** Scale stroke coordinates from the width they were drawn at to the current width. */
+function scaleStrokes(strokes: Stroke[], fromW: number, toW: number): Stroke[] {
+  if (!fromW || !toW || fromW === toW) return strokes
+  const k = toW / fromW
+  return strokes.map(s => ({ ...s, pts: s.pts.map(p => p * k) }))
+}
+
 const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationLayer(
   { songId, userId, tool, color, strokeWidth, clearTrigger, disabled = false },
   ref
@@ -106,7 +113,10 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   const [svgH, setSvgH] = useState(0)
   const drawingRef = useRef(false)
   const currentRef = useRef<Stroke | null>(null)
+  const activePointerRef = useRef<number | null>(null)
   const prevClearRef = useRef(clearTrigger)
+  // Width the current stroke coordinates are expressed in (for rotation/resize rescaling)
+  const strokesWRef = useRef(0)
 
   const loadedRef = useRef(false)
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -123,8 +133,12 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
 
   useEffect(() => {
     loadedRef.current = false
+    const curW = layerRef.current?.offsetWidth ?? 0
     const local = loadAnnotations(songId)
-    setStrokes(local?.strokes ?? [])
+    // Strokes are saved with the width they were drawn at — rescale to the
+    // current width so rotation/resize keeps them aligned with the text
+    setStrokes(scaleStrokes(local?.strokes ?? [], local?.w ?? 0, curW))
+    strokesWRef.current = curW || local?.w || 0
     historyRef.current = []
     loadedRef.current = true
     if (userId) {
@@ -132,7 +146,9 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
         if (!remote) return
         const localNow = loadAnnotations(songId)
         if (!localNow || localNow.strokes.length === 0) {
-          setStrokes(remote.strokes)
+          const w = layerRef.current?.offsetWidth ?? 0
+          setStrokes(scaleStrokes(remote.strokes, remote.w ?? 0, w))
+          strokesWRef.current = w || remote.w || 0
           historyRef.current = []
           try { localStorage.setItem(ANN_STORAGE_KEY(songId), JSON.stringify(remote)) } catch {}
         }
@@ -142,7 +158,9 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
 
   useEffect(() => {
     if (!loadedRef.current) return
-    const w = layerRef.current?.offsetWidth ?? svgW
+    // Save with the width the coordinates are expressed in, not whatever the
+    // layout happens to measure mid-rotation
+    const w = strokesWRef.current || layerRef.current?.offsetWidth || svgW
     const payload: SavedAnnotations = { w, strokes }
     try { localStorage.setItem(ANN_STORAGE_KEY(songId), JSON.stringify(payload)) } catch {}
     if (userId) {
@@ -163,8 +181,18 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     const el = layerRef.current
     if (!el) return
     const obs = new ResizeObserver(e => {
-      setSvgW(e[0].contentRect.width)
+      const newW = e[0].contentRect.width
+      setSvgW(newW)
       setSvgH(e[0].contentRect.height)
+      // Rotation/resize: rescale existing strokes to the new width
+      if (newW > 0 && strokesWRef.current > 0 && Math.abs(newW - strokesWRef.current) > 1) {
+        const fromW = strokesWRef.current
+        strokesWRef.current = newW
+        setStrokes(prev => scaleStrokes(prev, fromW, newW))
+        historyRef.current = historyRef.current.map(snap => scaleStrokes(snap, fromW, newW))
+      } else if (newW > 0 && strokesWRef.current === 0) {
+        strokesWRef.current = newW
+      }
     })
     obs.observe(el)
     setSvgW(el.offsetWidth)
@@ -179,6 +207,10 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
 
   function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
     e.preventDefault()
+    // Palm rejection: follow only the first active pointer; ignore extra
+    // simultaneous touches (resting palm, second finger) until it lifts
+    if (activePointerRef.current !== null && activePointerRef.current !== e.pointerId) return
+    activePointerRef.current = e.pointerId
     e.currentTarget.setPointerCapture(e.pointerId)
     const { x, y } = getXY(e)
     drawingRef.current = true
@@ -194,6 +226,8 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   }
 
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    // While drawing, only the tracked pointer may contribute points
+    if (drawingRef.current && activePointerRef.current !== null && e.pointerId !== activePointerRef.current) return
     const { x, y } = getXY(e)
 
     if (tool === 'eraser') {
@@ -214,7 +248,10 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     setCurrent({ ...next })
   }
 
-  function onPointerUp(_e: React.PointerEvent<SVGSVGElement>) {
+  function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    // A lifted palm/extra finger must not end the tracked stroke
+    if (activePointerRef.current !== null && e.pointerId !== activePointerRef.current) return
+    activePointerRef.current = null
     if (!drawingRef.current) return
     drawingRef.current = false
     setEraserPos(null)
@@ -244,6 +281,7 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
           onPointerLeave={onPointerUp}
         >
           {strokes.map(s => (

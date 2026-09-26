@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ConfirmProvider } from './components/ConfirmDialog'
+import { ToastProvider } from './components/Toast'
 import { useAuth } from './hooks/useAuth'
+import Layout from './components/Layout'
 import AuthPage from './pages/auth/AuthPage'
 import CalendarPage from './pages/calendar/CalendarPage'
 import ProjectsPage from './pages/projects/ProjectsPage'
@@ -29,26 +31,31 @@ function AppRoutes() {
     <Routes>
       <Route path="/auth" element={<AuthPage />} />
 
-      {/* Calendário — landing após login */}
-      <Route path="/" element={<AuthGuard><CalendarPage /></AuthGuard>} />
+      {/* Páginas com Layout — rota-pai partilhada para o Layout não remontar */}
+      <Route element={<AuthGuard><Layout /></AuthGuard>}>
+        {/* Calendário — landing após login */}
+        <Route path="/" element={<CalendarPage />} />
 
-      {/* Projetos */}
-      <Route path="/projects" element={<AuthGuard><ProjectsPage /></AuthGuard>} />
-      <Route path="/projects/:id" element={<AuthGuard><ProjectDashboardPage /></AuthGuard>} />
+        {/* Projetos */}
+        <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/projects/:id" element={<ProjectDashboardPage />} />
 
-      {/* Setlists */}
-      <Route path="/setlists" element={<AuthGuard><SetlistsPage /></AuthGuard>} />
-      <Route path="/setlist/:id" element={<AuthGuard><SetlistPage /></AuthGuard>} />
+        {/* Setlists */}
+        <Route path="/setlists" element={<SetlistsPage />} />
+        <Route path="/setlist/:id" element={<SetlistPage />} />
+
+        {/* Biblioteca pessoal */}
+        <Route path="/library" element={<LibraryPage />} />
+        <Route path="/songs/:id" element={<SongPage />} />
+        <Route path="/search" element={<SearchPage />} />
+
+        {/* Definições */}
+        <Route path="/settings" element={<SettingsPage />} />
+      </Route>
+
+      {/* Páginas sem Layout (fullscreen) */}
       <Route path="/setlist/:id/concert" element={<AuthGuard><ConcertPage /></AuthGuard>} />
-
-      {/* Biblioteca pessoal */}
-      <Route path="/library" element={<AuthGuard><LibraryPage /></AuthGuard>} />
-      <Route path="/songs/:id" element={<AuthGuard><SongPage /></AuthGuard>} />
       <Route path="/songs/:id/sync" element={<AuthGuard><SyncEditorPage /></AuthGuard>} />
-      <Route path="/search" element={<AuthGuard><SearchPage /></AuthGuard>} />
-
-      {/* Definições */}
-      <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
 
       {/* Convites */}
       <Route path="/invite/:token" element={<InvitePage />} />
@@ -74,7 +81,9 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <ConfirmProvider>
-          <AppRoutes />
+          <ToastProvider>
+            <AppRoutes />
+          </ToastProvider>
         </ConfirmProvider>
       </AuthProvider>
     </BrowserRouter>

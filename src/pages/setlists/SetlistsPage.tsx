@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Layout from '../../components/Layout'
 import ProjectPickerModal from '../../components/ProjectPickerModal'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
@@ -15,6 +14,13 @@ interface Row {
   is_shared: boolean
   band: { name: string; color: string } | null
   setlist_songs: { count: number }[]
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  draft: 'rascunho',
+  preparing: 'em preparação',
+  final: 'final',
+  archived: 'arquivado',
 }
 
 
@@ -56,7 +62,7 @@ export default function SetlistsPage() {
   )
 
   return (
-    <Layout>
+    <>
       <div className={styles.page}>
         <div className={styles.header}>
           <div>
@@ -115,6 +121,11 @@ export default function SetlistsPage() {
                     )}
                     <div className={styles.cardTags}>
                       <span className={styles.tag}>{s.setlist_songs?.[0]?.count ?? 0} músicas</span>
+                      {s.status && (
+                        <span className={styles.statusBadge} data-status={s.status}>
+                          {STATUS_LABELS[s.status] ?? s.status}
+                        </span>
+                      )}
                       {s.is_shared && <span className={styles.tagShared}>partilhada</span>}
                     </div>
                   </div>
@@ -136,6 +147,6 @@ export default function SetlistsPage() {
           onClose={() => setPicking(false)}
         />
       )}
-    </Layout>
+    </>
   )
 }

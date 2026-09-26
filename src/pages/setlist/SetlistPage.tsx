@@ -8,9 +8,9 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import { useConfirm } from '../../components/ConfirmDialog'
+import { useToast } from '../../components/Toast'
 import ProjectPickerModal from '../../components/ProjectPickerModal'
 import SetlistImportModal from '../../components/SetlistImportModal'
 import { supabase } from '../../lib/supabase'
@@ -54,8 +54,10 @@ function SortableSongRow({ ss, index, onEdit, onRemove, onOverrides }: {
       <div className={styles.songDur}>
         {ss.song?.duration_sec ? `${Math.floor(ss.song.duration_sec / 60)}:${String(ss.song.duration_sec % 60).padStart(2, '0')}` : ''}
       </div>
-      <button className={styles.iconBtn} onClick={() => onEdit(ss.song_id)} title="Editar música">✎</button>
-      <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onRemove(ss.id) }} title="Remover da setlist">✕</button>
+      <div className={styles.songActions}>
+        <button className={styles.iconBtn} onClick={() => onEdit(ss.song_id)} title="Editar música">✎</button>
+        <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onRemove(ss.id) }} title="Remover da setlist">✕</button>
+      </div>
     </div>
   )
 }
@@ -65,6 +67,7 @@ export default function SetlistPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const confirmDialog = useConfirm()
+  const toast = useToast()
   const [searchParams] = useSearchParams()
   const autoAddDone = useRef(false)
   const [setlist, setSetlist] = useState<Setlist | null>(null)
@@ -84,6 +87,8 @@ export default function SetlistPage() {
   const venueDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [date, setDate] = useState('')
   const [duplicating, setDuplicating] = useState(false)
+  const [removedSong, setRemovedSong] = useState<Row | null>(null)
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
   const [canDelete, setCanDelete] = useState(false)
@@ -195,7 +200,7 @@ export default function SetlistPage() {
     const { error } = await supabase.from('setlist_songs').insert(
       toAdd.map((s, i) => ({ setlist_id: id, song_id: s.id, position: basePos + i }))
     )
-    if (error) { alert('Erro ao adicionar: ' + error.message); return }
+    if (error) { toast('Erro ao adicionar: ' + error.message, { type: 'error' }); return }
     await loadSongs()
     closeLibrary()
   }
@@ -262,9 +267,37 @@ export default function SetlistPage() {
   }
 
   async function removeSong(ssId: string) {
-    await supabase.from('setlist_songs').delete().eq('id', ssId)
+    const row = songs.find(s => s.id === ssId)
+    if (!row) return
+    const { error } = await supabase.from('setlist_songs').delete().eq('id', ssId)
+    if (error) { toast('Erro ao remover: ' + error.message, { type: 'error' }); return }
     setSongs(prev => prev.filter(s => s.id !== ssId))
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    setRemovedSong(row)
+    undoTimerRef.current = setTimeout(() => setRemovedSong(null), 6000)
   }
+
+  async function undoRemove() {
+    if (!removedSong) return
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    const row = removedSong
+    setRemovedSong(null)
+    const { data, error } = await supabase.from('setlist_songs').insert({
+      setlist_id: row.setlist_id,
+      song_id: row.song_id,
+      position: row.position,
+      notes: row.notes ?? null,
+      performance_key: row.performance_key ?? null,
+      custom_intro: row.custom_intro ?? null,
+      custom_ending: row.custom_ending ?? null,
+    }).select('*, song:songs(*)').single()
+    if (error || !data) { toast('Erro ao anular: ' + (error?.message ?? 'tenta de novo'), { type: 'error' }); return }
+    setSongs(prev => [...prev, data as Row].sort((a, b) => a.position - b.position))
+  }
+
+  useEffect(() => () => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+  }, [])
 
   async function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e
@@ -294,9 +327,9 @@ export default function SetlistPage() {
     if (!id) return
     if (!await confirmDialog({ title: 'Apagar concerto', message: `Apagar o concerto "${setlist?.name}"? Esta ação não pode ser desfeita.`, confirmLabel: 'Apagar', danger: true })) return
     const { error: e1 } = await supabase.from('setlist_songs').delete().eq('setlist_id', id)
-    if (e1) { alert('Erro ao apagar músicas do concerto: ' + e1.message); return }
+    if (e1) { toast('Erro ao apagar músicas do concerto: ' + e1.message, { type: 'error' }); return }
     const { error: e2 } = await supabase.from('setlists').delete().eq('id', id)
-    if (e2) { alert('Erro ao apagar concerto: ' + e2.message); return }
+    if (e2) { toast('Erro ao apagar concerto: ' + e2.message, { type: 'error' }); return }
     setlist?.band_id ? navigate(`/projects/${setlist.band_id}?tab=setlists`) : navigate('/setlists')
   }
 
@@ -308,7 +341,7 @@ export default function SetlistPage() {
       .insert({ name: `${setlist.name} (cópia)`, owner_id: user.id, band_id: projectId, is_shared: true })
       .select()
       .single()
-    if (error) { alert('Erro ao duplicar: ' + error.message); return }
+    if (error) { toast('Erro ao duplicar: ' + error.message, { type: 'error' }); return }
     if (newSl && songs.length) {
       await supabase.from('setlist_songs').insert(
         songs.map((s, i) => ({ setlist_id: newSl.id, song_id: s.song_id, position: i }))
@@ -418,7 +451,7 @@ export default function SetlistPage() {
       <\/script>
       </body></html>`
     const w = window.open('', '_blank')
-    if (!w) { alert('Permite pop-ups para exportar o PDF.'); return }
+    if (!w) { toast('Permite pop-ups para exportar o PDF.', { type: 'error' }); return }
     w.document.write(html)
     w.document.close()
   }
@@ -433,7 +466,7 @@ export default function SetlistPage() {
   )
 
   return (
-    <Layout>
+    <>
       <div className={styles.page}>
         {isOffline && (
           <div className={styles.offlineBanner}>
@@ -700,6 +733,13 @@ export default function SetlistPage() {
           </div>
         </div>
       )}
-    </Layout>
+
+      {removedSong && (
+        <div className={styles.undoSnackbar} role="status">
+          <span className={styles.undoText}>Música removida</span>
+          <button className={styles.undoBtn} onClick={undoRemove}>Anular</button>
+        </div>
+      )}
+    </>
   )
 }

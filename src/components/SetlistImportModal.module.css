@@ -39,6 +39,9 @@
   cursor: pointer;
   font-size: 18px;
   color: var(--text3);
+  min-width: 44px;
+  min-height: 44px;
+  margin: -8px -12px -8px 0;
 }
 
 .body {
@@ -115,6 +118,7 @@
   padding: 8px 4px;
   border-bottom: 1px solid var(--border);
   opacity: 1;
+  cursor: pointer;
 }
 
 .entryUnchecked {
@@ -122,9 +126,12 @@
 }
 
 .checkbox {
-  margin-top: 4px;
+  margin-top: 2px;
   flex-shrink: 0;
   accent-color: var(--gig);
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
 }
 
 .entryInfo {
@@ -367,12 +374,13 @@
   color: #fff;
   border: none;
   border-radius: 6px;
-  padding: 5px 10px;
+  padding: 5px 12px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   flex-shrink: 0;
   white-space: nowrap;
+  min-height: 44px;
 }
 .resultAddBtn:disabled { opacity: 0.5; }
 
@@ -476,13 +484,14 @@
   background: none;
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 5px 10px;
+  padding: 5px 12px;
   font-size: 12px;
   font-weight: 600;
   color: var(--text2);
   cursor: pointer;
   flex-shrink: 0;
   white-space: nowrap;
+  min-height: 44px;
 }
 
 .bulkSummary {
@@ -538,6 +547,7 @@
   gap: 10px;
   padding: 8px 4px;
   border-bottom: 1px solid var(--border);
+  cursor: pointer;
 }
 
 .bulkUnchecked { opacity: 0.4; }
@@ -569,11 +579,12 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text3);
   cursor: pointer;
   flex-shrink: 0;
-  margin-top: 2px;
+  min-height: 44px;
+  min-width: 44px;
 }
 
 .bulkExpandWrap {
@@ -611,3 +622,48 @@
 }
 
 .bulkSemLetraRow:hover { background: var(--bg3, rgba(0,0,0,.06)); }
+
+/* Tablet — espelha a escala tipográfica da SearchPage */
+@media (min-width: 768px) {
+  .modal { max-width: 640px; }
+  .title { font-size: 18px; }
+  .uploadHint { font-size: 16px; }
+  .uploadSub { font-size: 14px; }
+  .reviewInfo { font-size: 14px; }
+  .songName { font-size: 15px; }
+  .medleyLabel { font-size: 11px; }
+  .medleySong { font-size: 14px; }
+  .matchFound, .matchMissed { font-size: 13px; }
+  .missedTitle { font-size: 13px; }
+  .missedItem { font-size: 14px; padding: 3px 0; }
+  .doneTitle { font-size: 18px; }
+  .searchCurrent { font-size: 21px; }
+  .searchInput { font-size: 16px; padding: 10px 14px; }
+  .searchBtn { font-size: 15px; padding: 10px 20px; }
+  .resultRow { padding: 10px 12px; gap: 10px; }
+  .resultTitle { font-size: 15px; }
+  .resultArtist { font-size: 13px; }
+  .syncBadge { font-size: 11px; padding: 2px 7px; }
+  .confBadge { font-size: 11px; padding: 2px 6px; }
+  .resultAddBtn { font-size: 14px; padding: 8px 16px; }
+  .previewBtn { font-size: 14px; padding: 8px 14px; }
+  .backBtn { font-size: 15px; padding: 10px 16px; }
+  .previewTitle { font-size: 16px; }
+  .previewArtist { font-size: 14px; }
+  .lyricsText { font-size: 15px; }
+  .cancelBtn { font-size: 15px; padding: 10px 18px; }
+  .importBtn { font-size: 15px; padding: 10px 22px; }
+  .skipBtn { font-size: 15px; padding: 9px 18px; }
+  .searchMissedBtn, .doneBtn { font-size: 15px; }
+  .bulkSummary { font-size: 14px; }
+  .bulkName { font-size: 15px; }
+  .bulkMatchTitle { font-size: 14px; }
+  .bulkMatchArtist { font-size: 13px; }
+  .bulkLoading, .bulkNoResult { font-size: 13px; }
+  .bulkExpandRow { padding: 10px 10px; }
+  .bulkSemLetraRow { font-size: 14px; padding: 10px 10px; }
+  .preloadProgress, .preloadReady { font-size: 12px; }
+  .noResults { font-size: 15px; }
+  .error { font-size: 14px; }
+  .parseSpinner { font-size: 14px; }
+}

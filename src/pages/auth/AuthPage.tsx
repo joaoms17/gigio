@@ -76,6 +76,8 @@ export default function AuthPage() {
             <input
               className={styles.input}
               type="text"
+              name="name"
+              autoComplete="name"
               placeholder="O teu nome"
               value={name}
               onChange={e => setName(e.target.value)}
@@ -85,6 +87,8 @@ export default function AuthPage() {
           <input
             className={styles.input}
             type="email"
+            name="email"
+            autoComplete="email"
             placeholder="Email"
             value={email}
             onChange={e => setEmail(e.target.value)}
@@ -93,6 +97,8 @@ export default function AuthPage() {
           <input
             className={styles.input}
             type="password"
+            name="password"
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             placeholder="Password"
             value={password}
             onChange={e => setPassword(e.target.value)}

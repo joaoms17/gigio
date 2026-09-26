@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import { useConfirm } from '../../components/ConfirmDialog'
+import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { uploadProjectImage } from '../../lib/uploadImage'
 import { useAuth } from '../../hooks/useAuth'
@@ -60,6 +60,7 @@ export default function ProjectDashboardPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const confirmDialog = useConfirm()
+  const toast = useToast()
   const { id: projectId } = useParams<{ id: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = (searchParams.get('tab') as Tab) ?? 'setlists'
@@ -238,7 +239,7 @@ export default function ProjectDashboardPage() {
       ;({ error } = await supabase.from('bands').update(base).eq('id', project.id))
     }
     setSavingSettings(false)
-    if (error) { alert('Erro ao guardar: ' + error.message); return }
+    if (error) { toast('Erro ao guardar: ' + error.message, { type: 'error' }); return }
     setProject(p => p ? { ...p, ...base, description: base.description ?? undefined, image_position: settingsImagePos } as any : p)
     setSettingsSaved(true)
     setTimeout(() => setSettingsSaved(false), 2000)
@@ -271,8 +272,8 @@ export default function ProjectDashboardPage() {
       })
     setInviting(false)
     if (error) {
-      if (error.code === '23505') alert('Já existe um convite pendente para este email.')
-      else alert('Erro ao enviar convite: ' + error.message)
+      if (error.code === '23505') toast('Já existe um convite pendente para este email.', { type: 'error' })
+      else toast('Erro ao enviar convite: ' + error.message, { type: 'error' })
       return
     }
     setInviteEmail('')
@@ -280,7 +281,8 @@ export default function ProjectDashboardPage() {
   }
 
   async function revokeInvite(inviteId: string) {
-    await supabase.from('project_invites').update({ status: 'revoked' }).eq('id', inviteId)
+    const { error } = await supabase.from('project_invites').update({ status: 'revoked' }).eq('id', inviteId)
+    if (error) { toast('Erro ao revogar convite: ' + error.message, { type: 'error' }); return }
     setInvites(prev => prev.filter(i => i.id !== inviteId))
   }
 
@@ -302,19 +304,22 @@ export default function ProjectDashboardPage() {
   async function removeMember(userId: string, displayName: string) {
     if (!project) return
     if (!await confirmDialog({ title: 'Remover membro', message: `Remover ${displayName} do projeto?`, confirmLabel: 'Remover', danger: true })) return
-    await supabase.from('band_members').delete().eq('band_id', project.id).eq('user_id', userId)
+    const { error } = await supabase.from('band_members').delete().eq('band_id', project.id).eq('user_id', userId)
+    if (error) { toast('Erro ao remover membro: ' + error.message, { type: 'error' }); return }
     setMembers(prev => prev.filter(m => m.user_id !== userId))
   }
 
   async function changeRole(userId: string, role: ProjectRole) {
     if (!project) return
-    await supabase.from('band_members').update({ role }).eq('band_id', project.id).eq('user_id', userId)
+    const { error } = await supabase.from('band_members').update({ role }).eq('band_id', project.id).eq('user_id', userId)
+    if (error) { toast('Erro ao alterar o papel: ' + error.message, { type: 'error' }); return }
     setMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role } : m))
   }
 
   async function saveInstrument() {
     if (!project || !user) return
-    await supabase.from('band_members').update({ instrument: instrumentInput.trim() || null }).eq('band_id', project.id).eq('user_id', user.id)
+    const { error } = await supabase.from('band_members').update({ instrument: instrumentInput.trim() || null }).eq('band_id', project.id).eq('user_id', user.id)
+    if (error) { toast('Erro ao guardar o instrumento: ' + error.message, { type: 'error' }); setEditingInstrument(false); return }
     setMembers(prev => prev.map(m => m.user_id === user.id ? { ...m, instrument: instrumentInput.trim() || undefined } : m))
     setEditingInstrument(false)
   }
@@ -322,9 +327,10 @@ export default function ProjectDashboardPage() {
   async function deleteSong(songId: string, title: string) {
     if (!await confirmDialog({ title: 'Remover música', message: `Remover "${title}" do repertório?`, confirmLabel: 'Remover', danger: true })) return
     setDeletingSong(songId)
-    await supabase.from('songs').delete().eq('id', songId)
-    setSongs(prev => prev.filter(s => s.id !== songId))
+    const { error } = await supabase.from('songs').delete().eq('id', songId)
     setDeletingSong(null)
+    if (error) { toast('Erro ao remover a música: ' + error.message, { type: 'error' }); return }
+    setSongs(prev => prev.filter(s => s.id !== songId))
   }
 
   function onVenueInput(val: string) {
@@ -359,7 +365,7 @@ export default function ProjectDashboardPage() {
   async function doCreateSetlist() {
     if (!project || !user || !newSetlistName.trim()) return
     setCreatingSetlist(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('setlists')
       .insert({
         name: newSetlistName.trim(),
@@ -372,33 +378,30 @@ export default function ProjectDashboardPage() {
       .select()
       .single()
     setCreatingSetlist(false)
+    if (error) { toast('Erro ao criar concerto: ' + error.message, { type: 'error' }); return }
     setShowCreateSetlist(false)
     if (data) navigate(`/setlist/${data.id}?add=1`)
   }
 
   if (loading) {
     return (
-      <Layout>
-        <div className={styles.loading}>A carregar projeto...</div>
-      </Layout>
+      <div className={styles.loading}>A carregar projeto...</div>
     )
   }
 
   if (error || !project) {
     return (
-      <Layout>
-        <div className={styles.errorState}>
-          <p>{error ?? 'Projeto não encontrado.'}</p>
-          <button className={styles.backLink} onClick={() => navigate('/')}>← Voltar</button>
-        </div>
-      </Layout>
+      <div className={styles.errorState}>
+        <p>{error ?? 'Projeto não encontrado.'}</p>
+        <button className={styles.backLink} onClick={() => navigate('/')}>← Voltar</button>
+      </div>
     )
   }
 
   const projectColor = project.color ?? PROJECT_COLORS[0]
 
   return (
-    <Layout>
+    <>
       <div className={styles.page}>
         {isOffline && (
           <div className={styles.offlineBanner}>
@@ -438,7 +441,7 @@ export default function ProjectDashboardPage() {
                         await supabase.from('bands').update({ image_url: url }).eq('id', projectId)
                         setProject(p => p ? { ...p, image_url: url } : p)
                       } catch (err: any) {
-                        alert('Erro ao carregar imagem: ' + (err?.message ?? err))
+                        toast('Erro ao carregar imagem: ' + (err?.message ?? err), { type: 'error' })
                       } finally {
                         setUploadingImage(false)
                         e.target.value = ''
@@ -1019,6 +1022,6 @@ export default function ProjectDashboardPage() {
           </div>
         </div>
       )}
-    </Layout>
+    </>
   )
 }

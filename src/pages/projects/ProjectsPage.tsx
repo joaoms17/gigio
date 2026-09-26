@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { uploadProjectImage } from '../../lib/uploadImage'
+import { useToast } from '../../components/Toast'
 import { useAuth } from '../../hooks/useAuth'
 import {
   type Project,
@@ -46,6 +46,7 @@ async function hardRefresh() {
 export default function ProjectsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
   const [projects, setProjects] = useState<ProjectWithCounts[]>([])
   const [loading, setLoading] = useState(true)
   const [isOffline, setIsOffline] = useState(false)
@@ -136,7 +137,7 @@ export default function ProjectsPage() {
       })
       .select()
       .single()
-    if (error) { setCreating(false); alert('Erro ao criar projeto: ' + error.message); return }
+    if (error) { setCreating(false); toast('Erro ao criar projeto: ' + error.message, { type: 'error' }); return }
     if (data && createImage) {
       try {
         const url = await uploadProjectImage(data.id, createImage)
@@ -177,10 +178,7 @@ export default function ProjectsPage() {
       .eq('user_id', user.id)
       .maybeSingle()
     if (!existing) {
-      if (!window.confirm(`Entrar no projeto "${band.name}" como editor?`)) {
-        setJoining(false)
-        return
-      }
+      // O botão "Entrar no projeto" já é a confirmação explícita — sem confirm redundante.
       const { error: joinErr } = await supabase
         .from('band_members')
         .insert({ band_id: band.id, user_id: user.id, role: 'editor' })
@@ -200,7 +198,7 @@ export default function ProjectsPage() {
   }
 
   return (
-    <Layout>
+    <>
       <div className={styles.page}>
         {isOffline && (
           <div className={styles.offlineBanner}>
@@ -460,6 +458,6 @@ export default function ProjectsPage() {
           </div>
         </div>
       )}
-    </Layout>
+    </>
   )
 }

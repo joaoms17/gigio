@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import styles from './ConfirmDialog.module.css'
 
 interface ConfirmOptions {
@@ -31,12 +31,32 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
     resolver.current(result)
   }
 
+  // Escape closes the dialog (same as cancelling)
+  useEffect(() => {
+    if (!opts) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        setOpts(null)
+        resolver.current(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [opts])
+
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
       {opts && (
         <div className={styles.overlay} onClick={() => close(false)}>
-          <div className={styles.dialog} onClick={e => e.stopPropagation()}>
+          <div
+            className={styles.dialog}
+            role="dialog"
+            aria-modal="true"
+            aria-label={opts.title ?? opts.message}
+            onClick={e => e.stopPropagation()}
+          >
             {opts.title && <div className={styles.title}>{opts.title}</div>}
             <div className={styles.message}>{opts.message}</div>
             <div className={styles.actions}>

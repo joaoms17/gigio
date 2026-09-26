@@ -17,7 +17,7 @@
 .exitBtn {
   background: rgba(255,255,255,0.08);
   border: none;
-  color: rgba(255,255,255,0.5);
+  color: rgba(255,255,255,0.55);
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -25,6 +25,13 @@
   flex-shrink: 0;
   cursor: pointer;
   transition: background 0.15s;
+  position: relative;
+}
+/* Transparent hit-area extension → 44×44px effective without visual change */
+.exitBtn::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
 }
 .exitBtn:hover { background: rgba(255,255,255,0.14); }
 
@@ -65,24 +72,31 @@
 
 .headerRight {
   display: flex;
-  gap: 4px;
+  gap: 8px;
   flex-shrink: 0;
 }
 .modeBtn {
   background: rgba(255,255,255,0.06);
   border: none;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
-.modeBtn:hover { background: rgba(255,255,255,0.12); }
+.modeBtn::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+}
+.modeBtn:hover:not(:disabled) { background: rgba(255,255,255,0.12); }
+.modeBtn:disabled { opacity: 0.25; cursor: default; pointer-events: none; }
 
 .modeSwitchBtn {
   background: rgba(255,255,255,0.06);
@@ -92,10 +106,16 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 0 12px;
-  height: 34px;
+  height: 40px;
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s;
+  position: relative;
+}
+.modeSwitchBtn::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
 }
 .modeSwitchBtn:hover { background: rgba(255,255,255,0.12); }
 
@@ -362,11 +382,12 @@
   flex-shrink: 0;
 }
 .resyncBtn {
-  padding: 5px 18px;
-  border-radius: 20px;
+  padding: 10px 24px;
+  min-height: 44px;
+  border-radius: 24px;
   border: 1.5px solid;
-  background: rgba(255,255,255,0.06);
-  font-size: 12px;
+  background: rgba(255,255,255,0.08);
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
   letter-spacing: 0.04em;
@@ -424,6 +445,7 @@
   .lyricLineManual { font-size: var(--lyric-size, 32px); }
 
   .header { padding: 18px 28px; gap: 14px; }
+  .headerRight { gap: 12px; }
   .exitBtn { width: 54px; height: 54px; font-size: 22px; }
   .counter { font-size: 17px; }
   .modeBtn { width: 46px; height: 46px; font-size: 20px; }
@@ -436,7 +458,7 @@
 
   .notesBanner { font-size: 16px; padding: 12px 18px; }
 
-  .resyncBtn { font-size: 16px; padding: 9px 26px; }
+  .resyncBtn { font-size: 19px; padding: 14px 32px; border-radius: 30px; }
 
   .controls { gap: 18px; padding: 16px 28px 10px; }
   .seekBtn { height: 76px; max-width: 200px; font-size: 20px; border-radius: 38px; }
@@ -508,21 +530,26 @@
 .reorderBtns {
   margin-left: auto;
   display: flex;
-  gap: 2px;
+  gap: 8px;
   flex-shrink: 0;
 }
 .reorderBtn {
   background: none;
   border: none;
-  font-size: 13px;
-  padding: 4px 7px;
+  font-size: 14px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
   cursor: pointer;
   border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .reorderBtn:disabled { cursor: default; }
 
 @media (min-width: 768px) {
   .chordsPre { font-size: calc(var(--lyric-size, 32px) * 0.75); }
-  .reorderBtn { font-size: 16px; padding: 6px 10px; }
+  .reorderBtn { font-size: 16px; }
   .metroDot { width: 22px; height: 22px; }
 }

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { signOut } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
+import { useConfirm } from './ConfirmDialog'
 import styles from './Layout.module.css'
 
-interface Props { children: React.ReactNode }
+interface Props { children?: React.ReactNode }
 
 const PALETTE = ['#7C3AED', '#FF4D6D', '#2563EB', '#059669', '#D97706', '#DB2777', '#0891B2', '#9333EA']
 function colorFor(s: string) {
@@ -33,6 +34,7 @@ interface UpcomingEvent { id: string; name: string; date: string; band: { name: 
 export default function Layout({ children }: Props) {
   const navigate = useNavigate()
   const { user } = useAuth()
+  const confirmDialog = useConfirm()
   const [upcoming, setUpcoming] = useState<UpcomingEvent[]>([])
   const [offline, setOffline] = useState(!navigator.onLine)
 
@@ -71,6 +73,13 @@ export default function Layout({ children }: Props) {
   }, [user])
 
   async function handleSignOut() {
+    const ok = await confirmDialog({
+      title: 'Terminar sessão',
+      message: 'Tens a certeza que queres terminar a sessão?',
+      confirmLabel: 'Sair',
+      danger: true,
+    })
+    if (!ok) return
     await signOut()
     navigate('/auth')
   }
@@ -80,7 +89,7 @@ export default function Layout({ children }: Props) {
     { to: '/', end: true, icon: '⊟', label: 'Calendário' },
     { to: '/library', icon: '♪', label: 'Músicas' },
     { to: '/setlists', icon: '≡', label: 'Concertos' },
-    { to: '/search', icon: '⌕', label: 'Buscar' },
+    { to: '/search', icon: '⌕', label: 'Procurar' },
   ]
 
   return (
@@ -142,7 +151,7 @@ export default function Layout({ children }: Props) {
               </div>
               <span className={styles.userName}>{displayName}</span>
             </NavLink>
-            <button className={styles.signOutBtn} onClick={handleSignOut} title="Sair">
+            <button className={styles.signOutBtn} onClick={handleSignOut} title="Terminar sessão" aria-label="Terminar sessão">
               <span className={styles.signOutIcon}>→</span>
             </button>
           </div>
@@ -165,7 +174,7 @@ export default function Layout({ children }: Props) {
 
       {/* ── MAIN CONTENT ── */}
       <main className={styles.main}>
-        {children}
+        {children ?? <Outlet />}
       </main>
 
       {/* ── MOBILE BOTTOM TAB BAR ── */}
