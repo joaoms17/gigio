@@ -1,99 +1,147 @@
 .page { padding: 28px 24px; max-width: 1000px; margin: 0 auto; animation: pageIn 0.25s ease-out; }
 @media (max-width: 640px) { .page { padding: 16px; } }
-.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; gap: 12px; }
-.headerLeft { flex: 1; }
-.back { background: none; border: none; font-size: 13px; color: var(--text3); margin-bottom: 6px; display: block; padding: 0; }
-.back:hover { color: var(--gig); }
-.title { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
-.editHint { font-size: 14px; color: var(--text3); font-weight: 400; }
-.nameInput { font-size: 22px; font-weight: 800; border: none; border-bottom: 2px solid var(--gig); outline: none; background: transparent; width: 100%; max-width: 100%; }
-.meta { font-size: 12px; color: var(--text3); margin-top: 4px; }
-.metaRow { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
-.dateVenueGroup { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
-.dateVenueGroup .metaField { flex: 1; min-width: 200px; }
-.venueWrap { position: relative; flex: 1; min-width: 200px; }
-.venueWrap .metaField { display: flex; width: 100%; box-sizing: border-box; }
-.venueDrop { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 200; overflow: hidden; }
-.venueDropItem { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border); }
-.venueDropItem:last-child { border-bottom: none; }
-.venueDropItem:hover { background: var(--bg2); }
-.venueDropName { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
-.venueDropDetail { display: block; font-size: 11px; color: var(--text3); margin-top: 1px; }
+/* Duas colunas a partir de 1024px — a página alarga para acomodar o painel */
+@media (min-width: 1024px) { .page { max-width: 1320px; } }
+
+/* ──────────────────────────────────────────
+   HEADER — compacto: título display, meta numa linha, ações à direita
+────────────────────────────────────────── */
+.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 16px; }
+.headerLeft { flex: 1; min-width: 0; }
+.title {
+  font-family: var(--font-display);
+  font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+}
+.editHint { font-size: 14px; color: var(--text3); font-weight: 400; font-family: var(--font-body); }
+.nameInput {
+  font-family: var(--font-display);
+  font-size: 24px; font-weight: 800; border: none; border-bottom: 2px solid var(--gig);
+  outline: none; background: transparent; color: var(--text); width: 100%; max-width: 100%;
+}
+
+/* Meta numa linha só: contagem/duração + local + data (com wrap em ecrãs estreitos) */
+.metaRow { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.metaRow .metaField { flex: 0 1 auto; min-width: 170px; }
 
 .songsChip {
   display: inline-flex; align-items: center;
-  padding: 9px 16px; border-radius: 12px;
+  padding: 8px 14px; border-radius: 12px;
   background: linear-gradient(135deg, #FF4D6D18, #7C3AED14);
-  color: var(--gig); font-size: 15px; font-weight: 800; white-space: nowrap;
+  color: var(--gig); font-size: 14px; font-weight: 800; white-space: nowrap;
 }
 
 .metaField {
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 9px 14px; border-radius: 12px;
-  border: 1.5px solid var(--border); background: var(--bg2);
+  padding: 8px 13px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--bg2);
   transition: border-color 0.15s;
 }
 .metaField:focus-within { border-color: var(--gig); }
-.metaIcon { font-size: 17px; line-height: 1; flex-shrink: 0; }
+.metaIcon { font-size: 15px; line-height: 1; flex-shrink: 0; }
+
+.venueWrap { position: relative; flex: 1 1 200px; min-width: 180px; }
+.venueWrap .metaField { display: flex; width: 100%; box-sizing: border-box; }
+.venueDrop { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg2); border: 1px solid var(--border2); border-radius: 12px; box-shadow: var(--shadow-lg); z-index: 200; overflow: hidden; }
+.venueDropItem { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border); }
+.venueDropItem:last-child { border-bottom: none; }
+.venueDropItem:hover { background: var(--bg3); }
+.venueDropName { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
+.venueDropDetail { display: block; font-size: 11px; color: var(--text3); margin-top: 1px; }
 
 .venueInput { flex: 1; width: 100%; min-width: 0; border: none; background: none; color: var(--text); font-size: 16px; font-weight: 600; font-family: inherit; outline: none; }
 .venueInput::placeholder { color: var(--text3); font-weight: 500; }
 .dateInput { border: none; background: none; color: var(--text); font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer; outline: none; }
 
-.statusSelect {
-  padding: 10px 16px; border: none; border-radius: 12px;
-  font-size: 15px; font-weight: 800; cursor: pointer; font-family: inherit;
-  background: var(--bg3); color: var(--text2);
+/* Ações: Iniciar Concerto em destaque; o resto secundário e compacto */
+.headerActions { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 224px; }
+.concertBtn {
+  width: 100%; padding: 14px 18px; border: none; border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--gig), var(--io)); color: white;
+  font-size: 16px; font-weight: 800; white-space: nowrap; cursor: pointer;
+  box-shadow: 0 4px 16px rgba(255,77,109,0.25); transition: opacity 0.15s;
 }
-.statusSelect:focus { outline: none; }
-.statusSelect[data-status="draft"]     { background: #6b728020; color: #9ca3af; }
-.statusSelect[data-status="preparing"] { background: #F59E0B22; color: #D97706; }
-.statusSelect[data-status="final"]     { background: #10b98122; color: #059669; }
-.statusSelect[data-status="archived"]  { background: #6b728020; color: #6b7280; }
-
-@media (min-width: 768px) {
-  .songsChip { font-size: 16px; padding: 11px 18px; }
-  .metaField { padding: 11px 16px; }
-  .venueInput, .dateInput { font-size: 16px; }
-  .statusSelect { font-size: 16px; padding: 12px 18px; }
-}
-.librarySearch { width: 100%; padding: 10px 12px; border-radius: 9px; border: 1.5px solid var(--border); background: var(--bg2); color: var(--text); font-size: 16px; margin-bottom: 12px; font-family: inherit; transition: border-color 0.15s; box-sizing: border-box; }
-.librarySearch:focus { outline: none; border-color: var(--gig); }
-.headerActions { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 220px; }
+.concertBtn:hover { opacity: 0.9; }
 .secondaryActions { display: flex; gap: 6px; flex-wrap: wrap; }
 .secondaryActions .dupBtn, .secondaryActions .deleteBtn { flex: 1 1 calc(50% - 3px); min-width: 0; font-size: 13px; padding: 8px 10px; }
+.dupBtn { flex: 1; min-height: 44px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
+.dupBtn:hover { border-color: var(--gig); color: var(--gig); }
 /* Perigo visível em repouso — não depende de hover (inútil em touch) */
 .deleteBtn { flex: 1; min-height: 44px; padding: 10px 14px; border: 1px solid var(--danger); border-radius: var(--radius); background: transparent; color: var(--danger); font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
 .deleteBtn:hover { background: rgba(220, 38, 38, 0.08); }
-.dupBtn { flex: 1; min-height: 44px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
-.dupBtn:hover { border-color: var(--gig); color: var(--gig); }
-.concertBtn { width: 100%; padding: 14px 18px; border: none; border-radius: var(--radius); background: linear-gradient(135deg, var(--gig), var(--io)); color: white; font-size: 16px; font-weight: 800; white-space: nowrap; cursor: pointer; box-shadow: 0 4px 16px rgba(255,77,109,0.25); transition: opacity 0.15s; }
-.concertBtn:hover { opacity: 0.9; }
 
 @media (max-width: 640px) {
   .header { flex-direction: column; align-items: stretch; }
   .headerActions { width: 100%; min-width: 0; }
+  .title { font-size: 26px; }
 }
 
-.songList { background: var(--bg2); border-radius: var(--radius); padding: 16px; }
+/* ──────────────────────────────────────────
+   COLUNAS — <1024px: coluna única (painel escondido);
+   ≥1024px: alinhamento ~460px + painel flexível
+────────────────────────────────────────── */
+.columns { display: block; }
+.previewPanel { display: none; }
+@media (min-width: 1024px) {
+  .columns {
+    display: grid;
+    grid-template-columns: 460px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .previewPanel { display: flex; }
+}
+
+/* ──────────────────────────────────────────
+   LISTA (cartão "palco": bg2, borda subtil, radius 18px)
+────────────────────────────────────────── */
+.songList { background: var(--bg2); border: 1px solid var(--border); border-radius: 18px; padding: 16px; }
 .listHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .listTitle { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; }
-.addBtn { min-height: 44px; padding: 7px 16px; border: none; border-radius: 8px; background: var(--gig); color: white; font-size: 12px; font-weight: 700; }
+.addBtn { min-height: 44px; padding: 7px 16px; border: none; border-radius: 10px; background: var(--gig); color: white; font-size: 12px; font-weight: 700; }
 .addBtn:disabled { opacity: 0.6; cursor: default; }
 
 /* Linhas placeholder durante o load (usa a .skeleton global de index.css) */
 .skeletonRow { height: 48px; margin-bottom: 8px; }
 .skeletonRow:last-child { margin-bottom: 0; }
 
-.songRow { display: flex; align-items: center; gap: 8px; padding: 9px 6px; border-radius: 8px; background: var(--bg2); transition: background 0.1s; }
+.songRow { display: flex; align-items: center; gap: 8px; padding: 9px 6px; border-radius: 10px; background: transparent; transition: background 0.1s; cursor: pointer; }
 .songRow:hover { background: var(--bg3); }
-.notesIndicator { font-size: 11px; opacity: 0.6; cursor: help; }
-.dragging { box-shadow: 0 6px 16px rgba(0,0,0,0.15); z-index: 10; position: relative; }
-.keyChip { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #7C3AED18; color: var(--io); }
+/* Realce da música selecionada — só faz sentido quando o painel é visível */
+@media (min-width: 1024px) {
+  .songRowSelected,
+  .songRowSelected:hover {
+    background: var(--bg3);
+    outline: 1px solid rgba(255, 77, 109, 0.45);
+    outline-offset: -1px;
+  }
+}
+.notesIndicator { font-size: 11px; opacity: 0.6; cursor: pointer; }
+.dragging { box-shadow: 0 6px 16px rgba(0,0,0,0.35); z-index: 10; position: relative; background: var(--bg3); }
+
+.songNum { font-size: 10px; color: var(--text3); width: 16px; text-align: center; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.songInfo { flex: 1; min-width: 0; }
+.songTitle { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.songArtist { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 4px; min-width: 0; }
+.songDur { font-size: 11px; color: var(--text3); flex-shrink: 0; margin-left: auto; font-variant-numeric: tabular-nums; }
+.songActions { display: flex; gap: 12px; flex-shrink: 0; }
+
+/* Chip de tom — --io translúcido, clicável (abre tom & notas) */
+.keyChip {
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px;
+  background: #7C3AED18; color: var(--io); border: none; cursor: pointer; line-height: 1.5;
+}
+.keyChip:hover { background: #7C3AED2e; }
 :global([data-theme="dark"]) .keyChip { background: #A78BFA1f; color: #A78BFA; }
+:global([data-theme="dark"]) .keyChip:hover { background: #A78BFA33; }
 /* Chip discreto que revela o atalho de tom/notas quando ainda não há overrides */
-.ghostChip { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 4px; border: 1px dashed var(--border); color: var(--text3); white-space: nowrap; }
-.songRow:hover .ghostChip { border-color: var(--io); color: var(--io); }
+.ghostChip {
+  font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 5px;
+  border: 1px dashed var(--border2); background: none; color: var(--text3);
+  white-space: nowrap; cursor: pointer; line-height: 1.5;
+}
+.songRow:hover .ghostChip, .ghostChip:hover { border-color: var(--io); color: var(--io); }
+
 .dragHandle {
   cursor: grab; color: var(--text3); background: none; border: none;
   font-size: 15px; line-height: 0.7; letter-spacing: -3px; touch-action: none; flex-shrink: 0;
@@ -103,19 +151,14 @@
 }
 .dragHandle:active { cursor: grabbing; color: var(--gig); }
 .dragHandle:hover { color: var(--gig); }
-.songNum { font-size: 10px; color: var(--text3); width: 16px; text-align: center; flex-shrink: 0; }
-.songInfo { flex: 1; min-width: 0; }
-.songTitle { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.songArtist { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 4px; }
-.songDur { font-size: 11px; color: var(--text3); flex-shrink: 0; }
-.songActions { display: flex; gap: 12px; flex-shrink: 0; }
+
 .iconBtn {
-  background: none; border: none; color: var(--text3); font-size: 13px; border-radius: 8px;
+  background: none; border: none; color: var(--text3); font-size: 13px; border-radius: 10px;
   /* alvo táctil ≥44px mantendo o glifo compacto */
   min-width: 44px; min-height: 44px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.iconBtn:hover { background: var(--border); color: var(--gig); }
+.iconBtn:hover { background: var(--bg3); color: var(--gig); }
 .iconBtn:disabled { opacity: 0.2; }
 
 .syncBadge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #10b98120; color: #065f46; }
@@ -127,62 +170,104 @@
 @media (min-width: 768px) {
   .listTitle { font-size: 13px; }
   .addBtn { font-size: 14px; padding: 10px 18px; }
-  .songRow { gap: 12px; padding: 13px 10px; }
-  .songNum { font-size: 13px; width: 22px; }
-  .songTitle { font-size: 17px; }
-  .songArtist { font-size: 14px; gap: 6px; }
-  .songDur { font-size: 14px; }
-  .keyChip { font-size: 12px; padding: 2px 8px; }
-  .ghostChip { font-size: 12px; padding: 2px 8px; }
+  .songRow { gap: 10px; padding: 12px 8px; }
+  .songNum { font-size: 12px; width: 22px; }
+  .songTitle { font-size: 16px; }
+  .songArtist { font-size: 13px; gap: 6px; }
+  .songDur { font-size: 13px; }
+  .keyChip { font-size: 11px; padding: 2px 8px; }
+  .ghostChip { font-size: 11px; padding: 2px 8px; }
   .syncBadge { font-size: 11px; padding: 2px 7px; }
   .dragHandle { font-size: 20px; }
   .iconBtn { font-size: 18px; }
   .libraryRow { padding: 14px 10px; }
 }
 
-.preview { background: var(--bg2); border-radius: var(--radius); padding: 16px; overflow-y: auto; max-height: 600px; display: flex; flex-direction: column; }
-.previewTitle { font-size: 13px; font-weight: 700; color: var(--io); margin-bottom: 12px; }
-.lyrics { font-size: 13px; line-height: 2; color: var(--text2); }
-.lyricLine {}
-.lyricBreak { height: 8px; }
-.lyricHint { color: var(--text3); font-style: italic; }
+/* ──────────────────────────────────────────
+   PAINEL DIREITO — pré-visualização da música selecionada (só leitura)
+────────────────────────────────────────── */
+.previewPanel {
+  flex-direction: column;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 18px;
+  padding: 20px 20px 8px;
+  position: sticky; top: 20px;
+  max-height: calc(100dvh - 40px);
+  min-height: 280px;
+  overflow: hidden;
+}
+.previewHeader { border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 4px; flex-shrink: 0; }
+.previewHeadText { min-width: 0; }
+.previewSongTitle {
+  font-family: var(--font-display);
+  font-size: 22px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.previewArtist { font-size: 14px; color: var(--text2); margin-top: 2px; }
+/* Resumo dos overrides deste concerto ("tom neste concerto: G · intro: ...") */
+.previewOverridesLine { font-size: 12.5px; font-weight: 600; color: var(--io); margin-top: 8px; line-height: 1.5; }
+:global([data-theme="dark"]) .previewOverridesLine { color: #A78BFA; }
+.previewActions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.previewActionBtn {
+  min-height: 44px; padding: 10px 16px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--bg3); color: var(--text2);
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.previewActionBtn:hover { border-color: var(--gig); color: var(--gig); }
 
-/* Per-song meta fields */
-.songMeta { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-.songMetaField { display: flex; flex-direction: column; gap: 3px; }
-.songMetaLabel { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; }
-.songMetaInput { padding: 7px 10px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 13px; font-family: inherit; transition: border-color 0.15s; }
-.songMetaInput:focus { outline: none; border-color: var(--gig); }
-.songMetaNotes { padding: 7px 10px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 13px; font-family: inherit; resize: none; line-height: 1.5; transition: border-color 0.15s; }
-.songMetaNotes:focus { outline: none; border-color: var(--gig); }
-.lyricsDivider { height: 1px; background: var(--border); margin-bottom: 12px; }
+/* Corpo: letra com scroll próprio */
+.previewBody {
+  flex: 1; overflow-y: auto; min-height: 0;
+  padding: 14px 4px 20px 0;
+  font-size: 16px; line-height: 1.7; color: var(--text2);
+}
+@media (min-width: 1280px) { .previewBody { font-size: 17px; } }
+.previewLine { overflow-wrap: anywhere; }
+.previewBreak { height: 14px; flex-shrink: 0; }
+.previewSectionRow { margin: 16px 0 6px; }
+.previewSectionRow:first-child { margin-top: 2px; }
+/* Etiqueta de secção [X] — --io claro translúcido */
+.sectionTag {
+  display: inline-block; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 3px 9px; border-radius: 6px;
+  background: #7C3AED18; color: var(--io);
+}
+:global([data-theme="dark"]) .sectionTag { background: #A78BFA1f; color: #A78BFA; }
 
-.previewEmpty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text3); font-size: 13px; gap: 8px; padding: 32px 16px; text-align: center; }
+.previewEmpty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text3); font-size: 13px; gap: 10px; padding: 32px 16px 40px; text-align: center; }
 .previewEmptyIcon { font-size: 32px; }
 
-/* Modal */
-.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: flex; align-items: flex-end; justify-content: center; padding: 16px; }
+/* ──────────────────────────────────────────
+   MODAIS
+────────────────────────────────────────── */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 200; display: flex; align-items: flex-end; justify-content: center; padding: 16px; }
 @media (min-width: 600px) { .overlay { align-items: center; } }
-.modal { background: var(--bg); border-radius: 20px 20px 16px 16px; width: 100%; max-width: 480px; max-height: 70dvh; overflow-y: auto; padding: 20px; }
+.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 20px 20px 16px 16px; width: 100%; max-width: 480px; max-height: 70dvh; overflow-y: auto; padding: 20px; }
 @media (min-width: 600px) { .modal { border-radius: 20px; } }
 .modalHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.modalTitle { font-size: 16px; font-weight: 800; }
+.modalTitle { font-family: var(--font-display); font-size: 17px; font-weight: 800; }
 /* Círculo 44px — alvo táctil confortável nos modais desta página */
 .closeBtn {
-  background: var(--bg2); border: none; font-size: 18px; color: var(--text3);
+  background: var(--bg3); border: none; font-size: 18px; color: var(--text3);
   width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
-.closeBtn:hover { background: var(--bg3); color: var(--text); }
-.modalEmpty { text-align: center; padding: 24px; color: var(--text3); font-size: 13px; display: flex; flex-direction: column; gap: 12px; align-items: center; }.libraryRow { display: flex; align-items: center; min-height: 48px; padding: 10px 6px; border-radius: 8px; cursor: pointer; gap: 10px; transition: background 0.1s; }
-.libraryRow:hover { background: var(--bg2); }
-.libraryRowSelected { background: #7C3AED0f; outline: 2px solid var(--io); outline-offset: -2px; }
+.closeBtn:hover { background: var(--border2); color: var(--text); }
+.modalEmpty { text-align: center; padding: 24px; color: var(--text3); font-size: 13px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+
+.librarySearch { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--bg); color: var(--text); font-size: 16px; margin-bottom: 12px; font-family: inherit; transition: border-color 0.15s; box-sizing: border-box; }
+.librarySearch:focus { outline: none; border-color: var(--gig); }
+.libraryRow { display: flex; align-items: center; min-height: 48px; padding: 10px 6px; border-radius: 10px; cursor: pointer; gap: 10px; transition: background 0.1s; }
+.libraryRow:hover { background: var(--bg3); }
+.libraryRowSelected { background: #7C3AED14; outline: 2px solid var(--io); outline-offset: -2px; }
 .selIcon { font-size: 18px; color: var(--text3); flex-shrink: 0; width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 .selIconChecked { font-size: 16px; font-weight: 800; color: var(--io); flex-shrink: 0; width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 
 .searchNewBtn {
   width: 100%; margin-bottom: 10px; min-height: 44px; padding: 11px; border-radius: 10px;
-  border: 1.5px dashed var(--border); background: none;
+  border: 1.5px dashed var(--border2); background: none;
   color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
 }
@@ -192,7 +277,7 @@
   position: sticky;
   bottom: 0;
   padding: 12px 0 4px;
-  background: var(--bg);
+  background: var(--bg2);
 }
 .addSelectedBtn {
   width: 100%;
@@ -220,12 +305,12 @@
 }
 .ovInput {
   width: 100%; padding: 11px 13px; border: 1.5px solid var(--border);
-  border-radius: 10px; background: var(--bg2); color: var(--text); font-size: 16px;
+  border-radius: 10px; background: var(--bg); color: var(--text); font-size: 16px;
 }
 .ovInput:focus { outline: none; border-color: var(--gig); }
 .ovTextarea {
   width: 100%; padding: 11px 13px; border: 1.5px solid var(--border);
-  border-radius: 10px; background: var(--bg2); color: var(--text); font-size: 16px;
+  border-radius: 10px; background: var(--bg); color: var(--text); font-size: 16px;
   resize: vertical; font-family: inherit;
 }
 .ovTextarea:focus { outline: none; border-color: var(--gig); }
@@ -244,7 +329,7 @@
   font-size: 13px;
   font-weight: 600;
   padding: 8px 16px;
-  border-radius: 8px;
+  border-radius: 10px;
   margin-bottom: 12px;
   text-align: center;
 }

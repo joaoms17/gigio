@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -15,6 +15,7 @@ import ProjectPickerModal from '../../components/ProjectPickerModal'
 import SetlistImportModal from '../../components/SetlistImportModal'
 import { supabase } from '../../lib/supabase'
 import { exportSongsPdf } from '../../lib/pdfExport'
+import { fmtSection } from '../../components/LyricsView'
 import { useAuth } from '../../hooks/useAuth'
 import {
   cacheSetlistMeta, getCachedSetlistMeta,
@@ -25,43 +26,86 @@ import styles from './SetlistPage.module.css'
 
 type Row = SetlistSong & { song: Song }
 
-function SortableSongRow({ ss, index, onEdit, onRemove, onOverrides }: {
-  ss: Row; index: number
+function SortableSongRow({ ss, index, selected, onSelect, onEdit, onRemove, onOverrides }: {
+  ss: Row; index: number; selected: boolean
+  onSelect: (ss: Row) => void
   onEdit: (songId: string) => void; onRemove: (id: string) => void
   onOverrides: (ss: Row) => void
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: ss.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
   const hasOverrides = !!(ss.performance_key || ss.notes || ss.custom_intro || ss.custom_ending)
+  // Clique na linha = selecionar para pré-visualizar; o modal de tom/notas
+  // abre só via os chips (ou pelo botão "Tom & notas" no painel direito)
+  const openOv = (e: MouseEvent) => { e.stopPropagation(); onOverrides(ss) }
   return (
-    <div ref={setNodeRef} style={style} className={`${styles.songRow} ${isDragging ? styles.dragging : ''}`}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`${styles.songRow} ${isDragging ? styles.dragging : ''} ${selected ? styles.songRowSelected : ''}`}
+      onClick={() => onSelect(ss)}
+      title="Pré-visualizar letra"
+    >
       <button
         ref={setActivatorNodeRef}
         className={styles.dragHandle}
         {...attributes}
         {...listeners}
+        onClick={e => e.stopPropagation()}
         title="Arrastar para reordenar"
       >⋮⋮</button>
       <div className={styles.songNum}>{index + 1}</div>
-      <div className={styles.songInfo} onClick={() => onOverrides(ss)} style={{ cursor: 'pointer' }} title="Tom, notas, intro e final desta música nesta setlist">
+      <div className={styles.songInfo}>
         <div className={styles.songTitle}>{ss.song?.title}</div>
         <div className={styles.songArtist}>
           {ss.song?.artist}
-          {ss.performance_key && <span className={styles.keyChip} aria-label={`Tom nesta setlist: ${ss.performance_key}`}>{ss.performance_key}</span>}
-          {ss.notes && <span className={styles.notesIndicator} role="img" aria-label={`Notas: ${ss.notes}`} title={ss.notes}>📝</span>}
-          {(ss.custom_intro || ss.custom_ending) && <span className={styles.notesIndicator} role="img" aria-label="Tem intro/final custom" title="Tem intro/final custom">🎬</span>}
+          {ss.performance_key && (
+            <button
+              className={styles.keyChip}
+              onClick={openOv}
+              aria-label={`Tom nesta setlist: ${ss.performance_key} — editar tom e notas`}
+              title="Tom, notas, intro e final desta música nesta setlist"
+            >{ss.performance_key}</button>
+          )}
+          {ss.notes && <span className={styles.notesIndicator} onClick={openOv} role="img" aria-label={`Notas: ${ss.notes}`} title={ss.notes}>📝</span>}
+          {(ss.custom_intro || ss.custom_ending) && <span className={styles.notesIndicator} onClick={openOv} role="img" aria-label="Tem intro/final custom" title="Tem intro/final custom">🎬</span>}
           {ss.song?.has_sync && <span className={styles.syncBadge} aria-label="Letra sincronizada">sync ✓</span>}
-          {!hasOverrides && <span className={styles.ghostChip}>＋ Tom · Notas</span>}
+          {!hasOverrides && (
+            <button
+              className={styles.ghostChip}
+              onClick={openOv}
+              title="Tom, notas, intro e final desta música nesta setlist"
+            >＋ Tom · Notas</button>
+          )}
         </div>
       </div>
       <div className={styles.songDur}>
         {ss.song?.duration_sec ? `${Math.floor(ss.song.duration_sec / 60)}:${String(ss.song.duration_sec % 60).padStart(2, '0')}` : ''}
       </div>
       <div className={styles.songActions}>
-        <button className={styles.iconBtn} onClick={() => onEdit(ss.song_id)} title="Editar música">✎</button>
+        <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onEdit(ss.song_id) }} title="Editar música">✎</button>
         <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onRemove(ss.id) }} title="Remover da setlist">✕</button>
       </div>
     </div>
+  )
+}
+
+/** Pré-visualização de letra: secções [X] como etiquetas, linhas vazias como respiro */
+function PreviewLyrics({ text }: { text: string }) {
+  return (
+    <>
+      {text.split('\n').map((line, i) => {
+        const t = line.trim()
+        const sec = t.match(/^\[(.+?)\]$/)
+        if (sec) return (
+          <div key={i} className={styles.previewSectionRow}>
+            <span className={styles.sectionTag}>{fmtSection(sec[1])}</span>
+          </div>
+        )
+        if (t === '') return <div key={i} className={styles.previewBreak} />
+        return <div key={i} className={styles.previewLine}>{line}</div>
+      })}
+    </>
   )
 }
 
@@ -98,6 +142,10 @@ export default function SetlistPage() {
   const [showImport, setShowImport] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
   const [canDelete, setCanDelete] = useState(false)
+
+  // Painel direito (≥1024px): música selecionada para pré-visualização.
+  // Derivado com fallback para a primeira música — sobrevive a remoções/reordenações.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   // Per-setlist song overrides modal
   const [overrideRow, setOverrideRow] = useState<Row | null>(null)
@@ -418,6 +466,17 @@ export default function SetlistPage() {
     if (!ok) toast('Permite pop-ups para exportar o PDF.', { type: 'error' })
   }
 
+  const selectedRow = songs.find(s => s.id === selectedId) ?? songs[0] ?? null
+  const previewText = ((selectedRow?.song?.edited_lyrics ?? selectedRow?.song?.lyrics) ?? '').trim()
+  const overrideSummary = selectedRow
+    ? [
+        selectedRow.performance_key && `tom neste concerto: ${selectedRow.performance_key}`,
+        selectedRow.custom_intro && `intro: ${selectedRow.custom_intro}`,
+        selectedRow.custom_ending && `final: ${selectedRow.custom_ending}`,
+        selectedRow.notes && `notas: ${selectedRow.notes}`,
+      ].filter(Boolean).join(' · ')
+    : ''
+
   const totalSec = songs.reduce((acc, s) => acc + (s.song?.duration_sec ?? 0), 0)
   const totalMin = Math.floor(totalSec / 60)
   const durationLabel = totalMin >= 60
@@ -471,8 +530,6 @@ export default function SetlistPage() {
                 ♪ {songs.length} música{songs.length !== 1 ? 's' : ''}
                 {totalMin > 0 ? ` · ~${durationLabel}` : ''}
               </span>
-            </div>
-            <div className={styles.dateVenueGroup}>
               <div className={styles.venueWrap}>
                 <div className={styles.metaField}>
                   <span className={styles.metaIcon}>📍</span>
@@ -524,42 +581,96 @@ export default function SetlistPage() {
           </div>
         </div>
 
-        {/* Song list — single column */}
-        <div className={styles.songList}>
-          <div className={styles.listHeader}>
-            <span className={styles.listTitle}>Ordem das músicas</span>
-            <button className={styles.addBtn} onClick={loadLibrary} disabled={libraryLoading}>
-              {libraryLoading ? 'A carregar...' : '+ Adicionar'}
-            </button>
+        {/* ≥1024px: duas colunas — alinhamento à esquerda, pré-visualização à direita */}
+        <div className={styles.columns}>
+          <div className={styles.songList}>
+            <div className={styles.listHeader}>
+              <span className={styles.listTitle}>Ordem das músicas</span>
+              <button className={styles.addBtn} onClick={loadLibrary} disabled={libraryLoading}>
+                {libraryLoading ? 'A carregar...' : '+ Adicionar'}
+              </button>
+            </div>
+
+            {songsLoading ? (
+              <div aria-hidden="true">
+                {[0, 1, 2, 3, 4].map(i => (
+                  <div key={i} className={`skeleton ${styles.skeletonRow}`} />
+                ))}
+              </div>
+            ) : songs.length === 0 ? (
+              <div className={styles.empty}>
+                <p>Sem músicas ainda</p>
+                <button className={styles.addBtn} onClick={loadLibrary} disabled={libraryLoading}>+ Adicionar música</button>
+              </div>
+            ) : (
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={songs.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                  {songs.map((ss, i) => (
+                    <SortableSongRow
+                      key={ss.id}
+                      ss={ss}
+                      index={i}
+                      selected={selectedRow?.id === ss.id}
+                      onSelect={row => setSelectedId(row.id)}
+                      onEdit={songId => navigate(`/songs/${songId}?setlist=${id}`)}
+                      onRemove={removeSong}
+                      onOverrides={openOverrides}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            )}
           </div>
 
-          {songsLoading ? (
-            <div aria-hidden="true">
-              {[0, 1, 2, 3, 4].map(i => (
-                <div key={i} className={`skeleton ${styles.skeletonRow}`} />
-              ))}
-            </div>
-          ) : songs.length === 0 ? (
-            <div className={styles.empty}>
-              <p>Sem músicas ainda</p>
-              <button className={styles.addBtn} onClick={loadLibrary} disabled={libraryLoading}>+ Adicionar música</button>
-            </div>
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={songs.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                {songs.map((ss, i) => (
-                  <SortableSongRow
-                    key={ss.id}
-                    ss={ss}
-                    index={i}
-                    onEdit={songId => navigate(`/songs/${songId}?setlist=${id}`)}
-                    onRemove={removeSong}
-                    onOverrides={openOverrides}
-                  />
+          {/* Painel da música selecionada — só leitura + 2 ações; escondido <1024px via CSS */}
+          <aside className={styles.previewPanel} aria-label="Pré-visualização da música selecionada">
+            {songsLoading ? (
+              <div aria-hidden="true">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className={`skeleton ${styles.skeletonRow}`} />
                 ))}
-              </SortableContext>
-            </DndContext>
-          )}
+              </div>
+            ) : !selectedRow ? (
+              <div className={styles.previewEmpty}>
+                <span className={styles.previewEmptyIcon} aria-hidden="true">♪</span>
+                <p>Adiciona músicas ao alinhamento para veres a letra aqui.</p>
+              </div>
+            ) : (
+              <>
+                <div className={styles.previewHeader}>
+                  <div className={styles.previewHeadText}>
+                    <h2 className={styles.previewSongTitle}>{selectedRow.song?.title}</h2>
+                    <div className={styles.previewArtist}>{selectedRow.song?.artist}</div>
+                    {overrideSummary && <div className={styles.previewOverridesLine}>{overrideSummary}</div>}
+                  </div>
+                  <div className={styles.previewActions}>
+                    <button
+                      className={styles.previewActionBtn}
+                      onClick={() => navigate(`/songs/${selectedRow.song_id}?setlist=${id}`)}
+                    >✎ Editar letra</button>
+                    <button
+                      className={styles.previewActionBtn}
+                      onClick={() => openOverrides(selectedRow)}
+                    >Tom & notas</button>
+                  </div>
+                </div>
+                {previewText ? (
+                  <div className={styles.previewBody}>
+                    <PreviewLyrics text={previewText} />
+                  </div>
+                ) : (
+                  <div className={styles.previewEmpty}>
+                    <span className={styles.previewEmptyIcon} aria-hidden="true">🎤</span>
+                    <p>Esta música ainda não tem letra.</p>
+                    <button
+                      className={styles.addBtn}
+                      onClick={() => navigate(`/songs/${selectedRow.song_id}?setlist=${id}`)}
+                    >+ Adicionar letra</button>
+                  </div>
+                )}
+              </>
+            )}
+          </aside>
         </div>
       </div>
 

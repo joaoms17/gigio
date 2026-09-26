@@ -2,20 +2,25 @@
   /* Brand */
   --gig: #FF4D6D;
   --io: #7C3AED;
+  --amber: #B45309;
 
-  /* Backgrounds */
-  --bg: #ffffff;
-  --bg2: #f5f5f7;
-  --bg3: #ebebef;
+  /* Type */
+  --font-display: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-body: 'Instrument Sans Variable', 'Instrument Sans', -apple-system, system-ui, sans-serif;
+
+  /* Backgrounds — tema claro quente */
+  --bg: #FAF9F6;
+  --bg2: #F1F0EC;
+  --bg3: #E8E6E0;
 
   /* Borders */
-  --border: #e6e6ec;
-  --border2: #d4d4de;
+  --border: #E3E1DA;
+  --border2: #CFCDC4;
 
   /* Text */
-  --text: #0f0f14;
-  --text2: #5c5c78;
-  --text3: #6b6b86; /* ≥4.5:1 sobre --bg e --bg2 (WCAG AA) */
+  --text: #17161A;
+  --text2: #55545F;
+  --text3: #64636F; /* ≥4.5:1 sobre --bg e --bg2 (WCAG AA) */
 
   /* Semantic */
   --danger: #dc2626;
@@ -38,7 +43,7 @@
   --topbar-h: 56px;
   --bottomnav-h: 60px;
 
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -47,17 +52,19 @@
 }
 
 [data-theme="dark"] {
-  --bg: #131318;
-  --bg2: #1c1c24;
-  --bg3: #26262f;
+  /* Tema escuro "palco" — identidade principal */
+  --bg: #0E0E12;
+  --bg2: #16161C;
+  --bg3: #1E1E28;
 
-  --border: #2c2c38;
-  --border2: #3a3a48;
+  --border: #23232C;
+  --border2: #3A3A48;
 
-  --text: #f0f0f5;
-  --text2: #a8a8c0;
-  --text3: #8a8aa8; /* ≥4.5:1 sobre --bg e --bg2 (WCAG AA) */
+  --text: #F4F3F0;
+  --text2: #A9A8B6;
+  --text3: #8C8B9E; /* ≥4.5:1 sobre --bg e --bg2 (WCAG AA) */
 
+  --amber: #FFC966;
   --danger: #ef4444;
   --success-fg: #34d399;
   --warn-fg: #fbbf24;
@@ -82,6 +89,9 @@ input, textarea, select { font-family: inherit; }
 input, textarea, select { font-size: 16px !important; }
 a { text-decoration: none; color: inherit; }
 img { display: block; max-width: 100%; }
+
+/* Identidade: títulos em fonte display de cartaz */
+h1, h2 { font-family: var(--font-display); letter-spacing: -0.01em; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }

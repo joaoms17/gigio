@@ -129,8 +129,8 @@
 .error {
   font-size: 13px;
   color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
   padding: 10px 12px;
   border-radius: 9px;
   text-align: left;

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { signOut } from '../lib/auth'
-import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useConfirm } from './ConfirmDialog'
 import styles from './Layout.module.css'
@@ -19,23 +18,43 @@ function initials(name: string) {
   return ((p[0]?.[0] ?? '') + (p[1]?.[0] ?? '')).toUpperCase() || '?'
 }
 
-function shortDate(dateStr: string) {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  const date = new Date(y, m - 1, d)
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  const diff = Math.round((date.getTime() - today.getTime()) / 86400000)
-  if (diff === 0) return 'hoje'
-  if (diff === 1) return 'amanhã'
-  return date.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' }).replace('.', '')
+const ICONS = {
+  palco: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  ),
+  concertos: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="5" width="18" height="16" rx="3" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
+    </svg>
+  ),
+  repertorio: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="7" cy="18" r="3" />
+      <path d="M10 18V5l9-2v12" />
+      <circle cx="16" cy="15" r="3" />
+    </svg>
+  ),
+  projetos: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="9" cy="8" r="4" />
+      <path d="M2 21c0-3.9 3.1-7 7-7s7 3.1 7 7" />
+      <path d="M17 4.5c1.8.8 3 2.6 3 4.5s-1.2 3.7-3 4.5M19.5 14.6c1.6 1.3 2.5 3.2 2.5 5.4" />
+    </svg>
+  ),
+  sair: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3M16 17l5-5-5-5M21 12H9" />
+    </svg>
+  ),
 }
-
-interface UpcomingEvent { id: string; name: string; date: string; band: { name: string; color: string } | null }
 
 export default function Layout({ children }: Props) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const confirmDialog = useConfirm()
-  const [upcoming, setUpcoming] = useState<UpcomingEvent[]>([])
   const [offline, setOffline] = useState(!navigator.onLine)
 
   useEffect(() => {
@@ -46,31 +65,6 @@ export default function Layout({ children }: Props) {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
   }, [])
   const displayName: string = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? ''
-
-  useEffect(() => {
-    if (!user) return
-    const today = new Date().toISOString().split('T')[0]
-    supabase
-      .from('band_members')
-      .select('band_id')
-      .eq('user_id', user.id)
-      .then(async ({ data: memberships }) => {
-        const bandIds = (memberships ?? []).map((m: any) => m.band_id)
-        let query = supabase
-          .from('setlists')
-          .select('id, name, date, band:bands(name, color)')
-          .gte('date', today)
-          .order('date', { ascending: true })
-          .limit(6)
-        if (bandIds.length > 0) {
-          query = query.or(`owner_id.eq.${user.id},band_id.in.(${bandIds.join(',')})`)
-        } else {
-          query = query.eq('owner_id', user.id)
-        }
-        const { data } = await query
-        setUpcoming((data ?? []) as unknown as UpcomingEvent[])
-      })
-  }, [user])
 
   async function handleSignOut() {
     const ok = await confirmDialog({
@@ -85,11 +79,10 @@ export default function Layout({ children }: Props) {
   }
 
   const navItems = [
-    { to: '/projects', icon: '⊞', label: 'Projetos' },
-    { to: '/', end: true, icon: '⊟', label: 'Calendário' },
-    { to: '/library', icon: '♪', label: 'Músicas' },
-    { to: '/setlists', icon: '≡', label: 'Concertos' },
-    { to: '/search', icon: '⌕', label: 'Procurar' },
+    { to: '/', end: true, icon: ICONS.palco, label: 'Palco' },
+    { to: '/setlists', icon: ICONS.concertos, label: 'Concertos' },
+    { to: '/library', icon: ICONS.repertorio, label: 'Repertório' },
+    { to: '/projects', icon: ICONS.projetos, label: 'Projetos' },
   ]
 
   return (
@@ -101,60 +94,37 @@ export default function Layout({ children }: Props) {
         </div>
       )}
 
-      {/* ── DESKTOP SIDEBAR ── */}
-      <aside className={styles.sidebar}>
-        <div className={styles.sidebarInner}>
-          <div className={styles.logo}>
-            <span className={styles.gig}>gig</span><span className={styles.io}>io</span>
-          </div>
+      {/* ── RAIL (desktop + tablet) ── */}
+      <aside className={styles.rail}>
+        <div className={styles.logoMark} aria-hidden="true">g</div>
 
-          <nav className={styles.nav}>
-            {navItems.map(item => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) => `${styles.navItem} ${isActive ? styles.navActive : ''}`}
-              >
-                <span className={styles.navIcon}>{item.icon}</span>
-                <span className={styles.navLabel}>{item.label}</span>
-              </NavLink>
-            ))}
-          </nav>
-
-          <div className={styles.projects}>
-            <div className={styles.projectsLabel}>Próximos eventos</div>
-            <div className={styles.projectList}>
-              {upcoming.length === 0 ? (
-                <span className={styles.noEvents}>Sem eventos agendados</span>
-              ) : upcoming.map(ev => (
-                <NavLink
-                  key={ev.id}
-                  to={`/setlist/${ev.id}`}
-                  className={({ isActive }) => `${styles.projectItem} ${isActive ? styles.projectActive : ''}`}
-                >
-                  <span className={styles.projectDot} style={{ background: ev.band?.color ?? colorFor(ev.id) }} />
-                  <span className={styles.projectName}>{ev.name}</span>
-                  <span className={styles.eventDate}>{shortDate(ev.date)}</span>
-                </NavLink>
-              ))}
-            </div>
-          </div>
-
-          <div className={styles.sidebarBottom}>
+        <nav className={styles.railNav} aria-label="Navegação principal">
+          {navItems.map(item => (
             <NavLink
-              to="/settings"
-              className={({ isActive }) => `${styles.bottomItem} ${isActive ? styles.navActive : ''}`}
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) => `${styles.railItem} ${isActive ? styles.railActive : ''}`}
             >
-              <div className={styles.userAvatar} style={{ background: colorFor(user?.id ?? '') }}>
-                {initials(displayName)}
-              </div>
-              <span className={styles.userName}>{displayName}</span>
+              <span className={styles.railIcon}>{item.icon}</span>
+              <span className={styles.railLabel}>{item.label}</span>
             </NavLink>
-            <button className={styles.signOutBtn} onClick={handleSignOut} title="Terminar sessão" aria-label="Terminar sessão">
-              <span className={styles.signOutIcon}>→</span>
-            </button>
-          </div>
+          ))}
+        </nav>
+
+        <div className={styles.railBottom}>
+          <NavLink
+            to="/settings"
+            className={({ isActive }) => `${styles.railAvatar} ${isActive ? styles.railAvatarActive : ''}`}
+            style={{ background: colorFor(user?.id ?? '') }}
+            title="Perfil e definições"
+            aria-label="Perfil e definições"
+          >
+            {initials(displayName)}
+          </NavLink>
+          <button className={styles.signOutBtn} onClick={handleSignOut} title="Terminar sessão" aria-label="Terminar sessão">
+            {ICONS.sair}
+          </button>
         </div>
       </aside>
 
@@ -167,6 +137,7 @@ export default function Layout({ children }: Props) {
           className={styles.topUser}
           onClick={() => navigate('/settings')}
           style={{ background: colorFor(user?.id ?? '') }}
+          aria-label="Perfil e definições"
         >
           {initials(displayName)}
         </button>
