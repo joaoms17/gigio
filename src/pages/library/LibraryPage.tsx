@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Layout from '../../components/Layout'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
@@ -125,135 +124,133 @@ export default function LibraryPage() {
   }
 
   return (
-    <Layout>
-      <div className={styles.page}>
-        <div className={styles.header}>
-          <h1 className={styles.title}>Músicas</h1>
-          <span className={styles.count}>{songs.length} música{songs.length !== 1 ? 's' : ''}</span>
-          <button className={styles.searchBtn} onClick={() => navigate('/search')}>+ Buscar letras</button>
-        </div>
+    <div className={styles.page}>
+      <div className={styles.header}>
+        <h1 className={styles.title}>Músicas</h1>
+        <span className={styles.count}>{songs.length} música{songs.length !== 1 ? 's' : ''}</span>
+        <button className={styles.searchBtn} onClick={() => navigate('/search')}>+ Buscar letras</button>
+      </div>
 
-        <div className={styles.filterRow}>
-          <input
-            className={styles.searchInput}
-            placeholder="Filtrar por título ou artista..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <select className={styles.sortSelect} value={sort} onChange={e => setSort(e.target.value as any)}>
-            <option value="title">Título A–Z</option>
-            <option value="artist">Artista A–Z</option>
-            <option value="recent">Recentes</option>
-          </select>
-        </div>
+      <div className={styles.filterRow}>
+        <input
+          className={styles.searchInput}
+          placeholder="Filtrar por título ou artista..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <select className={styles.sortSelect} value={sort} onChange={e => setSort(e.target.value as any)}>
+          <option value="title">Título A–Z</option>
+          <option value="artist">Artista A–Z</option>
+          <option value="recent">Recentes</option>
+        </select>
+      </div>
 
-        {/* Filter chips */}
-        <div className={styles.chipRow}>
-          {([['all', 'Todas'], ['sync', 'Com sync'], ['edited', 'Editadas']] as [FilterChip, string][]).map(([value, label]) => (
-            <button
-              key={value}
-              className={`${styles.chip} ${chip === value ? styles.chipActive : ''}`}
-              onClick={() => setChip(value)}
-            >{label}</button>
-          ))}
-          {allTags.map(t => (
-            <button
-              key={t}
-              className={`${styles.chip} ${tagFilter === t ? styles.chipActive : ''}`}
-              onClick={() => setTagFilter(prev => prev === t ? null : t)}
-            >#{t}</button>
-          ))}
-          {selecting && (
-            <button
-              className={styles.chip}
-              style={{ marginLeft: 'auto' }}
-              onClick={toggleSelectAll}
-            >
-              {allFilteredSelected ? 'Limpar seleção' : 'Selecionar tudo'}
-            </button>
-          )}
+      {/* Filter chips */}
+      <div className={styles.chipRow}>
+        {([['all', 'Todas'], ['sync', 'Com sync'], ['edited', 'Editadas']] as [FilterChip, string][]).map(([value, label]) => (
           <button
-            className={`${styles.chip} ${selecting ? styles.chipActive : ''}`}
-            style={selecting ? undefined : { marginLeft: 'auto' }}
-            onClick={() => selecting ? exitSelectMode() : setSelecting(true)}
+            key={value}
+            className={`${styles.chip} ${chip === value ? styles.chipActive : ''}`}
+            onClick={() => setChip(value)}
+          >{label}</button>
+        ))}
+        {allTags.map(t => (
+          <button
+            key={t}
+            className={`${styles.chip} ${tagFilter === t ? styles.chipActive : ''}`}
+            onClick={() => setTagFilter(prev => prev === t ? null : t)}
+          >#{t}</button>
+        ))}
+        {selecting && (
+          <button
+            className={styles.chip}
+            style={{ marginLeft: 'auto' }}
+            onClick={toggleSelectAll}
           >
-            {selecting ? '✕ Cancelar' : '☑ Selecionar'}
+            {allFilteredSelected ? 'Limpar seleção' : 'Selecionar tudo'}
           </button>
-        </div>
+        )}
+        <button
+          className={`${styles.chip} ${selecting ? styles.chipActive : ''}`}
+          style={selecting ? undefined : { marginLeft: 'auto' }}
+          onClick={() => selecting ? exitSelectMode() : setSelecting(true)}
+        >
+          {selecting ? '✕ Cancelar' : '☑ Selecionar'}
+        </button>
+      </div>
 
-        <div className={styles.list}>
-          {loading ? (
-            <>
-              {[0, 1, 2, 3, 4, 5].map(i => (
-                <div key={i} className={styles.row} style={{ pointerEvents: 'none' }}>
-                  <div style={{ flex: 1 }}>
-                    <div className="skeleton" style={{ height: 14, width: `${55 + (i % 3) * 12}%`, marginBottom: 7 }} />
-                    <div className="skeleton" style={{ height: 11, width: `${30 + (i % 2) * 15}%` }} />
-                  </div>
+      <div className={styles.list}>
+        {loading ? (
+          <>
+            {[0, 1, 2, 3, 4, 5].map(i => (
+              <div key={i} className={styles.row} style={{ pointerEvents: 'none' }}>
+                <div style={{ flex: 1 }}>
+                  <div className="skeleton" style={{ height: 14, width: `${55 + (i % 3) * 12}%`, marginBottom: 7 }} />
+                  <div className="skeleton" style={{ height: 11, width: `${30 + (i % 2) * 15}%` }} />
                 </div>
-              ))}
-            </>
-          ) : filtered.length === 0 ? (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}>🎵</div>
-              <p>{search || chip !== 'all' || tagFilter ? 'Sem resultados com estes filtros' : 'Biblioteca vazia'}</p>
-              {!search && chip === 'all' && !tagFilter && (
-                <button className={styles.goSearch} onClick={() => navigate('/search')}>Ir buscar letras →</button>
+              </div>
+            ))}
+          </>
+        ) : filtered.length === 0 ? (
+          <div className={styles.emptyState}>
+            <div className={styles.emptyIcon}>🎵</div>
+            <p>{search || chip !== 'all' || tagFilter ? 'Sem resultados com estes filtros' : 'Biblioteca vazia'}</p>
+            {!search && chip === 'all' && !tagFilter && (
+              <button className={styles.goSearch} onClick={() => navigate('/search')}>Ir buscar letras →</button>
+            )}
+          </div>
+        ) : (
+          filtered.map(song => (
+            <div
+              key={song.id}
+              className={`${styles.row} ${selecting && selection.has(song.id) ? styles.rowSelected : ''}`}
+              onClick={() => selecting ? toggleSelect(song.id) : navigate(`/songs/${song.id}`)}
+            >
+              {selecting && (
+                <span className={selection.has(song.id) ? styles.selChecked : styles.selCircle}>
+                  {selection.has(song.id) ? '✓' : '○'}
+                </span>
+              )}
+              <div className={styles.rowInfo}>
+                <div className={styles.rowTitle}>{song.title}</div>
+                <div className={styles.rowArtist}>
+                  {song.artist}
+                  {song.has_sync && <span className={styles.syncBadge}>sync</span>}
+                  <span className={`${styles.sourceBadge} ${styles[song.source]}`}>{song.source}</span>
+                </div>
+              </div>
+              {!selecting && (
+                <>
+                  <button
+                    className={styles.iconBtn}
+                    onClick={e => { e.stopPropagation(); navigate(`/songs/${song.id}`) }}
+                    title="Editar"
+                  >✎</button>
+                  <button
+                    className={`${styles.iconBtn} ${styles.deleteBtn}`}
+                    onClick={e => { e.stopPropagation(); deleteSong(song) }}
+                    disabled={deleting === song.id}
+                    title="Eliminar"
+                    aria-label={`Eliminar ${song.title}`}
+                  >
+                    {deleting === song.id ? '...' : '✕'}
+                  </button>
+                </>
               )}
             </div>
-          ) : (
-            filtered.map(song => (
-              <div
-                key={song.id}
-                className={`${styles.row} ${selecting && selection.has(song.id) ? styles.rowSelected : ''}`}
-                onClick={() => selecting ? toggleSelect(song.id) : navigate(`/songs/${song.id}`)}
-              >
-                {selecting && (
-                  <span className={selection.has(song.id) ? styles.selChecked : styles.selCircle}>
-                    {selection.has(song.id) ? '✓' : '○'}
-                  </span>
-                )}
-                <div className={styles.rowInfo}>
-                  <div className={styles.rowTitle}>{song.title}</div>
-                  <div className={styles.rowArtist}>
-                    {song.artist}
-                    {song.has_sync && <span className={styles.syncBadge}>sync</span>}
-                    <span className={`${styles.sourceBadge} ${styles[song.source]}`}>{song.source}</span>
-                  </div>
-                </div>
-                {!selecting && (
-                  <>
-                    <button
-                      className={styles.iconBtn}
-                      onClick={e => { e.stopPropagation(); navigate(`/songs/${song.id}`) }}
-                      title="Editar"
-                    >✎</button>
-                    <button
-                      className={`${styles.iconBtn} ${styles.deleteBtn}`}
-                      onClick={e => { e.stopPropagation(); deleteSong(song) }}
-                      disabled={deleting === song.id}
-                      title="Eliminar"
-                      aria-label={`Eliminar ${song.title}`}
-                    >
-                      {deleting === song.id ? '...' : '✕'}
-                    </button>
-                  </>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Bulk actions bar */}
-        {selecting && selection.size > 0 && (
-          <div className={styles.bulkBar}>
-            <span className={styles.bulkCount}>{selection.size} selecionada{selection.size !== 1 ? 's' : ''}</span>
-            <button className={styles.bulkDeleteBtn} onClick={bulkDelete} disabled={bulkBusy}>
-              {bulkBusy ? 'A eliminar...' : '🗑 Eliminar'}
-            </button>
-          </div>
+          ))
         )}
       </div>
-    </Layout>
+
+      {/* Bulk actions bar */}
+      {selecting && selection.size > 0 && (
+        <div className={styles.bulkBar}>
+          <span className={styles.bulkCount}>{selection.size} selecionada{selection.size !== 1 ? 's' : ''}</span>
+          <button className={styles.bulkDeleteBtn} onClick={bulkDelete} disabled={bulkBusy}>
+            {bulkBusy ? 'A eliminar...' : '🗑 Eliminar'}
+          </button>
+        </div>
+      )}
+    </div>
   )
 }

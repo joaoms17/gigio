@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import Layout from '../../components/Layout'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
@@ -69,206 +68,204 @@ export default function SettingsPage() {
   }
 
   return (
-    <Layout>
-      <div className={styles.page}>
-        <h1 className={styles.title}>Definições</h1>
+    <div className={styles.page}>
+      <h1 className={styles.title}>Definições</h1>
 
-        {/* Account */}
-        <section className={styles.section}>
-          <div className={styles.sectionTitle}>CONTA</div>
-          <div className={styles.card}>
-            <div className={styles.accountRow}>
-              <div className={styles.accountAvatar}>
-                {displayName ? displayName[0].toUpperCase() : user?.email?.[0]?.toUpperCase() ?? '?'}
-              </div>
-              <div className={styles.accountInfo}>
-                <div className={styles.accountEmail}>{user?.email}</div>
-              </div>
+      {/* Account */}
+      <section className={styles.section}>
+        <div className={styles.sectionTitle}>CONTA</div>
+        <div className={styles.card}>
+          <div className={styles.accountRow}>
+            <div className={styles.accountAvatar}>
+              {displayName ? displayName[0].toUpperCase() : user?.email?.[0]?.toUpperCase() ?? '?'}
             </div>
-            <div className={styles.fieldRow}>
-              <label className={styles.fieldLabel}>Nome de utilizador</label>
-              <div className={styles.fieldInputRow}>
-                <input
-                  className={styles.fieldInput}
-                  value={displayName}
-                  onChange={e => setDisplayName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && saveName()}
-                  placeholder="O teu nome"
-                />
-                <button
-                  className={`${styles.saveSmall} ${nameSaved ? styles.saveSmallDone : ''}`}
-                  onClick={saveName}
-                  disabled={savingName || !displayName.trim()}
-                >
-                  {savingName ? '...' : nameSaved ? '✓' : 'Guardar'}
-                </button>
-              </div>
+            <div className={styles.accountInfo}>
+              <div className={styles.accountEmail}>{user?.email}</div>
             </div>
           </div>
-          <button className={styles.signOutBtn} onClick={signOut}>Sair da conta</button>
-        </section>
-
-        {/* Appearance */}
-        <section className={styles.section}>
-          <div className={styles.sectionTitle}>APARÊNCIA</div>
-          <div className={styles.card}>
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.label}>Tema da app</div>
-                <div className={styles.hint}>Claro, escuro ou seguir o sistema</div>
-              </div>
-              <div className={styles.themeToggle}>
-                {([['light', '☀️ Claro'], ['dark', '🌙 Escuro'], ['system', '⚙ Sistema']] as [ThemePref, string][]).map(([v, label]) => (
-                  <button
-                    key={v}
-                    className={`${styles.themeOption} ${appTheme === v ? styles.themeOptionActive : ''}`}
-                    onClick={() => { setAppTheme(v); applyThemePref(v) }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Concert theme */}
-        <section className={styles.section}>
-          <div className={styles.sectionTitle}>MODO CONCERTO</div>
-          <div className={styles.card}>
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.label}>Fundo</div>
-                <div className={styles.hint}>Cor do ecrã durante o concerto</div>
-              </div>
-              <div className={styles.swatches}>
-                {BG_SWATCHES.map(c => (
-                  <button
-                    key={c} onClick={() => pick('bg', c)}
-                    className={`${styles.swatch} ${theme.bg === c ? styles.swatchSel : ''}`}
-                    style={{ background: c }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.label}>Linha ativa</div>
-                <div className={styles.hint}>Cor do texto em destaque</div>
-              </div>
-              <div className={styles.swatches}>
-                {ACTIVE_SWATCHES.map(c => (
-                  <button
-                    key={c} onClick={() => pick('active_color', c)}
-                    className={`${styles.swatch} ${theme.active_color === c ? styles.swatchSel : ''}`}
-                    style={{ background: c, border: c === '#ffffff' ? '1.5px solid var(--border)' : undefined }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.label}>Cor de acento</div>
-                <div className={styles.hint}>Barra de progresso e destaques</div>
-              </div>
-              <div className={styles.swatches}>
-                {ACCENT_SWATCHES.map(c => (
-                  <button
-                    key={c} onClick={() => pick('accent_color', c)}
-                    className={`${styles.swatch} ${theme.accent_color === c ? styles.swatchSel : ''}`}
-                    style={{ background: c }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.label}>Tamanho do texto</div>
-                <div className={styles.hint}>Tamanho da letra no concerto</div>
-              </div>
-              <div className={styles.sliderRow}>
-                <span style={{ fontSize: 12, color: 'var(--text3)' }}>A</span>
-                <input
-                  type="range" min={16} max={48} value={theme.font_size}
-                  onChange={e => pick('font_size', Number(e.target.value))}
-                  className={styles.slider}
-                />
-                <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text3)' }}>A</span>
-                <span className={styles.sliderVal}>{theme.font_size}px</span>
-              </div>
-            </div>
-
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.label}>Espaçamento</div>
-                <div className={styles.hint}>Espaço entre linhas da letra</div>
-              </div>
-              <div className={styles.sliderRow}>
-                <span style={{ fontSize: 11, color: 'var(--text3)' }}>↕</span>
-                <input
-                  type="range" min={10} max={30} step={1} value={Math.round((theme.line_height ?? 1.6) * 10)}
-                  onChange={e => pick('line_height', Number(e.target.value) / 10)}
-                  className={styles.slider}
-                />
-                <span className={styles.sliderVal}>{(theme.line_height ?? 1.6).toFixed(1)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Live preview */}
-          <div className={styles.preview} style={{ background: theme.bg }}>
-            {['Meu Deus, que saudade', 'De tudo que a gente foi', 'Let me play among the stars', 'Let me see what spring is like', 'On Jupiter and Mars'].map((line, i) => {
-              const isActive = i === 2
-              return (
-                <div key={i} style={{
-                  color: theme.active_color,
-                  fontSize: isActive ? theme.font_size : theme.font_size * 0.72,
-                  lineHeight: theme.line_height ?? 1.6,
-                  opacity: isActive ? 1 : i < 2 ? 0.25 : 0.4,
-                  fontWeight: isActive ? 800 : 500,
-                  borderLeft: isActive ? `3px solid ${theme.accent_color}` : '3px solid transparent',
-                  paddingLeft: 10,
-                  transition: 'all 0.15s',
-                }}>
-                  {line}
-                </div>
-              )
-            })}
-          </div>
-
-          <button
-            className={styles.saveBtn}
-            style={{ background: themeSaved ? '#10b981' : undefined }}
-            onClick={saveTheme}
-          >
-            {themeSaved ? '✓ Guardado' : 'Guardar preferências do concerto'}
-          </button>
-        </section>
-
-        {/* Guide */}
-        <section className={styles.section}>
-          <div className={styles.sectionTitle}>AJUDA</div>
-          <div className={styles.card}>
-            <div className={styles.row}>
-              <div className={styles.rowLabel}>
-                <div className={styles.label}>Guia da aplicação</div>
-                <div className={styles.hint}>Tutorial completo em PDF — projetos, biblioteca, concertos, modo concerto</div>
-              </div>
-              <a
-                href="/guia.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.guideBtn}
+          <div className={styles.fieldRow}>
+            <label className={styles.fieldLabel}>Nome de utilizador</label>
+            <div className={styles.fieldInputRow}>
+              <input
+                className={styles.fieldInput}
+                value={displayName}
+                onChange={e => setDisplayName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveName()}
+                placeholder="O teu nome"
+              />
+              <button
+                className={`${styles.saveSmall} ${nameSaved ? styles.saveSmallDone : ''}`}
+                onClick={saveName}
+                disabled={savingName || !displayName.trim()}
               >
-                📖 Abrir guia
-              </a>
+                {savingName ? '...' : nameSaved ? '✓' : 'Guardar'}
+              </button>
             </div>
           </div>
-        </section>
-      </div>
-    </Layout>
+        </div>
+        <button className={styles.signOutBtn} onClick={signOut}>Sair da conta</button>
+      </section>
+
+      {/* Appearance */}
+      <section className={styles.section}>
+        <div className={styles.sectionTitle}>APARÊNCIA</div>
+        <div className={styles.card}>
+          <div className={styles.row}>
+            <div className={styles.rowLabel}>
+              <div className={styles.label}>Tema da app</div>
+              <div className={styles.hint}>Claro, escuro ou seguir o sistema</div>
+            </div>
+            <div className={styles.themeToggle}>
+              {([['light', '☀️ Claro'], ['dark', '🌙 Escuro'], ['system', '⚙ Sistema']] as [ThemePref, string][]).map(([v, label]) => (
+                <button
+                  key={v}
+                  className={`${styles.themeOption} ${appTheme === v ? styles.themeOptionActive : ''}`}
+                  onClick={() => { setAppTheme(v); applyThemePref(v) }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Concert theme */}
+      <section className={styles.section}>
+        <div className={styles.sectionTitle}>MODO CONCERTO</div>
+        <div className={styles.card}>
+          <div className={styles.row}>
+            <div className={styles.rowLabel}>
+              <div className={styles.label}>Fundo</div>
+              <div className={styles.hint}>Cor do ecrã durante o concerto</div>
+            </div>
+            <div className={styles.swatches}>
+              {BG_SWATCHES.map(c => (
+                <button
+                  key={c} onClick={() => pick('bg', c)}
+                  className={`${styles.swatch} ${theme.bg === c ? styles.swatchSel : ''}`}
+                  style={{ background: c }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.row}>
+            <div className={styles.rowLabel}>
+              <div className={styles.label}>Linha ativa</div>
+              <div className={styles.hint}>Cor do texto em destaque</div>
+            </div>
+            <div className={styles.swatches}>
+              {ACTIVE_SWATCHES.map(c => (
+                <button
+                  key={c} onClick={() => pick('active_color', c)}
+                  className={`${styles.swatch} ${theme.active_color === c ? styles.swatchSel : ''}`}
+                  style={{ background: c, border: c === '#ffffff' ? '1.5px solid var(--border)' : undefined }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.row}>
+            <div className={styles.rowLabel}>
+              <div className={styles.label}>Cor de acento</div>
+              <div className={styles.hint}>Barra de progresso e destaques</div>
+            </div>
+            <div className={styles.swatches}>
+              {ACCENT_SWATCHES.map(c => (
+                <button
+                  key={c} onClick={() => pick('accent_color', c)}
+                  className={`${styles.swatch} ${theme.accent_color === c ? styles.swatchSel : ''}`}
+                  style={{ background: c }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className={styles.row}>
+            <div className={styles.rowLabel}>
+              <div className={styles.label}>Tamanho do texto</div>
+              <div className={styles.hint}>Tamanho da letra no concerto</div>
+            </div>
+            <div className={styles.sliderRow}>
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}>A</span>
+              <input
+                type="range" min={16} max={48} value={theme.font_size}
+                onChange={e => pick('font_size', Number(e.target.value))}
+                className={styles.slider}
+              />
+              <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text3)' }}>A</span>
+              <span className={styles.sliderVal}>{theme.font_size}px</span>
+            </div>
+          </div>
+
+          <div className={styles.row}>
+            <div className={styles.rowLabel}>
+              <div className={styles.label}>Espaçamento</div>
+              <div className={styles.hint}>Espaço entre linhas da letra</div>
+            </div>
+            <div className={styles.sliderRow}>
+              <span style={{ fontSize: 11, color: 'var(--text3)' }}>↕</span>
+              <input
+                type="range" min={10} max={30} step={1} value={Math.round((theme.line_height ?? 1.6) * 10)}
+                onChange={e => pick('line_height', Number(e.target.value) / 10)}
+                className={styles.slider}
+              />
+              <span className={styles.sliderVal}>{(theme.line_height ?? 1.6).toFixed(1)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Live preview */}
+        <div className={styles.preview} style={{ background: theme.bg }}>
+          {['Meu Deus, que saudade', 'De tudo que a gente foi', 'Let me play among the stars', 'Let me see what spring is like', 'On Jupiter and Mars'].map((line, i) => {
+            const isActive = i === 2
+            return (
+              <div key={i} style={{
+                color: theme.active_color,
+                fontSize: isActive ? theme.font_size : theme.font_size * 0.72,
+                lineHeight: theme.line_height ?? 1.6,
+                opacity: isActive ? 1 : i < 2 ? 0.25 : 0.4,
+                fontWeight: isActive ? 800 : 500,
+                borderLeft: isActive ? `3px solid ${theme.accent_color}` : '3px solid transparent',
+                paddingLeft: 10,
+                transition: 'all 0.15s',
+              }}>
+                {line}
+              </div>
+            )
+          })}
+        </div>
+
+        <button
+          className={styles.saveBtn}
+          style={{ background: themeSaved ? '#10b981' : undefined }}
+          onClick={saveTheme}
+        >
+          {themeSaved ? '✓ Guardado' : 'Guardar preferências do concerto'}
+        </button>
+      </section>
+
+      {/* Guide */}
+      <section className={styles.section}>
+        <div className={styles.sectionTitle}>AJUDA</div>
+        <div className={styles.card}>
+          <div className={styles.row}>
+            <div className={styles.rowLabel}>
+              <div className={styles.label}>Guia da aplicação</div>
+              <div className={styles.hint}>Tutorial completo em PDF — projetos, biblioteca, concertos, modo concerto</div>
+            </div>
+            <a
+              href="/guia.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.guideBtn}
+            >
+              📖 Abrir guia
+            </a>
+          </div>
+        </div>
+      </section>
+    </div>
   )
 }

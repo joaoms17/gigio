@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { signOut } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useConfirm } from './ConfirmDialog'
 import styles from './Layout.module.css'
 
-interface Props { children: React.ReactNode }
+interface Props { children?: React.ReactNode }
 
 const PALETTE = ['#7C3AED', '#FF4D6D', '#2563EB', '#059669', '#D97706', '#DB2777', '#0891B2', '#9333EA']
 function colorFor(s: string) {
@@ -174,7 +174,7 @@ export default function Layout({ children }: Props) {
 
       {/* ── MAIN CONTENT ── */}
       <main className={styles.main}>
-        {children}
+        {children ?? <Outlet />}
       </main>
 
       {/* ── MOBILE BOTTOM TAB BAR ── */}

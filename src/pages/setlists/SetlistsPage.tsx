@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Layout from '../../components/Layout'
 import ProjectPickerModal from '../../components/ProjectPickerModal'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
@@ -63,7 +62,7 @@ export default function SetlistsPage() {
   )
 
   return (
-    <Layout>
+    <>
       <div className={styles.page}>
         <div className={styles.header}>
           <div>
@@ -148,6 +147,6 @@ export default function SetlistsPage() {
           onClose={() => setPicking(false)}
         />
       )}
-    </Layout>
+    </>
   )
 }

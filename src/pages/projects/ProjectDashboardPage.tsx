@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { supabase } from '../../lib/supabase'
@@ -384,27 +383,23 @@ export default function ProjectDashboardPage() {
 
   if (loading) {
     return (
-      <Layout>
-        <div className={styles.loading}>A carregar projeto...</div>
-      </Layout>
+      <div className={styles.loading}>A carregar projeto...</div>
     )
   }
 
   if (error || !project) {
     return (
-      <Layout>
-        <div className={styles.errorState}>
-          <p>{error ?? 'Projeto não encontrado.'}</p>
-          <button className={styles.backLink} onClick={() => navigate('/')}>← Voltar</button>
-        </div>
-      </Layout>
+      <div className={styles.errorState}>
+        <p>{error ?? 'Projeto não encontrado.'}</p>
+        <button className={styles.backLink} onClick={() => navigate('/')}>← Voltar</button>
+      </div>
     )
   }
 
   const projectColor = project.color ?? PROJECT_COLORS[0]
 
   return (
-    <Layout>
+    <>
       <div className={styles.page}>
         {isOffline && (
           <div className={styles.offlineBanner}>
@@ -1025,6 +1020,6 @@ export default function ProjectDashboardPage() {
           </div>
         </div>
       )}
-    </Layout>
+    </>
   )
 }

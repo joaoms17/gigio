@@ -8,7 +8,6 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import { useConfirm } from '../../components/ConfirmDialog'
 import ProjectPickerModal from '../../components/ProjectPickerModal'
@@ -465,7 +464,7 @@ export default function SetlistPage() {
   )
 
   return (
-    <Layout>
+    <>
       <div className={styles.page}>
         {isOffline && (
           <div className={styles.offlineBanner}>
@@ -739,6 +738,6 @@ export default function SetlistPage() {
           <button className={styles.undoBtn} onClick={undoRemove}>Anular</button>
         </div>
       )}
-    </Layout>
+    </>
   )
 }

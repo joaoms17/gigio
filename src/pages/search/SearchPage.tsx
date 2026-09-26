@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { searchLrclib, getLrclibLyrics } from '../../lib/lrclib'
@@ -265,7 +264,7 @@ export default function SearchPage() {
   }
 
   return (
-    <Layout>
+    <>
       <div className={styles.page}>
         <div className={styles.pageHeader}>
           {setlistId ? (
@@ -508,6 +507,6 @@ export default function SearchPage() {
           </button>
         </div>
       )}
-    </Layout>
+    </>
   )
 }

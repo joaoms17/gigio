@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { uploadProjectImage } from '../../lib/uploadImage'
 import { useAuth } from '../../hooks/useAuth'
@@ -197,7 +196,7 @@ export default function ProjectsPage() {
   }
 
   return (
-    <Layout>
+    <>
       <div className={styles.page}>
         {isOffline && (
           <div className={styles.offlineBanner}>
@@ -457,6 +456,6 @@ export default function ProjectsPage() {
           </div>
         </div>
       )}
-    </Layout>
+    </>
   )
 }
