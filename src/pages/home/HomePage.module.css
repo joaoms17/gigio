@@ -40,6 +40,11 @@
 .tagSync { background: #10b98120; color: #065f46; }
 .tagShared { background: #f59e0b20; color: #92400e; }
 
+/* Dark theme: light text over the tinted backgrounds (≥4.5:1) */
+:global([data-theme="dark"]) .tag { color: #a78bfa; }
+:global([data-theme="dark"]) .tagSync { color: #34d399; }
+:global([data-theme="dark"]) .tagShared { color: #FBBF24; }
+
 .addCard {
   border-radius: var(--radius); border: 2px dashed var(--border); padding: 18px; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
@@ -59,3 +64,19 @@
   color: white; font-size: 13px; font-weight: 700; cursor: pointer;
 }
 .empty { color: var(--text3); font-size: 13px; }
+
+/* Tablet — scale typography and primary targets */
+@media (min-width: 768px) {
+  .title { font-size: 30px; }
+  .nextConcert { font-size: 15px; }
+  .statLabel { font-size: 13px; }
+  .statNum { font-size: 36px; }
+  .statSub { font-size: 13px; }
+  .sectionLabel { font-size: 12px; }
+  .cardTitle { font-size: 18px; }
+  .cardSub { font-size: 14px; }
+  .tag, .tagDur, .tagSync, .tagShared { font-size: 12px; padding: 4px 10px; }
+  .addCard { font-size: 15px; min-height: 124px; }
+  .emptySub { font-size: 15px; }
+  .newBtn { font-size: 15px; padding: 12px 22px; }
+}

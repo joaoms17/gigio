@@ -45,18 +45,25 @@
 
 .signOutBtn {
   background: none; border: 1.5px solid var(--border);
-  border-radius: 10px; padding: 9px 16px;
+  border-radius: 10px; min-height: 44px; padding: 11px 20px;
   font-size: 13px; font-weight: 600; color: var(--text3);
   cursor: pointer; transition: border-color 0.15s, color 0.15s;
 }
-.signOutBtn:hover { border-color: #ef4444; color: #ef4444; }
+.signOutBtn:hover, .signOutBtn:active { border-color: #ef4444; color: #ef4444; }
 
-/* Swatches */
-.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Swatches — 32px visual, ≥44px hit-area via transparent pseudo-element */
+.swatches { display: flex; gap: 12px; flex-wrap: wrap; }
 .swatch {
-  width: 26px; height: 26px; border-radius: 50%;
+  width: 32px; height: 32px; border-radius: 50%;
   border: 2.5px solid transparent; cursor: pointer;
+  position: relative;
   transition: transform 0.12s;
+}
+.swatch::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
 }
 .swatch:hover { transform: scale(1.15); }
 .swatchSel { border-color: var(--text); box-shadow: 0 0 0 2px white inset; }
@@ -110,3 +117,23 @@
 }
 .themeOption:hover { color: var(--text2); }
 .themeOptionActive { background: var(--bg); color: var(--text); box-shadow: var(--shadow-xs); }
+
+/* Tablet — scale typography and primary targets */
+@media (min-width: 768px) {
+  .title { font-size: 28px; }
+  .sectionTitle { font-size: 12px; }
+  .label { font-size: 15px; }
+  .hint { font-size: 13px; }
+  .accountEmail { font-size: 15px; }
+  .fieldLabel { font-size: 12px; }
+  .fieldInput { font-size: 16px; padding: 11px 14px; }
+  .saveSmall { font-size: 15px; padding: 11px 18px; }
+  .signOutBtn { font-size: 15px; padding: 12px 24px; }
+  .swatch { width: 36px; height: 36px; }
+  .swatch::before { inset: -4px; }
+  .slider { width: 180px; }
+  .sliderVal { font-size: 13px; }
+  .themeOption { font-size: 14px; padding: 10px 16px; min-height: 44px; }
+  .saveBtn { font-size: 15px; padding: 14px 26px; }
+  .guideBtn { font-size: 15px; padding: 11px 20px; }
+}

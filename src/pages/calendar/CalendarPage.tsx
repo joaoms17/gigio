@@ -104,6 +104,15 @@ export default function CalendarPage() {
     if (month === 11) { setYear(y => y + 1); setMonth(0) }
     else setMonth(m => m + 1)
   }
+  function goToday() {
+    const now = new Date()
+    setYear(now.getFullYear())
+    setMonth(now.getMonth())
+    setSelected(todayStr)
+  }
+
+  const now = new Date()
+  const viewingCurrentMonth = year === now.getFullYear() && month === now.getMonth()
 
   return (
     <Layout>
@@ -111,9 +120,16 @@ export default function CalendarPage() {
 
         {/* Month header */}
         <div className={styles.monthNav}>
-          <button className={styles.navBtn} onClick={prevMonth}>‹</button>
+          <button className={styles.navBtn} onClick={prevMonth} aria-label="Mês anterior">‹</button>
           <h1 className={styles.monthTitle}>{MONTHS[month]} {year}</h1>
-          <button className={styles.navBtn} onClick={nextMonth}>›</button>
+          <button className={styles.navBtn} onClick={nextMonth} aria-label="Mês seguinte">›</button>
+          <button
+            className={styles.todayBtn}
+            onClick={goToday}
+            disabled={viewingCurrentMonth && selected === todayStr}
+          >
+            Hoje
+          </button>
         </div>
 
         {/* Weekday labels */}

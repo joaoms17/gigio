@@ -118,6 +118,12 @@ export default function LibraryPage() {
       return a.title.localeCompare(b.title)
     })
 
+  const allFilteredSelected = filtered.length > 0 && filtered.every(s => selection.has(s.id))
+
+  function toggleSelectAll() {
+    setSelection(allFilteredSelected ? new Set() : new Set(filtered.map(s => s.id)))
+  }
+
   return (
     <Layout>
       <div className={styles.page}>
@@ -157,9 +163,18 @@ export default function LibraryPage() {
               onClick={() => setTagFilter(prev => prev === t ? null : t)}
             >#{t}</button>
           ))}
+          {selecting && (
+            <button
+              className={styles.chip}
+              style={{ marginLeft: 'auto' }}
+              onClick={toggleSelectAll}
+            >
+              {allFilteredSelected ? 'Limpar seleção' : 'Selecionar tudo'}
+            </button>
+          )}
           <button
             className={`${styles.chip} ${selecting ? styles.chipActive : ''}`}
-            style={{ marginLeft: 'auto' }}
+            style={selecting ? undefined : { marginLeft: 'auto' }}
             onClick={() => selecting ? exitSelectMode() : setSelecting(true)}
           >
             {selecting ? '✕ Cancelar' : '☑ Selecionar'}
@@ -214,10 +229,11 @@ export default function LibraryPage() {
                       title="Editar"
                     >✎</button>
                     <button
-                      className={styles.iconBtn}
+                      className={`${styles.iconBtn} ${styles.deleteBtn}`}
                       onClick={e => { e.stopPropagation(); deleteSong(song) }}
                       disabled={deleting === song.id}
                       title="Eliminar"
+                      aria-label={`Eliminar ${song.title}`}
                     >
                       {deleting === song.id ? '...' : '✕'}
                     </button>

@@ -280,7 +280,8 @@ export default function ProjectDashboardPage() {
   }
 
   async function revokeInvite(inviteId: string) {
-    await supabase.from('project_invites').update({ status: 'revoked' }).eq('id', inviteId)
+    const { error } = await supabase.from('project_invites').update({ status: 'revoked' }).eq('id', inviteId)
+    if (error) { alert('Erro ao revogar convite: ' + error.message); return }
     setInvites(prev => prev.filter(i => i.id !== inviteId))
   }
 
@@ -302,19 +303,22 @@ export default function ProjectDashboardPage() {
   async function removeMember(userId: string, displayName: string) {
     if (!project) return
     if (!await confirmDialog({ title: 'Remover membro', message: `Remover ${displayName} do projeto?`, confirmLabel: 'Remover', danger: true })) return
-    await supabase.from('band_members').delete().eq('band_id', project.id).eq('user_id', userId)
+    const { error } = await supabase.from('band_members').delete().eq('band_id', project.id).eq('user_id', userId)
+    if (error) { alert('Erro ao remover membro: ' + error.message); return }
     setMembers(prev => prev.filter(m => m.user_id !== userId))
   }
 
   async function changeRole(userId: string, role: ProjectRole) {
     if (!project) return
-    await supabase.from('band_members').update({ role }).eq('band_id', project.id).eq('user_id', userId)
+    const { error } = await supabase.from('band_members').update({ role }).eq('band_id', project.id).eq('user_id', userId)
+    if (error) { alert('Erro ao alterar o papel: ' + error.message); return }
     setMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role } : m))
   }
 
   async function saveInstrument() {
     if (!project || !user) return
-    await supabase.from('band_members').update({ instrument: instrumentInput.trim() || null }).eq('band_id', project.id).eq('user_id', user.id)
+    const { error } = await supabase.from('band_members').update({ instrument: instrumentInput.trim() || null }).eq('band_id', project.id).eq('user_id', user.id)
+    if (error) { alert('Erro ao guardar o instrumento: ' + error.message); setEditingInstrument(false); return }
     setMembers(prev => prev.map(m => m.user_id === user.id ? { ...m, instrument: instrumentInput.trim() || undefined } : m))
     setEditingInstrument(false)
   }
@@ -322,9 +326,10 @@ export default function ProjectDashboardPage() {
   async function deleteSong(songId: string, title: string) {
     if (!await confirmDialog({ title: 'Remover música', message: `Remover "${title}" do repertório?`, confirmLabel: 'Remover', danger: true })) return
     setDeletingSong(songId)
-    await supabase.from('songs').delete().eq('id', songId)
-    setSongs(prev => prev.filter(s => s.id !== songId))
+    const { error } = await supabase.from('songs').delete().eq('id', songId)
     setDeletingSong(null)
+    if (error) { alert('Erro ao remover a música: ' + error.message); return }
+    setSongs(prev => prev.filter(s => s.id !== songId))
   }
 
   function onVenueInput(val: string) {
@@ -359,7 +364,7 @@ export default function ProjectDashboardPage() {
   async function doCreateSetlist() {
     if (!project || !user || !newSetlistName.trim()) return
     setCreatingSetlist(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('setlists')
       .insert({
         name: newSetlistName.trim(),
@@ -372,6 +377,7 @@ export default function ProjectDashboardPage() {
       .select()
       .single()
     setCreatingSetlist(false)
+    if (error) { alert('Erro ao criar concerto: ' + error.message); return }
     setShowCreateSetlist(false)
     if (data) navigate(`/setlist/${data.id}?add=1`)
   }

@@ -4,6 +4,7 @@ import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import LyricsView from '../../components/LyricsView'
 import AnnotationLayer, { type AnnotationHandle } from '../../components/AnnotationLayer'
+import { useConfirm } from '../../components/ConfirmDialog'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import type { Song } from '../../types'
@@ -51,6 +52,7 @@ export default function SongPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const confirm = useConfirm()
 
   const projectId = searchParams.get('project')
   const setlistId = searchParams.get('setlist')
@@ -85,7 +87,7 @@ export default function SongPage() {
   const [annTool, setAnnTool] = useState<'pen' | 'eraser'>('pen')
   const [annColor, setAnnColor] = useState(ANN_COLORS[0].value)
   const [annWidth, setAnnWidth] = useState(ANN_WIDTHS[0].value)
-  const [annClear] = useState(0)
+  const [annClear, setAnnClear] = useState(0)
   const [annScrollMode, setAnnScrollMode] = useState(false)
   const annLayerRef = useRef<AnnotationHandle>(null)
 
@@ -336,7 +338,17 @@ export default function SongPage() {
                 {song.original_lyrics && song.is_user_edited && mode === 'editar' && (
                   <button
                     className={styles.resetBtn}
-                    onClick={() => { setLyrics(song.original_lyrics!); scheduleSave() }}
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: 'Repor letra original',
+                        message: 'Isto substitui a letra editada pela versão original. As tuas edições perdem-se e não há volta atrás. Continuar?',
+                        confirmLabel: 'Repor original',
+                        danger: true,
+                      })
+                      if (!ok) return
+                      setLyrics(song.original_lyrics!)
+                      scheduleSave()
+                    }}
                   >
                     Repor original
                   </button>
@@ -375,8 +387,9 @@ export default function SongPage() {
                         <button
                           key={c.id}
                           className={`${styles.annColor} ${annTool === 'pen' && annColor === c.value ? styles.annColorActive : ''}`}
-                          style={{ background: c.value, borderColor: annTool === 'pen' && annColor === c.value ? '#fff' : 'transparent' }}
+                          style={{ backgroundColor: c.value, borderColor: annTool === 'pen' && annColor === c.value ? '#fff' : 'transparent' }}
                           onClick={() => { setAnnColor(c.value); setAnnTool('pen'); setAnnScrollMode(false) }}
+                          aria-label={`Cor ${c.id}`}
                         />
                       ))}
                     </div>
@@ -415,8 +428,25 @@ export default function SongPage() {
                       className={styles.annTool}
                       onClick={() => annLayerRef.current?.undo()}
                       title="Desfazer"
+                      aria-label="Desfazer"
                     >
                       ↩
+                    </button>
+
+                    {/* Clear all annotations */}
+                    <button
+                      className={styles.annClear}
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: 'Limpar anotações',
+                          message: 'Apagar todas as anotações desta música? Podes recuperá-las com ↩ Desfazer logo a seguir.',
+                          confirmLabel: 'Limpar',
+                          danger: true,
+                        })
+                        if (ok) setAnnClear(c => c + 1)
+                      }}
+                    >
+                      Limpar
                     </button>
                   </div>
 

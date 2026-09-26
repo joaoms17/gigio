@@ -54,8 +54,10 @@ function SortableSongRow({ ss, index, onEdit, onRemove, onOverrides }: {
       <div className={styles.songDur}>
         {ss.song?.duration_sec ? `${Math.floor(ss.song.duration_sec / 60)}:${String(ss.song.duration_sec % 60).padStart(2, '0')}` : ''}
       </div>
-      <button className={styles.iconBtn} onClick={() => onEdit(ss.song_id)} title="Editar música">✎</button>
-      <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onRemove(ss.id) }} title="Remover da setlist">✕</button>
+      <div className={styles.songActions}>
+        <button className={styles.iconBtn} onClick={() => onEdit(ss.song_id)} title="Editar música">✎</button>
+        <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onRemove(ss.id) }} title="Remover da setlist">✕</button>
+      </div>
     </div>
   )
 }
@@ -84,6 +86,8 @@ export default function SetlistPage() {
   const venueDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [date, setDate] = useState('')
   const [duplicating, setDuplicating] = useState(false)
+  const [removedSong, setRemovedSong] = useState<Row | null>(null)
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
   const [canDelete, setCanDelete] = useState(false)
@@ -262,9 +266,37 @@ export default function SetlistPage() {
   }
 
   async function removeSong(ssId: string) {
-    await supabase.from('setlist_songs').delete().eq('id', ssId)
+    const row = songs.find(s => s.id === ssId)
+    if (!row) return
+    const { error } = await supabase.from('setlist_songs').delete().eq('id', ssId)
+    if (error) { alert('Erro ao remover: ' + error.message); return }
     setSongs(prev => prev.filter(s => s.id !== ssId))
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    setRemovedSong(row)
+    undoTimerRef.current = setTimeout(() => setRemovedSong(null), 6000)
   }
+
+  async function undoRemove() {
+    if (!removedSong) return
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    const row = removedSong
+    setRemovedSong(null)
+    const { data, error } = await supabase.from('setlist_songs').insert({
+      setlist_id: row.setlist_id,
+      song_id: row.song_id,
+      position: row.position,
+      notes: row.notes ?? null,
+      performance_key: row.performance_key ?? null,
+      custom_intro: row.custom_intro ?? null,
+      custom_ending: row.custom_ending ?? null,
+    }).select('*, song:songs(*)').single()
+    if (error || !data) { alert('Erro ao anular: ' + (error?.message ?? 'tenta de novo')); return }
+    setSongs(prev => [...prev, data as Row].sort((a, b) => a.position - b.position))
+  }
+
+  useEffect(() => () => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+  }, [])
 
   async function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e
@@ -698,6 +730,13 @@ export default function SetlistPage() {
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {removedSong && (
+        <div className={styles.undoSnackbar} role="status">
+          <span className={styles.undoText}>Música removida</span>
+          <button className={styles.undoBtn} onClick={undoRemove}>Anular</button>
         </div>
       )}
     </Layout>

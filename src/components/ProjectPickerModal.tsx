@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
@@ -23,6 +23,7 @@ export default function ProjectPickerModal({ title, onPick, onClose, busy }: {
   const navigate = useNavigate()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+  const autoPicked = useRef(false)
 
   useEffect(() => {
     if (!user) return
@@ -35,6 +36,14 @@ export default function ProjectPickerModal({ title, onPick, onClose, busy }: {
         setLoading(false)
       })
   }, [user])
+
+  // Um único projeto → escolhe-o automaticamente, sem obrigar a um toque extra
+  useEffect(() => {
+    if (loading || autoPicked.current || projects.length !== 1) return
+    autoPicked.current = true
+    onPick(projects[0].id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, projects])
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -51,7 +60,7 @@ export default function ProjectPickerModal({ title, onPick, onClose, busy }: {
             <div className={styles.emptyIcon}>🎸</div>
             <p>Ainda não tens projetos.</p>
             <p className={styles.emptySub}>Cria um projeto primeiro para guardar setlists.</p>
-            <button className={styles.createBtn} onClick={() => navigate('/bands')}>Criar projeto</button>
+            <button className={styles.createBtn} onClick={() => navigate('/projects')}>Criar projeto</button>
           </div>
         ) : (
           <>
@@ -64,7 +73,7 @@ export default function ProjectPickerModal({ title, onPick, onClose, busy }: {
                 </button>
               ))}
             </div>
-            <button className={styles.newProject} onClick={() => navigate('/bands')}>＋ Novo projeto</button>
+            <button className={styles.newProject} onClick={() => navigate('/projects')}>＋ Novo projeto</button>
           </>
         )}
       </div>

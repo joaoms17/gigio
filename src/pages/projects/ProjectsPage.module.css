@@ -434,6 +434,21 @@
   .modal::before { display: none; }
 }
 
+/* Tablet — scale typography and primary targets */
+@media (min-width: 768px) {
+  .title { font-size: 28px; }
+  .subtitle { font-size: 15px; }
+  .joinBtn { font-size: 15px; padding: 12px 20px; }
+  .createBtn { font-size: 16px; padding: 12px 24px; }
+  .cardName { font-size: 19px; }
+  .typeBadge { font-size: 12px; padding: 4px 10px; }
+  .cardDesc { font-size: 14px; }
+  .stat { font-size: 13px; }
+  .roleBadge { font-size: 12px; padding: 4px 12px; }
+  .enterBtn { font-size: 15px; padding: 10px 22px; min-height: 44px; }
+  .addCard { font-size: 15px; }
+}
+
 /* Mobile */
 @media (max-width: 640px) {
   .page { padding: 16px 16px 12px; }

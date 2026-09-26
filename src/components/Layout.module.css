@@ -162,7 +162,7 @@
 .sidebarBottom {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 8px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
   margin-top: 4px;
@@ -201,8 +201,8 @@
   text-overflow: ellipsis;
 }
 .signOutBtn {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border: none;
   background: none;
   color: var(--text3);
@@ -242,9 +242,10 @@
 }
 
 /* ──────────────────────────────────────────
-   MOBILE — breakpoint ≤ 768px
+   MOBILE — breakpoint ≤ 640px
+   (tablet em retrato fica com o layout de sidebar)
 ────────────────────────────────────────── */
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .shell {
     flex-direction: column;
   }
@@ -290,6 +291,13 @@
     justify-content: center;
     cursor: pointer;
     flex-shrink: 0;
+    position: relative;
+  }
+  /* Hit-area ≥44px sem crescer visualmente */
+  .topUser::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
   }
 
   /* Main */
@@ -358,7 +366,7 @@
 }
 
 /* Tablet — bigger sidebar nav, icons and user row */
-@media (min-width: 769px) and (max-width: 1366px) {
+@media (min-width: 641px) and (max-width: 1366px) {
   .logo { font-size: 26px; }
   .navItem { font-size: 16px; padding: 12px 12px 12px 14px; gap: 12px; }
   .navIcon { font-size: 21px; width: 26px; }
@@ -367,7 +375,7 @@
   .projectDot { width: 10px; height: 10px; }
   .userAvatar { width: 36px; height: 36px; font-size: 13px; }
   .userName { font-size: 15px; }
-  .signOutBtn { width: 38px; height: 38px; font-size: 19px; }
+  .signOutBtn { width: 46px; height: 46px; font-size: 19px; }
 }
 
 /* Offline banner */

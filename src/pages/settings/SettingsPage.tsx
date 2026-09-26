@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Layout from '../../components/Layout'
+import { useConfirm } from '../../components/ConfirmDialog'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { getThemePref, applyThemePref, type ThemePref } from '../../lib/theme'
@@ -16,6 +17,7 @@ const DEFAULT_THEME: ConcertTheme = {
 
 export default function SettingsPage() {
   const { user } = useAuth()
+  const confirmDialog = useConfirm()
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_THEME)
   const [appTheme, setAppTheme] = useState<ThemePref>(getThemePref())
   const [themeSaved, setThemeSaved] = useState(false)
@@ -39,7 +41,8 @@ export default function SettingsPage() {
 
   async function saveTheme() {
     if (!user) return
-    await supabase.from('profiles').update({ concert_theme: theme }).eq('id', user.id)
+    const { error } = await supabase.from('profiles').update({ concert_theme: theme }).eq('id', user.id)
+    if (error) { alert('Erro ao guardar as preferências: ' + error.message); return }
     setThemeSaved(true)
     setTimeout(() => setThemeSaved(false), 2000)
   }
@@ -47,13 +50,20 @@ export default function SettingsPage() {
   async function saveName() {
     if (!user || !displayName.trim()) return
     setSavingName(true)
-    await supabase.from('profiles').update({ display_name: displayName.trim() }).eq('id', user.id)
+    const { error } = await supabase.from('profiles').update({ display_name: displayName.trim() }).eq('id', user.id)
     setSavingName(false)
+    if (error) { alert('Erro ao guardar o nome: ' + error.message); return }
     setNameSaved(true)
     setTimeout(() => setNameSaved(false), 2000)
   }
 
   async function signOut() {
+    if (!await confirmDialog({
+      title: 'Sair da conta',
+      message: 'Terminar a sessão neste dispositivo? Vais precisar de ligação à internet para voltar a entrar.',
+      confirmLabel: 'Sair',
+      danger: true,
+    })) return
     await supabase.auth.signOut()
     window.location.href = '/auth'
   }

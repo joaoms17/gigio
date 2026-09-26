@@ -10,6 +10,7 @@ import {
 } from '../../lib/concertCache'
 import AnnotatedLyrics from '../../components/AnnotatedLyrics'
 import { loadAnnotations, pullAnnotations } from '../../components/AnnotationLayer'
+import { useConfirm } from '../../components/ConfirmDialog'
 import type { SetlistSong, Song, ConcertTheme, LyricLine } from '../../types'
 import styles from './ConcertPage.module.css'
 
@@ -24,9 +25,17 @@ export default function ConcertPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const navigate = useNavigate()
+  const confirmDialog = useConfirm()
 
   const [songs, setSongs] = useState<Row[]>([])
-  const [songIdx, setSongIdx] = useState(0)
+  // Restore the position in this setlist (kept per concert in sessionStorage,
+  // so exiting to fix a lyric mid-show doesn't send us back to song 1)
+  const [songIdx, setSongIdx] = useState(() => {
+    try {
+      const saved = Number(sessionStorage.getItem(`concert-pos-${id}`))
+      return Number.isInteger(saved) && saved > 0 ? saved : 0
+    } catch { return 0 }
+  })
   const [lineIdx, setLineIdx] = useState(0)
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_THEME)
   const [syncLines, setSyncLines] = useState<LyricLine[] | null>(null)
@@ -59,6 +68,17 @@ export default function ConcertPage() {
   const syncLinesRef          = useRef<LyricLine[] | null>(null)
 
   useEffect(() => { syncLinesRef.current = syncLines }, [syncLines])
+
+  // ── Persist position per setlist ──────────────────────────────────────────
+  useEffect(() => {
+    if (!id) return
+    try { sessionStorage.setItem(`concert-pos-${id}`, String(songIdx)) } catch {}
+  }, [id, songIdx])
+
+  // Bounds-check a restored index once the songs arrive
+  useEffect(() => {
+    if (songs.length > 0 && songIdx >= songs.length) setSongIdx(songs.length - 1)
+  }, [songs.length, songIdx])
 
   // ── Load (with offline cache fallback) ──────────────────────────────────
   useEffect(() => {
@@ -193,7 +213,7 @@ export default function ConcertPage() {
       }
       if (e.key === 'ArrowUp')   { e.preventDefault(); if (songIdx > 0) setSongIdx(s => s - 1) }
       if (e.key === 'ArrowDown') { e.preventDefault(); if (songIdx < songs.length - 1) setSongIdx(s => s + 1) }
-      if (e.key === 'Escape') navigate(`/setlist/${id}`)
+      if (e.key === 'Escape') exitConcert()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -243,6 +263,17 @@ export default function ConcertPage() {
   }
 
   function seekDelta(delta: number) { seekTo(elapsed + delta) }
+
+  // ── Exit (with confirmation — a stray tap must never end the show) ──────
+  async function exitConcert() {
+    const ok = await confirmDialog({
+      title: 'Sair do concerto',
+      message: 'Queres sair do modo concerto? A posição na setlist fica guardada.',
+      confirmLabel: 'Sair',
+      cancelLabel: 'Continuar',
+    })
+    if (ok) navigate(`/setlist/${id}`)
+  }
 
   // ── Swipe (horizontal = change song) ────────────────────────────────────
   function handleTouchStart(e: React.TouchEvent) {
@@ -355,39 +386,38 @@ export default function ConcertPage() {
 
       {/* ── Header ── */}
       <div className={styles.header}>
-        <button className={styles.exitBtn} title="Sair do concerto" onClick={() => navigate(`/setlist/${id}`)}>✕</button>
+        <button className={styles.exitBtn} title="Sair do concerto" onClick={exitConcert}>✕</button>
         <span className={styles.counter} style={{ color: theme.accent_color }}>
           {songIdx + 1} / {songs.length}
         </span>
         <div className={styles.headerRight}>
-          {bpm && (
-            <button
-              className={styles.modeBtn}
-              style={{ color: metronomeOn ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
-              onClick={() => setMetronomeOn(m => !m)}
-              title={`Metrónomo visual — ${bpm} bpm`}
-            >
-              {metronomeOn
-                ? <span className={styles.metroDot} style={{ background: theme.accent_color, animationDuration: `${60 / bpm}s` }} />
-                : '◉'}
-            </button>
-          )}
-          {rawChords && (
-            <button
-              className={styles.modeBtn}
-              style={{ color: contentView === 'chords' ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
-              onClick={() => setContentView(v => v === 'chords' ? 'lyrics' : 'chords')}
-              title="Acordes"
-            >♩</button>
-          )}
-          {hasAnnotations && (
-            <button
-              className={styles.modeBtn}
-              style={{ color: contentView === 'annotations' ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
-              onClick={() => setContentView(v => v === 'annotations' ? 'lyrics' : 'annotations')}
-              title="Anotações de ensaio"
-            >✏</button>
-          )}
+          {/* Conditional buttons render disabled (not removed) so the slots
+              stay in the same place from song to song */}
+          <button
+            className={styles.modeBtn}
+            style={{ color: metronomeOn && bpm ? theme.accent_color : 'rgba(255,255,255,0.55)' }}
+            onClick={() => setMetronomeOn(m => !m)}
+            disabled={!bpm}
+            title={bpm ? `Metrónomo visual — ${bpm} bpm` : 'Sem BPM definido'}
+          >
+            {metronomeOn && bpm
+              ? <span className={styles.metroDot} style={{ background: theme.accent_color, animationDuration: `${60 / bpm}s` }} />
+              : '◉'}
+          </button>
+          <button
+            className={styles.modeBtn}
+            style={{ color: contentView === 'chords' ? theme.accent_color : 'rgba(255,255,255,0.55)' }}
+            onClick={() => setContentView(v => v === 'chords' ? 'lyrics' : 'chords')}
+            disabled={!rawChords}
+            title={rawChords ? 'Acordes' : 'Sem acordes'}
+          >♩</button>
+          <button
+            className={styles.modeBtn}
+            style={{ color: contentView === 'annotations' ? theme.accent_color : 'rgba(255,255,255,0.55)' }}
+            onClick={() => setContentView(v => v === 'annotations' ? 'lyrics' : 'annotations')}
+            disabled={!hasAnnotations}
+            title={hasAnnotations ? 'Anotações de ensaio' : 'Sem anotações'}
+          >✏</button>
           <button
             className={styles.modeSwitchBtn}
             style={{ color: theme.accent_color, borderColor: theme.accent_color + '40' }}
@@ -397,8 +427,9 @@ export default function ConcertPage() {
           </button>
           <button
             className={styles.modeBtn}
-            style={{ color: showSetlist ? theme.accent_color : 'rgba(255,255,255,0.3)' }}
+            style={{ color: showSetlist ? theme.accent_color : 'rgba(255,255,255,0.55)' }}
             onClick={() => setShowSetlist(s => !s)}
+            title="Alinhamento"
           >≡</button>
         </div>
       </div>
@@ -500,7 +531,12 @@ export default function ConcertPage() {
                 opacity: i < lineIdx ? 0.35 : 1,
                 background: i === lineIdx ? `${theme.accent_color}22` : 'transparent',
               }}
-              onClick={() => setLineIdx(i)}
+              onClick={() => {
+                // With sync, jump the clock too — otherwise the timer snaps
+                // the highlight back within <100ms (+1ms guards float rounding)
+                if (syncLines?.[i]) seekTo((syncLines[i].time_ms + 1) / 1000)
+                else setLineIdx(i)
+              }}
             >
               {line}
             </div>
@@ -635,13 +671,13 @@ export default function ConcertPage() {
                   className={styles.reorderBtn}
                   style={{ color: 'inherit', opacity: i === 0 ? 0.2 : 0.7 }}
                   disabled={i === 0}
-                  onClick={() => moveSong(i, i - 1)}
+                  onClick={e => { e.stopPropagation(); moveSong(i, i - 1) }}
                 >▲</button>
                 <button
                   className={styles.reorderBtn}
                   style={{ color: 'inherit', opacity: i === songs.length - 1 ? 0.2 : 0.7 }}
                   disabled={i === songs.length - 1}
-                  onClick={() => moveSong(i, i + 1)}
+                  onClick={e => { e.stopPropagation(); moveSong(i, i + 1) }}
                 >▼</button>
               </span>
             </div>

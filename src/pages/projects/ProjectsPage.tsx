@@ -177,10 +177,7 @@ export default function ProjectsPage() {
       .eq('user_id', user.id)
       .maybeSingle()
     if (!existing) {
-      if (!window.confirm(`Entrar no projeto "${band.name}" como editor?`)) {
-        setJoining(false)
-        return
-      }
+      // O botão "Entrar no projeto" já é a confirmação explícita — sem confirm redundante.
       const { error: joinErr } = await supabase
         .from('band_members')
         .insert({ band_id: band.id, user_id: user.id, role: 'editor' })

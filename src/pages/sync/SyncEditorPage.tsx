@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
+import { useConfirm } from '../../components/ConfirmDialog'
 import type { LyricLine } from '../../types'
 import styles from './SyncEditorPage.module.css'
 
@@ -32,10 +33,15 @@ export default function SyncEditorPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const confirm = useConfirm()
 
   const [song, setSong] = useState<{ title: string; artist: string } | null>(null)
   const [lines, setLines] = useState<SyncLine[]>([])
   const [cursor, setCursor] = useState(0)
+  // Draft while typing in a time input; committed on blur/Enter
+  const [timeDraft, setTimeDraft] = useState<{ i: number; val: string } | null>(null)
+  // Unsaved changes to any line time
+  const [dirty, setDirty] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [audioDur, setAudioDur] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
@@ -108,6 +114,7 @@ export default function SyncEditorPage() {
       next[cur] = { ...next[cur], time_ms: ms }
       return next
     })
+    setDirty(true)
     setCursor(c => Math.min(c + 1, len - 1))
   }, [])
 
@@ -129,12 +136,17 @@ export default function SyncEditorPage() {
     const idx = [...lines].map((l, i) => ({ ...l, i })).filter(l => l.time_ms !== null).pop()?.i
     if (idx === undefined) return
     setLines(prev => { const n = [...prev]; n[idx] = { ...n[idx], time_ms: null }; return n })
+    setDirty(true)
     setCursor(idx)
   }
 
-  function editTime(i: number, val: string) {
-    const ms = parseTimeStr(val)
+  /** Commit the typed time (blur/Enter) — while typing, the draft is kept as-is. */
+  function commitTime(i: number, val: string) {
+    setTimeDraft(null)
+    const ms = val.trim() === '' ? null : parseTimeStr(val)
+    if (ms === linesRef.current[i]?.time_ms) return
     setLines(prev => { const n = [...prev]; n[i] = { ...n[i], time_ms: ms }; return n })
+    setDirty(true)
   }
 
   function jumpTo(ms: number) {
@@ -150,11 +162,40 @@ export default function SyncEditorPage() {
     const syncLines: LyricLine[] = lines
       .filter(l => l.time_ms !== null)
       .map(l => ({ time_ms: l.time_ms!, text: l.text }))
-    await supabase.from('lyric_syncs').upsert({ song_id: id, lines: syncLines }, { onConflict: 'song_id' })
-    await supabase.from('songs').update({ has_sync: syncLines.length > 0 }).eq('id', id)
+    const { error: syncError } = await supabase
+      .from('lyric_syncs')
+      .upsert({ song_id: id, lines: syncLines }, { onConflict: 'song_id' })
+    if (syncError) {
+      setSaving(false)
+      alert('Erro ao guardar a sincronização: ' + syncError.message)
+      return
+    }
+    const { error: songError } = await supabase
+      .from('songs')
+      .update({ has_sync: syncLines.length > 0 })
+      .eq('id', id)
     setSaving(false)
+    if (songError) {
+      alert('Erro ao guardar a sincronização: ' + songError.message)
+      return
+    }
+    setDirty(false)
     setSavedOk(true)
     setTimeout(() => setSavedOk(false), 2000)
+  }
+
+  async function goBack() {
+    if (dirty) {
+      const ok = await confirm({
+        title: 'Alterações por guardar',
+        message: 'Tens tempos de sincronização por guardar. Se saíres agora, essas alterações perdem-se.',
+        confirmLabel: 'Sair sem guardar',
+        cancelLabel: 'Ficar',
+        danger: true,
+      })
+      if (!ok) return
+    }
+    navigate(backTo)
   }
 
   const tapped = lines.filter(l => l.time_ms !== null).length
@@ -166,7 +207,7 @@ export default function SyncEditorPage() {
     <div className={styles.root}>
       {/* Top bar */}
       <div className={styles.topBar}>
-        <button className={styles.back} onClick={() => navigate(backTo)}>← Voltar</button>
+        <button className={styles.back} onClick={goBack}>← Voltar</button>
         <div className={styles.songInfo}>
           <span className={styles.songTitle}>{song?.title ?? '...'}</span>
           <span className={styles.songArtist}>{song?.artist}</span>
@@ -294,9 +335,11 @@ export default function SyncEditorPage() {
             <span className={styles.lineText}>{line.text}</span>
             <input
               className={styles.timeInput}
-              value={line.time_ms !== null ? msToStr(line.time_ms) : ''}
+              value={timeDraft?.i === i ? timeDraft.val : line.time_ms !== null ? msToStr(line.time_ms) : ''}
               placeholder="—"
-              onChange={e => editTime(i, e.target.value)}
+              onChange={e => setTimeDraft({ i, val: e.target.value })}
+              onBlur={e => commitTime(i, e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
               onFocus={() => setCursor(i)}
               onClick={e => e.stopPropagation()}
             />

@@ -325,11 +325,17 @@
 .songDeleteBtn {
   background: none; border: none; cursor: pointer;
   color: var(--text3); font-size: 13px; padding: 4px 6px;
-  border-radius: 6px; opacity: 0; transition: opacity 0.15s, color 0.15s;
+  min-width: 44px; min-height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; opacity: 0; transition: opacity 0.15s, color 0.15s;
   flex-shrink: 0;
 }
 .songRow:hover .songDeleteBtn { opacity: 1; }
-.songDeleteBtn:hover { color: #ef4444; }
+/* Touch devices have no hover — keep the button always visible */
+@media (hover: none) {
+  .songDeleteBtn { opacity: 1; }
+}
+.songDeleteBtn:hover { color: #ef4444; background: #ef444414; }
 .songDeleteBtn:disabled { color: var(--text3); cursor: not-allowed; }
 
 /* Setlist grid */
@@ -358,6 +364,11 @@
 .statusBadge[data-status="final"] { background: #05966914; color: #059669; }
 .statusBadge[data-status="archived"] { background: var(--bg3); color: var(--text3); }
 .sharedBadge { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px; background: #F59E0B14; color: #92400E; }
+
+/* Dark theme: light badge text over the tinted backgrounds (≥4.5:1) */
+:global([data-theme="dark"]) .sharedBadge { color: #FBBF24; }
+:global([data-theme="dark"]) .statusBadge[data-status="preparing"] { color: #FBBF24; }
+:global([data-theme="dark"]) .statusBadge[data-status="final"] { color: #34d399; }
 .newSetlistCard {
   border: 2px dashed var(--border2); border-radius: var(--radius); background: none;
   cursor: pointer; display: flex; flex-direction: column; align-items: center;

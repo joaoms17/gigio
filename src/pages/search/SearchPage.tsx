@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Layout from '../../components/Layout'
 import Breadcrumbs from '../../components/Breadcrumbs'
+import { useConfirm } from '../../components/ConfirmDialog'
 import { searchLrclib, getLrclibLyrics } from '../../lib/lrclib'
 import { searchGenius } from '../../lib/genius'
 import { getLyricsOvh } from '../../lib/lyricsovh'
@@ -27,6 +28,7 @@ interface ManualState {
 export default function SearchPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const [searchParams] = useSearchParams()
   const projectId = searchParams.get('project')
   const setlistId = searchParams.get('setlist')
@@ -44,6 +46,7 @@ export default function SearchPage() {
   const [savingManual, setSavingManual] = useState(false)
   const [importingPdf, setImportingPdf] = useState(false)
   const [picker, setPicker] = useState<SearchResult | null>(null)
+  const [addedToast, setAddedToast] = useState(false)
   const [setlists, setSetlists] = useState<Setlist[]>([])
   const [owned, setOwned] = useState<Set<string>>(new Set())
 
@@ -138,15 +141,17 @@ export default function SearchPage() {
     if (error) alert('Erro ao adicionar ao concerto: ' + error.message)
   }
 
-  async function doAdd(r: SearchResult, setlistId: string | null, toProject = false) {
+  async function doAdd(r: SearchResult, targetSetlistId: string | null, toProject = false) {
     if (!user || saving) return
     setPicker(null)
 
     // Duplicate guard: same title+artist already in the library → reuse it
     if (alreadyOwned(r)) {
-      const useExisting = window.confirm(
-        `Já tens "${r.title}" de ${r.artist} na biblioteca.\n\nOK = usar a existente · Cancelar = importar de novo (duplicado)`
-      )
+      const useExisting = await confirm({
+        title: 'Música já existe',
+        message: `Já tens "${r.title}" de ${r.artist} na biblioteca.`,
+        confirmLabel: 'Usar a existente',
+      })
       if (useExisting) {
         const { data: existing } = await supabase
           .from('songs')
@@ -157,15 +162,29 @@ export default function SearchPage() {
           .limit(1)
           .maybeSingle()
         if (existing) {
-          if (setlistId) {
-            await addToSetlist(setlistId, existing.id)
-            navigate(`/setlist/${setlistId}`)
+          if (targetSetlistId) {
+            await addToSetlist(targetSetlistId, existing.id)
+            if (setlistId) {
+              // veio de uma setlist — fica na página de resultados
+              setSaved(prev => [...prev, keyOf(r)])
+              setAddedToast(true)
+            } else {
+              navigate(`/setlist/${targetSetlistId}`)
+            }
           } else {
             navigate(`/songs/${existing.id}${projectId ? `?project=${projectId}` : ''}`)
           }
           return
         }
         // couldn't find it (odd) — fall through to normal import
+      } else {
+        const importAgain = await confirm({
+          title: 'Importar duplicado?',
+          message: `Isto cria uma cópia de "${r.title}" na biblioteca.`,
+          confirmLabel: 'Importar de novo',
+          danger: true,
+        })
+        if (!importAgain) return
       }
     }
 
@@ -174,7 +193,7 @@ export default function SearchPage() {
       const { lyrics, lines, provider } = await fetchLyrics(r)
       if (!lyrics.trim()) {
         setSaving(null)
-        setManual({ title: r.title, artist: r.artist, lyrics: '', setlistId })
+        setManual({ title: r.title, artist: r.artist, lyrics: '', setlistId: targetSetlistId })
         return
       }
       const songId = await insertSong({
@@ -182,10 +201,15 @@ export default function SearchPage() {
         source: r.source, has_sync: r.has_sync && !!lines,
         duration_sec: r.duration_sec, lines, provider,
       })
-      if (songId && setlistId) await addToSetlist(setlistId, songId)
+      if (songId && targetSetlistId) await addToSetlist(targetSetlistId, songId)
       setSaved(prev => [...prev, keyOf(r)])
-      if (songId && setlistId) {
-        navigate(`/setlist/${setlistId}`)
+      if (songId && targetSetlistId) {
+        if (setlistId) {
+          // veio de uma setlist — não expulsar da pesquisa a cada adição
+          setAddedToast(true)
+        } else {
+          navigate(`/setlist/${targetSetlistId}`)
+        }
       } else if (songId && (toProject || projectId)) {
         navigate(`/songs/${songId}?project=${projectId ?? ''}`)
       }
@@ -206,8 +230,13 @@ export default function SearchPage() {
       })
       if (songId && manual.setlistId) await addToSetlist(manual.setlistId, songId)
       setManual(null)
-      if (songId && setlistId) {
-        navigate(`/setlist/${setlistId}`)
+      if (songId && manual.setlistId) {
+        if (setlistId) {
+          // veio de uma setlist — fica na página, com atalho no toast
+          setAddedToast(true)
+        } else {
+          navigate(`/setlist/${manual.setlistId}`)
+        }
       } else if (songId && projectId) {
         navigate(`/songs/${songId}?project=${projectId}`)
       }
@@ -298,7 +327,7 @@ export default function SearchPage() {
                 <div className={styles.info}>
                   <div className={styles.resultTitle}>
                     {r.title}
-                    <span className={`${styles.badge} ${r.source === 'lrclib' ? styles.lrclib : styles.textBadge}`}>
+                    <span className={`${styles.badge} ${r.source === 'lrclib' ? styles.lrclib : styles.text}`}>
                       {r.source === 'lrclib' ? 'LRClib' : 'Texto'}
                     </span>
                     {r.has_sync && <span className={styles.syncBadge}>sync ✓</span>}
@@ -317,10 +346,10 @@ export default function SearchPage() {
                   )}
                   <button
                     className={isSaved ? styles.savedBtn : styles.addBtn}
-                    onClick={() => projectId ? doAdd(r, setlistId, true) : setPicker(r)}
+                    onClick={() => setlistId ? doAdd(r, setlistId) : projectId ? doAdd(r, null, true) : setPicker(r)}
                     disabled={isSaved || !!saving}
                   >
-                    {isSaving ? '...' : isSaved ? '✓ Guardado' : '+ Adicionar'}
+                    {isSaving ? '...' : isSaved ? (setlistId ? '✓ Adicionada' : '✓ Guardado') : '+ Adicionar'}
                   </button>
                 </div>
               </div>
@@ -414,7 +443,7 @@ export default function SearchPage() {
               {preview.lines && <span className={styles.syncNote}>✓ Inclui sincronização ({preview.lines.length} linhas)</span>}
               <button
                 className={styles.addBtn}
-                onClick={() => { const r = preview.result; setPreview(null); projectId ? doAdd(r, null, true) : setPicker(r) }}
+                onClick={() => { const r = preview.result; setPreview(null); setlistId ? doAdd(r, setlistId) : projectId ? doAdd(r, null, true) : setPicker(r) }}
                 disabled={!!saving}
               >
                 + Adicionar
@@ -467,6 +496,16 @@ export default function SearchPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TOAST: adicionada à setlist de origem, sem sair da pesquisa */}
+      {addedToast && setlistId && (
+        <div className={styles.addedToast} role="status">
+          <span>✓ Adicionada ao concerto</span>
+          <button className={styles.addedToastLink} onClick={() => navigate(`/setlist/${setlistId}`)}>
+            Ver concerto
+          </button>
         </div>
       )}
     </Layout>

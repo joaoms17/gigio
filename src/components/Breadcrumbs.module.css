@@ -2,16 +2,16 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 2px;
+  gap: 6px;
   margin-bottom: 6px;
   min-width: 0;
 }
-.crumbWrap { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.crumbWrap { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .crumbLink {
   background: none;
   border: none;
-  padding: 2px 4px;
-  font-size: 12.5px;
+  padding: 10px 8px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text3);
   cursor: pointer;
@@ -20,25 +20,26 @@
   white-space: nowrap;
 }
 .crumbLink:hover { color: var(--gig); background: var(--bg2); }
+.crumbLink:active { color: var(--gig); background: var(--bg3); }
 .crumbText {
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text3);
-  padding: 2px 4px;
+  padding: 10px 8px;
   white-space: nowrap;
 }
 .crumbCurrent {
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text2);
-  padding: 2px 4px;
+  padding: 10px 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 200px;
 }
 .sep {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text3);
   opacity: 0.5;
   flex-shrink: 0;
