@@ -1,7 +1,7 @@
 .page {
   padding: 28px 24px;
   height: 100%;
-  max-width: 1000px;
+  max-width: 1100px;
   margin: 0 auto;
   width: 100%;
   display: flex;
@@ -14,201 +14,80 @@
   .page { padding: 16px; }
 }
 
+/* ---------- Header ---------- */
+
 .header {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 12px;
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
 .title {
-  font-size: 24px;
+  font-family: var(--font-display);
+  font-size: 30px;
   font-weight: 800;
-  letter-spacing: -0.4px;
+  letter-spacing: -0.01em;
   color: var(--text);
   margin: 0;
 }
 
 .count {
   font-size: 13px;
+  font-weight: 600;
   color: var(--text3);
-  margin-right: auto;
 }
 
-.searchBtn {
-  padding: 9px 18px;
-  background: linear-gradient(135deg, var(--gig), var(--io));
-  color: #fff;
-  border: none;
-  border-radius: 12px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
+/* ---------- Pesquisa em destaque + ordenação ---------- */
 
-.searchInput {
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1.5px solid var(--border);
-  background: var(--bg2);
-  color: var(--text);
-  font-size: 14px;
-  box-sizing: border-box;
-  transition: border-color 0.15s;
-}
-
-.searchInput:focus {
-  outline: none;
-  border-color: var(--gig);
-}
-
-.list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+.filterRow {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  gap: 10px;
+  align-items: stretch;
+  margin-bottom: 14px;
 }
 
-.row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: background 0.1s;
-}
-
-.row:hover {
-  background: var(--bg2);
-}
-.row:active {
-  background: var(--bg3);
-}
-.row:focus-visible {
-  outline: 2px solid var(--gig);
-  outline-offset: -2px;
-}
-
-.rowInfo {
+.searchWrap {
+  position: relative;
   flex: 1;
   min-width: 0;
 }
 
-.rowTitle {
-  font-size: 14px;
-  font-weight: 600;
+.searchIcon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text3);
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 16px 12px 44px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--border);
+  background: var(--bg2);
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 16px;
+  box-sizing: border-box;
+  transition: border-color 0.15s, background 0.15s;
 }
 
-.rowArtist {
-  font-size: 12px;
-  color: var(--text3);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 2px;
+.searchInput::placeholder { color: var(--text3); }
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--gig);
+  background: var(--bg);
 }
 
-.syncBadge {
-  background: #22c55e20;
-  color: #22c55e;
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-
-.sourceBadge {
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-
-.sourceBadge.lrclib {
-  background: #7C3AED20;
-  color: #7C3AED;
-}
-
-.sourceBadge.genius {
-  background: #FF4D6D20;
-  color: #FF4D6D;
-}
-
-.sourceBadge.manual {
-  background: var(--border);
-  color: var(--text3);
-}
-
-.iconBtn {
-  background: none;
-  border: none;
-  color: var(--text3);
-  cursor: pointer;
-  font-size: 15px;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 6px 9px;
-  border-radius: 8px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, color 0.15s;
-}
-/* row gap (8px) + this margin = ≥12px between editar/eliminar */
-.iconBtn + .iconBtn { margin-left: 4px; }
-.iconBtn:hover { background: var(--bg3); color: var(--gig); }
-.iconBtn:disabled { opacity: 0.3; }
-
-/* Eliminar visually distinct from editar */
-.deleteBtn:hover,
-.deleteBtn:active {
-  background: #ef444416;
-  color: #ef4444;
-}
-
-.empty {
-  color: var(--text3);
-  font-size: 14px;
-  padding: 16px;
-}
-
-.emptyState {
-  text-align: center;
-  padding: 60px 20px;
-  color: var(--text2);
-}
-
-.emptyIcon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
-
-.goSearch {
-  background: none;
-  border: none;
-  color: var(--gig);
-  font-size: 14px;
-  cursor: pointer;
-  margin-top: 8px;
-  text-decoration: underline;
-}
-
-/* O espaçamento vertical vive no contentor para input e select ficarem alinhados */
-.filterRow { display: flex; gap: 8px; align-items: stretch; margin-bottom: 14px; }
-.filterRow .searchInput { flex: 1; }
 .sortSelect {
   padding: 0 12px;
   border: 1.5px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--bg2);
   color: var(--text2);
   font-size: 13px;
@@ -218,21 +97,8 @@
 }
 .sortSelect:focus { outline: none; border-color: var(--gig); }
 
-/* Tablet / larger screens — bigger rows */
-@media (min-width: 768px) {
-  .title { font-size: 28px; }
-  .count { font-size: 15px; }
-  .searchBtn { font-size: 15px; padding: 10px 20px; }
-  .searchInput { font-size: 16px; padding: 12px 16px; }
-  .sortSelect { font-size: 15px; }
-  .row { padding: 15px 16px; gap: 12px; }
-  .rowTitle { font-size: 17px; }
-  .rowArtist { font-size: 14px; gap: 8px; }
-  .syncBadge, .sourceBadge { font-size: 12px; padding: 2px 7px; }
-  .iconBtn { font-size: 19px; padding: 8px 11px; }
-}
+/* ---------- Filter chips ---------- */
 
-/* Filter chips */
 .chipRow {
   display: flex;
   gap: 8px;
@@ -244,22 +110,23 @@
   background: var(--bg2);
   border: 1.5px solid var(--border);
   border-radius: 20px;
-  min-height: 36px;
-  padding: 7px 14px;
+  min-height: 38px;
+  padding: 8px 15px;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text3);
   cursor: pointer;
   transition: border-color 0.12s, color 0.12s, background 0.12s;
 }
-.chip:hover { color: var(--text2); }
+.chip:hover { color: var(--text2); border-color: var(--border2); }
 .chipActive {
-  background: linear-gradient(135deg, #FF4D6D14, #7C3AED0e);
+  background: linear-gradient(135deg, rgba(255, 77, 109, 0.09), rgba(124, 58, 237, 0.06));
   border-color: var(--gig);
   color: var(--gig);
 }
 
-/* Export toolbar */
+/* ---------- Export toolbar ---------- */
+
 .exportRow {
   display: flex;
   gap: 8px;
@@ -282,21 +149,221 @@
 .exportBtn:hover { border-color: var(--gig); color: var(--gig); }
 .exportBtn:active { transform: scale(0.98); }
 
-/* Bulk selection */
-.rowSelected { background: linear-gradient(135deg, #FF4D6D10, #7C3AED08); }
-.selCircle, .selChecked {
+/* ---------- Grelha de cartões ---------- */
+
+.gridScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* espaço para o FAB não tapar a última fila */
+  padding-bottom: 92px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+@media (max-width: 640px) {
+  .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, transform 0.1s;
+}
+
+.card:hover {
+  border-color: var(--border2);
+  background: var(--bg3);
+}
+.card:active {
+  transform: scale(0.98);
+}
+.card:focus-visible {
+  outline: 2px solid var(--gig);
+  outline-offset: 2px;
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+  /* 2 linhas máx com ellipsis */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  /* espaço para as ações no canto superior direito */
+  padding-right: 76px;
+  min-height: 2.6em;
+}
+
+.cardArtist {
+  font-size: 13px;
+  color: var(--text3);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cardFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 14px;
+  min-height: 22px;
+}
+
+.keyChip {
+  background: rgba(124, 58, 237, 0.14);
+  color: var(--io);
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 8px;
+  letter-spacing: 0.02em;
+}
+[data-theme="dark"] .keyChip { color: #A78BFA; }
+
+.duration {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+}
+
+.syncBadge {
+  background: rgba(16, 185, 129, 0.13);
+  color: var(--success-fg);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+/* Ações do cartão — canto superior direito */
+
+.cardActions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 0;
+}
+
+.iconBtn {
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 15px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 6px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.iconBtn:hover { background: var(--bg3); color: var(--gig); }
+.iconBtn:disabled { opacity: 0.3; }
+
+/* Eliminar visualmente distinto do editar */
+.deleteBtn:hover,
+.deleteBtn:active {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+}
+
+/* ---------- Seleção em bloco (overlay na grelha) ---------- */
+
+.cardSelected {
+  border-color: var(--gig);
+  background: linear-gradient(135deg, rgba(255, 77, 109, 0.07), rgba(124, 58, 237, 0.05));
+}
+
+.selMark {
+  position: absolute;
+  top: 12px;
+  right: 12px;
   width: 26px;
   height: 26px;
   border-radius: 50%;
+  border: 1.5px solid var(--border2);
+  background: var(--bg);
+  color: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
-  flex-shrink: 0;
-  margin-right: 4px;
+  font-weight: 800;
+  transition: background 0.12s, border-color 0.12s;
 }
-.selCircle { color: var(--text3); border: 1.5px solid var(--border2); }
-.selChecked { color: #fff; background: linear-gradient(135deg, var(--gig), var(--io)); font-weight: 800; }
+
+.selMarkChecked {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--gig), var(--io));
+  color: #fff;
+}
+
+/* ---------- Skeletons (cartões) ---------- */
+
+.cardSkeleton {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  pointer-events: none;
+}
+
+.skeletonFooter {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+/* ---------- Estado vazio ---------- */
+
+.emptyState {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text2);
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.goSearch {
+  background: none;
+  border: none;
+  color: var(--gig);
+  font-size: 14px;
+  cursor: pointer;
+  margin-top: 8px;
+  text-decoration: underline;
+}
+
+/* ---------- Barra de ações em bloco ---------- */
 
 .bulkBar {
   position: sticky;
@@ -307,7 +374,7 @@
   gap: 12px;
   background: var(--bg);
   border: 1.5px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 10px 16px;
   box-shadow: var(--shadow-lg);
   margin-top: 12px;
@@ -315,7 +382,7 @@
 }
 .bulkCount { font-size: 13.5px; font-weight: 700; color: var(--text2); }
 .bulkDeleteBtn {
-  background: #DC2626;
+  background: var(--danger);
   color: #fff;
   border: none;
   border-radius: 10px;
@@ -327,9 +394,62 @@
 .bulkDeleteBtn:hover { opacity: 0.88; }
 .bulkDeleteBtn:disabled { opacity: 0.5; }
 
+/* ---------- FAB "Nova música" ---------- */
+
+.fab {
+  position: fixed;
+  right: calc(20px + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--bottomnav-h, 0px) + 16px + env(safe-area-inset-bottom, 0px));
+  height: 56px;
+  min-width: 56px;
+  padding: 0 22px 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--gig);
+  color: #fff;
+  border: none;
+  border-radius: 28px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: var(--shadow-lg), 0 4px 14px rgba(255, 77, 109, 0.4);
+  z-index: 30;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.fab:hover { transform: translateY(-1px); }
+.fab:active { transform: scale(0.96); }
+
+.fabPlus {
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 700;
+}
+.fabLabel { white-space: nowrap; }
+
+@media (max-width: 400px) {
+  .fabLabel { display: none; }
+  .fab { padding: 0; width: 56px; justify-content: center; }
+}
+
+/* ---------- Responsivo ≥768px ---------- */
+
 @media (min-width: 768px) {
-  .chip { font-size: 14px; padding: 7px 16px; }
+  .title { font-size: 34px; }
+  .count { font-size: 15px; }
+  .searchInput { font-size: 16px; min-height: 52px; }
+  .sortSelect { font-size: 15px; }
+  .chip { font-size: 14px; padding: 8px 17px; }
   .exportBtn { font-size: 15px; }
+
+  .grid { gap: 18px; }
+  .cardTitle { font-size: 17px; }
+  .cardArtist { font-size: 14px; }
+  .keyChip, .syncBadge { font-size: 12.5px; }
+  .duration { font-size: 12.5px; }
+  .iconBtn { font-size: 17px; }
+
   .bulkCount { font-size: 15px; }
   .bulkDeleteBtn { font-size: 15px; padding: 11px 22px; }
 }

@@ -10,6 +10,23 @@ import styles from './LibraryPage.module.css'
 
 type FilterChip = 'all' | 'sync' | 'edited'
 
+/** 245 → "4:05" */
+function formatDuration(sec?: number): string | null {
+  if (!sec || sec <= 0) return null
+  const m = Math.floor(sec / 60)
+  const s = Math.round(sec % 60)
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function SearchIcon() {
+  return (
+    <svg className={styles.searchIcon} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+      <path d="M16.5 16.5 L21 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export default function LibraryPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -138,19 +155,21 @@ export default function LibraryPage() {
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <h1 className={styles.title}>Músicas</h1>
+        <h1 className={styles.title}>Repertório</h1>
         <span className={styles.count}>{songs.length} música{songs.length !== 1 ? 's' : ''}</span>
-        <button className={styles.searchBtn} onClick={() => navigate('/search')}>+ Buscar letras</button>
       </div>
 
       <div className={styles.filterRow}>
-        <input
-          className={styles.searchInput}
-          placeholder="Filtrar por título ou artista..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        <select className={styles.sortSelect} value={sort} onChange={e => setSort(e.target.value as any)}>
+        <div className={styles.searchWrap}>
+          <SearchIcon />
+          <input
+            className={styles.searchInput}
+            placeholder="Pesquisar por título ou artista..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <select className={styles.sortSelect} value={sort} onChange={e => setSort(e.target.value as any)} aria-label="Ordenar">
           <option value="title">Título A–Z</option>
           <option value="artist">Artista A–Z</option>
           <option value="recent">Recentes</option>
@@ -198,18 +217,20 @@ export default function LibraryPage() {
         </div>
       )}
 
-      <div className={styles.list}>
+      <div className={styles.gridScroll}>
         {loading ? (
-          <>
+          <div className={styles.grid}>
             {[0, 1, 2, 3, 4, 5].map(i => (
-              <div key={i} className={styles.row} style={{ pointerEvents: 'none' }}>
-                <div style={{ flex: 1 }}>
-                  <div className="skeleton" style={{ height: 14, width: `${55 + (i % 3) * 12}%`, marginBottom: 7 }} />
-                  <div className="skeleton" style={{ height: 11, width: `${30 + (i % 2) * 15}%` }} />
+              <div key={i} className={styles.cardSkeleton} aria-hidden="true">
+                <div className="skeleton" style={{ height: 15, width: `${60 + (i % 3) * 12}%`, marginBottom: 8 }} />
+                <div className="skeleton" style={{ height: 12, width: `${35 + (i % 2) * 18}%` }} />
+                <div className={styles.skeletonFooter}>
+                  <div className="skeleton" style={{ height: 20, width: 38, borderRadius: 10 }} />
+                  <div className="skeleton" style={{ height: 20, width: 46, borderRadius: 10 }} />
                 </div>
               </div>
             ))}
-          </>
+          </div>
         ) : filtered.length === 0 ? (
           <div className={styles.emptyState}>
             <div className={styles.emptyIcon}>🎵</div>
@@ -219,48 +240,58 @@ export default function LibraryPage() {
             )}
           </div>
         ) : (
-          filtered.map(song => (
-            <div
-              key={song.id}
-              className={`${styles.row} ${selecting && selection.has(song.id) ? styles.rowSelected : ''}`}
-              role="button"
-              tabIndex={0}
-              onClick={() => selecting ? toggleSelect(song.id) : navigate(`/songs/${song.id}`)}
-              onKeyDown={e => { if (e.key === 'Enter') { selecting ? toggleSelect(song.id) : navigate(`/songs/${song.id}`) } }}
-            >
-              {selecting && (
-                <span className={selection.has(song.id) ? styles.selChecked : styles.selCircle}>
-                  {selection.has(song.id) ? '✓' : '○'}
-                </span>
-              )}
-              <div className={styles.rowInfo}>
-                <div className={styles.rowTitle}>{song.title}</div>
-                <div className={styles.rowArtist}>
-                  {song.artist}
-                  {song.has_sync && <span className={styles.syncBadge}>sync</span>}
-                  <span className={`${styles.sourceBadge} ${styles[song.source]}`}>{song.source}</span>
+          <div className={styles.grid}>
+            {filtered.map(song => {
+              const isSelected = selection.has(song.id)
+              const keyChip = song.performance_key ?? song.original_key
+              const duration = formatDuration(song.duration_sec)
+              return (
+                <div
+                  key={song.id}
+                  className={`${styles.card} ${selecting && isSelected ? styles.cardSelected : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selecting ? isSelected : undefined}
+                  onClick={() => selecting ? toggleSelect(song.id) : navigate(`/songs/${song.id}`)}
+                  onKeyDown={e => { if (e.key === 'Enter') { selecting ? toggleSelect(song.id) : navigate(`/songs/${song.id}`) } }}
+                >
+                  {selecting ? (
+                    <span
+                      className={`${styles.selMark} ${isSelected ? styles.selMarkChecked : ''}`}
+                      aria-hidden="true"
+                    >
+                      {isSelected ? '✓' : ''}
+                    </span>
+                  ) : (
+                    <div className={styles.cardActions}>
+                      <button
+                        className={styles.iconBtn}
+                        onClick={e => { e.stopPropagation(); navigate(`/songs/${song.id}`) }}
+                        title="Editar"
+                        aria-label={`Editar ${song.title}`}
+                      >✎</button>
+                      <button
+                        className={`${styles.iconBtn} ${styles.deleteBtn}`}
+                        onClick={e => { e.stopPropagation(); deleteSong(song) }}
+                        disabled={deleting === song.id}
+                        title="Eliminar"
+                        aria-label={`Eliminar ${song.title}`}
+                      >
+                        {deleting === song.id ? '…' : '✕'}
+                      </button>
+                    </div>
+                  )}
+                  <div className={styles.cardTitle}>{song.title}</div>
+                  <div className={styles.cardArtist}>{song.artist}</div>
+                  <div className={styles.cardFooter}>
+                    {keyChip && <span className={styles.keyChip}>{keyChip}</span>}
+                    {duration && <span className={styles.duration}>{duration}</span>}
+                    {song.has_sync && <span className={styles.syncBadge}>sync ✓</span>}
+                  </div>
                 </div>
-              </div>
-              {!selecting && (
-                <>
-                  <button
-                    className={styles.iconBtn}
-                    onClick={e => { e.stopPropagation(); navigate(`/songs/${song.id}`) }}
-                    title="Editar"
-                  >✎</button>
-                  <button
-                    className={`${styles.iconBtn} ${styles.deleteBtn}`}
-                    onClick={e => { e.stopPropagation(); deleteSong(song) }}
-                    disabled={deleting === song.id}
-                    title="Eliminar"
-                    aria-label={`Eliminar ${song.title}`}
-                  >
-                    {deleting === song.id ? '...' : '✕'}
-                  </button>
-                </>
-              )}
-            </div>
-          ))
+              )
+            })}
+          </div>
         )}
       </div>
 
@@ -272,6 +303,14 @@ export default function LibraryPage() {
             {bulkBusy ? 'A eliminar...' : '🗑 Eliminar'}
           </button>
         </div>
+      )}
+
+      {/* FAB — nova música */}
+      {!selecting && (
+        <button className={styles.fab} onClick={() => navigate('/search')} aria-label="Nova música">
+          <span className={styles.fabPlus} aria-hidden="true">＋</span>
+          <span className={styles.fabLabel}>Nova música</span>
+        </button>
       )}
     </div>
   )
