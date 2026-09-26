@@ -63,8 +63,8 @@ export default function SongPage() {
   const [tab, setTab] = useState<Tab>('lyrics')
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
-  // 'ensaio' = view + annotate (default), 'editar' = text editor
-  const [mode, setMode] = useState<'ensaio' | 'editar'>('ensaio')
+  // 'editar' = text editor (default), 'ensaio' = view + annotate
+  const [mode, setMode] = useState<'ensaio' | 'editar'>('editar')
 
   // Editable fields
   const [title, setTitle] = useState('')
