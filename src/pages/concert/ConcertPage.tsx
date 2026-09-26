@@ -7,6 +7,7 @@ import {
   cacheSetlistSongs, getCachedSetlistSongs,
   cacheSyncLines, getCachedSyncLines,
   cacheTheme, getCachedTheme,
+  getCachedSetlistMeta,
 } from '../../lib/concertCache'
 import AnnotatedLyrics from '../../components/AnnotatedLyrics'
 import { loadAnnotations, pullAnnotations } from '../../components/AnnotationLayer'
@@ -28,6 +29,69 @@ function fmtTime(secs: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
+// Inline stroke icons — replace the old Unicode glyphs (✕ ✎ ✏ ♩ ◉ ≡ ▶ ‹ ›)
+const sp = {
+  fill: 'none', stroke: 'currentColor', strokeWidth: 2,
+  strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+}
+const ICONS = {
+  close: (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...sp}>
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  ),
+  edit: (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...sp}>
+      <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+    </svg>
+  ),
+  pen: (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...sp}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </svg>
+  ),
+  note: (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...sp}>
+      <circle cx="8" cy="18" r="4" />
+      <path d="M12 18V3l7 4" />
+    </svg>
+  ),
+  metronome: (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...sp}>
+      <path d="M10 3.5h4L17.5 20a0.6 0.6 0 0 1-.6.7H7.1a0.6 0.6 0 0 1-.6-.7L10 3.5z" />
+      <path d="M12 14.5 18.5 5" />
+    </svg>
+  ),
+  list: (
+    <svg width="20" height="20" viewBox="0 0 24 24" {...sp}>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  ),
+  prev: (
+    <svg width="28" height="28" viewBox="0 0 24 24" {...sp} strokeWidth={2.5}>
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  ),
+  next: (
+    <svg width="28" height="28" viewBox="0 0 24 24" {...sp} strokeWidth={2.5}>
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  ),
+  play: (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  ),
+  pause: (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <rect x="6.5" y="5" width="4" height="14" rx="1.2" />
+      <rect x="13.5" y="5" width="4" height="14" rx="1.2" />
+    </svg>
+  ),
+}
+
 export default function ConcertPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
@@ -46,6 +110,7 @@ export default function ConcertPage() {
   })
   const [lineIdx, setLineIdx] = useState(0)
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_THEME)
+  const [concertName, setConcertName] = useState<string | null>(null)
   const [syncLines, setSyncLines] = useState<LyricLine[] | null>(null)
   const [viewMode, setViewMode] = useState<'semi' | 'manual'>('semi')
   const [elapsed, setElapsed] = useState(0)
@@ -117,6 +182,17 @@ export default function ConcertPage() {
         const cached = getCachedSetlistSongs<Row>(id)
         if (cached) setSongs(cached)
       })
+    // Concert name for the header subtitle (cached meta as offline fallback —
+    // written by the setlist page, so don't overwrite it with a partial row)
+    const cachedName = () => {
+      const meta = getCachedSetlistMeta<{ name?: string }>(id)
+      if (meta?.name) setConcertName(meta.name)
+    }
+    supabase.from('setlists').select('name').eq('id', id).single()
+      .then(({ data }) => {
+        if (data?.name) setConcertName(data.name)
+        else cachedName()
+      }, cachedName)
     supabase.from('profiles').select('concert_theme').eq('id', user.id).single()
       .then(({ data }) => {
         if (data?.concert_theme) {
@@ -379,6 +455,7 @@ export default function ConcertPage() {
   const lines       = syncLines ? syncLines.map(l => l.text) : plainLines
   const prevSong    = songs[songIdx - 1]?.song
   const nextSong    = songs[songIdx + 1]?.song
+  const afterSong   = songs[songIdx + 2]?.song
   const displayKey  = currentRow?.performance_key ?? currentSong?.performance_key ?? currentSong?.original_key
 
   // Chords (transposed to the display key when both keys are known)
@@ -397,6 +474,10 @@ export default function ConcertPage() {
     ? songDur
     : (syncLines && syncLines.length > 0 ? syncLines[syncLines.length - 1].time_ms / 1000 + 5 : 0)
   const progressPct = duration > 0 ? Math.min(100, (elapsed / duration) * 100) : 0
+
+  // Playback UI only makes sense with sync + semi mode (chords view hides it)
+  const playbackContext = contentView !== 'chords' && viewMode === 'semi'
+  const showProgress = playbackContext && !!syncLines && duration > 0
 
   // Map the active sync line onto the plain-lyrics line shown in the
   // annotations view (occurrence-aware so repeated chorus lines resolve
@@ -435,17 +516,54 @@ export default function ConcertPage() {
   return (
     <div className={styles.page} style={{ background: theme.bg }}>
 
-      {/* ── Header ── */}
+      {/* ── Header — single line: exit · title/subtitle · actions ── */}
       <div className={styles.header}>
-        <button className={styles.exitBtn} title="Sair do concerto" aria-label="Sair do concerto" onClick={exitConcert}>✕</button>
-        <span className={styles.counter} style={{ color: theme.accent_color }}>
-          {songIdx + 1} / {songs.length}
-        </span>
-        <div className={styles.headerRight}>
+        <button className={styles.iconBtn} title="Sair do concerto" aria-label="Sair do concerto" onClick={exitConcert}>
+          {ICONS.close}
+        </button>
+        <div className={styles.headerInfo}>
+          <div className={styles.headerTitle} style={{ color: theme.active_color }}>
+            {currentSong?.title ?? '—'}
+          </div>
+          <div className={styles.headerSub} style={{ color: theme.active_color + '99' }}>
+            <span className={styles.headerCount} style={{ color: theme.accent_color }}>
+              {songs.length > 0 ? `${songIdx + 1} / ${songs.length}` : '— / —'}
+            </span>
+            {displayKey && <span> · tom {displayKey}</span>}
+            {concertName && <span> · {concertName}</span>}
+          </div>
+        </div>
+        <div className={styles.headerActions}>
           {/* Conditional buttons render disabled (not removed) so the slots
               stay in the same place from song to song */}
           <button
-            className={styles.modeBtn}
+            className={styles.iconBtn}
+            style={{ color: 'rgba(255,255,255,0.55)' }}
+            onClick={() => currentSong && navigate(`/songs/${currentSong.id}?setlist=${id}`)}
+            disabled={!currentSong}
+            title="Editar letra"
+            aria-label="Editar letra"
+          >{ICONS.edit}</button>
+          <button
+            className={styles.iconBtn}
+            style={{ color: contentView === 'annotations' ? theme.accent_color : 'rgba(255,255,255,0.55)' }}
+            onClick={() => setContentView(v => v === 'annotations' ? 'lyrics' : 'annotations')}
+            disabled={!hasAnnotations}
+            title={hasAnnotations ? 'Anotações de ensaio' : 'Sem anotações'}
+            aria-label={hasAnnotations ? 'Anotações de ensaio' : 'Anotações (sem anotações)'}
+            aria-pressed={contentView === 'annotations'}
+          >{ICONS.pen}</button>
+          <button
+            className={styles.iconBtn}
+            style={{ color: contentView === 'chords' ? theme.accent_color : 'rgba(255,255,255,0.55)' }}
+            onClick={() => setContentView(v => v === 'chords' ? 'lyrics' : 'chords')}
+            disabled={!rawChords}
+            title={rawChords ? 'Acordes' : 'Sem acordes'}
+            aria-label={rawChords ? 'Acordes' : 'Acordes (sem acordes guardados)'}
+            aria-pressed={contentView === 'chords'}
+          >{ICONS.note}</button>
+          <button
+            className={styles.iconBtn}
             style={{ color: metronomeOn && bpm ? theme.accent_color : 'rgba(255,255,255,0.55)' }}
             onClick={() => setMetronomeOn(m => !m)}
             disabled={!bpm}
@@ -455,34 +573,16 @@ export default function ConcertPage() {
           >
             {metronomeOn && bpm
               ? <span className={styles.metroDot} style={{ background: theme.accent_color, animationDuration: `${60 / bpm}s` }} />
-              : '◉'}
+              : ICONS.metronome}
           </button>
           <button
-            className={styles.modeBtn}
-            style={{ color: contentView === 'chords' ? theme.accent_color : 'rgba(255,255,255,0.55)' }}
-            onClick={() => setContentView(v => v === 'chords' ? 'lyrics' : 'chords')}
-            disabled={!rawChords}
-            title={rawChords ? 'Acordes' : 'Sem acordes'}
-            aria-label={rawChords ? 'Acordes' : 'Acordes (sem acordes guardados)'}
-            aria-pressed={contentView === 'chords'}
-          >♩</button>
-          <button
-            className={styles.modeBtn}
-            style={{ color: contentView === 'annotations' ? theme.accent_color : 'rgba(255,255,255,0.55)' }}
-            onClick={() => setContentView(v => v === 'annotations' ? 'lyrics' : 'annotations')}
-            disabled={!hasAnnotations}
-            title={hasAnnotations ? 'Anotações de ensaio' : 'Sem anotações'}
-            aria-label={hasAnnotations ? 'Anotações de ensaio' : 'Anotações (sem anotações)'}
-            aria-pressed={contentView === 'annotations'}
-          >✏</button>
-          <button
-            className={styles.modeBtn}
-            style={{ color: 'rgba(255,255,255,0.55)' }}
-            onClick={() => currentSong && navigate(`/songs/${currentSong.id}?setlist=${id}`)}
-            disabled={!currentSong}
-            title="Editar letra"
-            aria-label="Editar letra"
-          >✎</button>
+            className={styles.iconBtn}
+            style={{ color: showSetlist ? theme.accent_color : 'rgba(255,255,255,0.55)' }}
+            onClick={() => setShowSetlist(s => !s)}
+            title="Alinhamento"
+            aria-label="Alinhamento"
+            aria-pressed={showSetlist}
+          >{ICONS.list}</button>
           {/* Segmented control: both modes visible, active one highlighted */}
           <div className={styles.modeSeg} role="group" aria-label="Modo de avanço">
             <button
@@ -502,29 +602,6 @@ export default function ConcertPage() {
               onClick={() => setViewMode('manual')}
             >Manual</button>
           </div>
-          <button
-            className={styles.modeBtn}
-            style={{ color: showSetlist ? theme.accent_color : 'rgba(255,255,255,0.55)' }}
-            onClick={() => setShowSetlist(s => !s)}
-            title="Alinhamento"
-            aria-label="Alinhamento"
-            aria-pressed={showSetlist}
-          >≡</button>
-        </div>
-      </div>
-
-      {/* ── Song info ── */}
-      <div className={styles.songInfo}>
-        <div className={styles.songTitle} style={{ color: theme.active_color }}>
-          {currentSong?.title}
-          {displayKey && (
-            <span className={styles.keyChip} style={{ borderColor: theme.accent_color, color: theme.accent_color }}>
-              {displayKey}
-            </span>
-          )}
-        </div>
-        <div className={styles.songArtist} style={{ color: theme.active_color, opacity: 0.4 }}>
-          {currentSong?.artist}
         </div>
       </div>
 
@@ -695,105 +772,6 @@ export default function ConcertPage() {
         </div>
       )}
 
-      {/* ── Progress bar (scrubbable) — only when the song has sync ── */}
-      {contentView !== 'chords' && viewMode === 'semi' && syncLines && duration > 0 && (
-        <div className={styles.progressWrap}>
-          <div
-            className={styles.progressHit}
-            onPointerDown={handleScrubStart}
-            onPointerMove={handleScrubMove}
-            onPointerUp={handleScrubEnd}
-            onPointerCancel={handleScrubEnd}
-            role="slider"
-            aria-label="Posição na música"
-            aria-valuemin={0}
-            aria-valuemax={Math.round(duration)}
-            aria-valuenow={Math.round(Math.min(elapsed, duration))}
-            aria-valuetext={`${fmtTime(elapsed)} de ${fmtTime(duration)}`}
-          >
-            <div ref={progressTrackRef} className={styles.progressBg}>
-              <div
-                className={styles.progressFill}
-                style={{ width: `${progressPct}%`, background: theme.accent_color }}
-              />
-              <div
-                className={styles.progressThumb}
-                style={{ left: `${progressPct}%`, background: theme.accent_color }}
-              />
-            </div>
-          </div>
-          <div className={styles.progressLabels} style={{ color: theme.active_color }}>
-            <span>{fmtTime(Math.min(elapsed, duration))}</span>
-            <span>{fmtTime(duration)}</span>
-          </div>
-        </div>
-      )}
-
-      {/* ── Controls — playback only makes sense with sync; without it the
-             timer would run invisibly, so show a hint instead ── */}
-      {contentView !== 'chords' && viewMode === 'semi' && (syncLines ? (
-        <div className={styles.controls}>
-          <button
-            className={styles.seekBtn}
-            style={{ color: theme.active_color, borderColor: `${theme.active_color}20` }}
-            onClick={() => seekDelta(-5)}
-            aria-label="Recuar 5 segundos"
-          >
-            <span className={styles.seekArrow}>‹‹</span>
-            <span className={styles.seekLabel}>5s</span>
-          </button>
-          <button
-            className={styles.playBtn}
-            style={{ background: theme.accent_color }}
-            onClick={togglePlay}
-            aria-label={playing ? 'Pausar' : 'Reproduzir'}
-          >
-            {playing ? <span className={styles.pauseIcon} /> : '▶'}
-          </button>
-          <button
-            className={styles.seekBtn}
-            style={{ color: theme.active_color, borderColor: `${theme.active_color}20` }}
-            onClick={() => seekDelta(5)}
-            aria-label="Avançar 5 segundos"
-          >
-            <span className={styles.seekLabel}>5s</span>
-            <span className={styles.seekArrow}>››</span>
-          </button>
-        </div>
-      ) : (
-        <div className={styles.noSyncNote} style={{ color: theme.active_color }}>
-          Sem sincronização — usa o scroll
-        </div>
-      ))}
-
-      {/* ── Prev / Next song ── */}
-      <div className={styles.songNav}>
-        <button
-          className={styles.songNavBtn}
-          style={{ color: theme.active_color }}
-          onClick={() => prevSong && setSongIdx(s => s - 1)}
-          disabled={!prevSong}
-        >
-          <span className={styles.navArrow}>‹</span>
-          <span className={styles.navSongInfo}>
-            <span className={styles.navSongLabel}>Anterior</span>
-            <span className={styles.navSongName}>{prevSong?.title ?? '—'}</span>
-          </span>
-        </button>
-        <button
-          className={styles.songNavBtn}
-          style={{ color: theme.active_color, flexDirection: 'row-reverse' }}
-          onClick={() => nextSong && setSongIdx(s => s + 1)}
-          disabled={!nextSong}
-        >
-          <span className={styles.navArrow}>›</span>
-          <span className={styles.navSongInfo} style={{ textAlign: 'right' }}>
-            <span className={styles.navSongLabel}>Próxima</span>
-            <span className={styles.navSongName}>{nextSong?.title ?? '—'}</span>
-          </span>
-        </button>
-      </div>
-
       {/* ── Setlist panel ── */}
       {showSetlist && (
         <div className={styles.setlistPanel} style={{ borderTopColor: 'rgba(255,255,255,0.06)' }}>
@@ -833,6 +811,103 @@ export default function ConcertPage() {
           ))}
         </div>
       )}
+
+      {/* ── Consolidated footer: progress (with sync) + transport + film strip ── */}
+      <div className={styles.footer}>
+        {showProgress && (
+          <div className={styles.progressRow}>
+            <span className={styles.progressTime} style={{ color: theme.active_color + '88' }}>
+              {fmtTime(Math.min(elapsed, duration))}
+            </span>
+            <div
+              className={styles.progressHit}
+              onPointerDown={handleScrubStart}
+              onPointerMove={handleScrubMove}
+              onPointerUp={handleScrubEnd}
+              onPointerCancel={handleScrubEnd}
+              role="slider"
+              aria-label="Posição na música"
+              aria-valuemin={0}
+              aria-valuemax={Math.round(duration)}
+              aria-valuenow={Math.round(Math.min(elapsed, duration))}
+              aria-valuetext={`${fmtTime(elapsed)} de ${fmtTime(duration)}`}
+            >
+              <div ref={progressTrackRef} className={styles.progressBg}>
+                <div
+                  className={styles.progressFill}
+                  style={{ width: `${progressPct}%`, background: theme.accent_color }}
+                />
+                <div
+                  className={styles.progressThumb}
+                  style={{ left: `${progressPct}%`, background: theme.accent_color }}
+                />
+              </div>
+            </div>
+            <span className={styles.progressTime} style={{ color: theme.active_color + '88' }}>
+              {fmtTime(duration)}
+            </span>
+          </div>
+        )}
+
+        <div className={styles.controlsRow}>
+          <div className={styles.transport}>
+            <button
+              className={styles.navBtn}
+              style={{ color: theme.active_color }}
+              onClick={() => prevSong && setSongIdx(s => s - 1)}
+              disabled={!prevSong}
+              title={prevSong ? `Anterior — ${prevSong.title}` : 'Sem música anterior'}
+              aria-label={prevSong ? `Música anterior — ${prevSong.title}` : 'Música anterior'}
+            >{ICONS.prev}</button>
+            {playbackContext && (syncLines ? (
+              <button
+                className={styles.playBtn}
+                style={{ background: theme.accent_color }}
+                onClick={togglePlay}
+                aria-label={playing ? 'Pausar' : 'Reproduzir'}
+              >
+                {playing ? ICONS.pause : ICONS.play}
+              </button>
+            ) : (
+              <div className={styles.noSyncNote} style={{ color: theme.active_color }}>
+                Sem sincronização — usa o scroll
+              </div>
+            ))}
+            <button
+              className={styles.navBtn}
+              style={{ color: theme.active_color }}
+              onClick={() => nextSong && setSongIdx(s => s + 1)}
+              disabled={!nextSong}
+              title={nextSong ? `Seguinte — ${nextSong.title}` : 'Sem música seguinte'}
+              aria-label={nextSong ? `Música seguinte — ${nextSong.title}` : 'Música seguinte'}
+            >{ICONS.next}</button>
+          </div>
+
+          {/* Film strip: the next 1-2 songs — tap to jump (hidden on narrow screens) */}
+          {nextSong && (
+            <div className={styles.filmStrip}>
+              <button
+                className={styles.stripCard}
+                style={{ color: theme.active_color }}
+                onClick={() => setSongIdx(songIdx + 1)}
+              >
+                <span className={styles.stripLabel} style={{ color: theme.accent_color }}>a seguir</span>
+                <span className={styles.stripTitle}>{songIdx + 2} — {nextSong.title}</span>
+              </button>
+              {afterSong && (
+                <button
+                  className={styles.stripCard}
+                  style={{ color: theme.active_color }}
+                  onClick={() => setSongIdx(songIdx + 2)}
+                >
+                  <span className={styles.stripLabel} style={{ color: theme.accent_color + 'AA' }}>depois</span>
+                  <span className={styles.stripTitle}>{songIdx + 3} — {afterSong.title}</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

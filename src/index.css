@@ -43,6 +43,18 @@
   --topbar-h: 56px;
   --bottomnav-h: 60px;
 
+  /* Escala de componentes */
+  --btn-lg: 48px;
+  --btn: 40px;
+  --btn-sm: 32px;
+  --input-h: 44px;
+
+  /* Camadas */
+  --z-nav: 100;
+  --z-modal: 300;
+  --z-banner: 650;
+  --z-toast: 700;
+
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

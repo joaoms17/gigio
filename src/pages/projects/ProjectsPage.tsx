@@ -25,6 +25,82 @@ function initials(name: string) {
   return ((p[0]?.[0] ?? '') + (p[1]?.[0] ?? '')).toUpperCase() || '?'
 }
 
+/* ── Ícones SVG inline ── */
+
+function IconPlus({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  )
+}
+
+function IconKey({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="7.5" cy="15.5" r="4.5" />
+      <path d="M10.85 12.15 21 2" />
+      <path d="m15.5 7.5 3 3" />
+    </svg>
+  )
+}
+
+function IconChevronRight({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m9 6 6 6-6 6" />
+    </svg>
+  )
+}
+
+function IconArrowRight({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <path d="m14 6 6 6-6 6" />
+    </svg>
+  )
+}
+
+function IconX({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18" />
+    </svg>
+  )
+}
+
+function IconCamera({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </svg>
+  )
+}
+
+function IconUsers({ size = 34 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  )
+}
+
+function IconRefresh({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <polyline points="21 3 21 9 15 9" />
+    </svg>
+  )
+}
+
 const TYPE_OPTIONS: { value: ProjectType; label: string }[] = Object.entries(
   PROJECT_TYPE_LABELS
 ).map(([value, label]) => ({ value: value as ProjectType, label }))
@@ -51,7 +127,6 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true)
   const [isOffline, setIsOffline] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
-  const [showJoin, setShowJoin] = useState(false)
   const [joinCode, setJoinCode] = useState('')
   const [joinError, setJoinError] = useState<string | null>(null)
   const [joining, setJoining] = useState(false)
@@ -178,13 +253,13 @@ export default function ProjectsPage() {
       .eq('user_id', user.id)
       .maybeSingle()
     if (!existing) {
-      // O botão "Entrar no projeto" já é a confirmação explícita — sem confirm redundante.
+      // O botão de entrada já é a confirmação explícita — sem confirm redundante.
       const { error: joinErr } = await supabase
         .from('band_members')
         .insert({ band_id: band.id, user_id: user.id, role: 'editor' })
       if (joinErr) { setJoinError('Erro ao entrar: ' + joinErr.message); setJoining(false); return }
     }
-    setShowJoin(false)
+    setJoining(false)
     setJoinCode('')
     navigate(`/projects/${band.id}`)
   }
@@ -197,6 +272,10 @@ export default function ProjectsPage() {
     pickCreateImage(null)
   }
 
+  function openProject(id: string) {
+    navigate(`/projects/${id}`)
+  }
+
   return (
     <>
       <div className={styles.page}>
@@ -205,42 +284,67 @@ export default function ProjectsPage() {
             Sem ligação — a mostrar dados em cache
           </div>
         )}
+
         <div className={styles.header}>
-          <div>
-            <h1 className={styles.title}>Os meus projetos</h1>
-            <p className={styles.subtitle}>Bandas, projetos e colaborações musicais</p>
-          </div>
-          <div className={styles.headerBtns}>
-            <button className={styles.joinBtn} onClick={() => setShowJoin(true)}>
-              Entrar com código
-            </button>
-            <button className={styles.createBtn} onClick={() => setShowCreate(true)}>
-              + Criar projeto
-            </button>
+          <h1 className={styles.title}>Projetos</h1>
+          <p className={styles.subtitle}>Bandas, tributos e colaborações musicais</p>
+        </div>
+
+        {/* CTAs: criar projeto + entrar com código */}
+        <div className={styles.ctaRow}>
+          <button className={styles.createCta} onClick={() => setShowCreate(true)}>
+            <span className={styles.ctaIcon}><IconPlus size={22} /></span>
+            <span className={styles.ctaText}>
+              <span className={styles.ctaTitle}>Criar projeto</span>
+              <span className={styles.ctaSub}>Banda, tributo ou projeto a solo</span>
+            </span>
+          </button>
+
+          <div className={styles.joinCta}>
+            <span className={`${styles.ctaIcon} ${styles.joinIcon}`}><IconKey size={20} /></span>
+            <div className={styles.joinBody}>
+              <span className={styles.joinTitle}>Entrar com código</span>
+              <span className={styles.joinSub}>Pede ao dono do projeto o código de convite</span>
+              <div className={styles.joinRow}>
+                <input
+                  className={styles.joinInput}
+                  value={joinCode}
+                  onChange={e => { setJoinCode(e.target.value.toUpperCase()); setJoinError(null) }}
+                  onKeyDown={e => e.key === 'Enter' && joinByCode()}
+                  placeholder="XXXX-0000"
+                  maxLength={9}
+                  aria-label="Código de convite"
+                />
+                <button
+                  className={styles.joinGo}
+                  onClick={joinByCode}
+                  disabled={joining || !joinCode.trim()}
+                  aria-label="Entrar no projeto"
+                >
+                  {joining ? <span aria-hidden="true">…</span> : <IconArrowRight size={18} />}
+                </button>
+              </div>
+              {joinError && <p className={styles.joinError} role="alert">{joinError}</p>}
+            </div>
           </div>
         </div>
 
         {loading ? (
-          <div className={styles.grid}>
+          <div className={styles.grid} aria-hidden="true">
             {[0, 1, 2].map(i => (
               <div key={i} className={styles.card} style={{ pointerEvents: 'none' }}>
-                <div className={styles.cardBody}>
-                  <div className={styles.cardTop}>
-                    <div className="skeleton" style={{ width: 72, height: 72, borderRadius: 18, flexShrink: 0 }} />
-                    <div style={{ flex: 1 }}>
-                      <div className="skeleton" style={{ height: 16, width: '60%', marginBottom: 8 }} />
-                      <div className="skeleton" style={{ height: 12, width: '40%' }} />
-                    </div>
-                  </div>
-                  <div className="skeleton" style={{ height: 12, width: '50%', marginBottom: 14 }} />
-                  <div className="skeleton" style={{ height: 30, width: '100%' }} />
+                <div className="skeleton" style={{ width: 56, height: 56, borderRadius: 16, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="skeleton" style={{ height: 16, width: '65%', marginBottom: 8 }} />
+                  <div className="skeleton" style={{ height: 12, width: '45%', marginBottom: 10 }} />
+                  <div className="skeleton" style={{ height: 20, width: '55%' }} />
                 </div>
               </div>
             ))}
           </div>
         ) : projects.length === 0 ? (
           <div className={styles.emptyState}>
-            <div className={styles.emptyIcon}>🎸</div>
+            <div className={styles.emptyIcon}><IconUsers size={34} /></div>
             <h2 className={styles.emptyTitle}>Ainda não tens projetos</h2>
             <p className={styles.emptySub}>
               Cria o teu primeiro projeto musical para começares a organizar repertório, letras e concertos.
@@ -255,59 +359,42 @@ export default function ProjectsPage() {
               <div
                 key={p.id}
                 className={styles.card}
-                onClick={() => navigate(`/projects/${p.id}`)}
+                role="button"
+                tabIndex={0}
+                onClick={() => openProject(p.id)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openProject(p.id) }
+                }}
                 style={{ '--project-color': p.color } as React.CSSProperties}
               >
-                <div className={styles.cardBody}>
-                  <div className={styles.cardTop}>
-                    <div className={styles.avatar} style={{ background: p.color }}>
-                      {p.image_url
-                        ? <img src={p.image_url} alt={p.name} className={styles.avatarImg} />
-                        : initials(p.name)
-                      }
-                    </div>
-                    <div className={styles.cardInfo}>
-                      <div className={styles.cardName}>{p.name}</div>
-                      <span className={styles.typeBadge}>
-                        {PROJECT_TYPE_LABELS[p.type as ProjectType] ?? p.type}
-                      </span>
-                    </div>
+                <div className={styles.avatar} style={{ background: p.color }}>
+                  {p.image_url
+                    ? <img src={p.image_url} alt="" className={styles.avatarImg} />
+                    : initials(p.name)
+                  }
+                </div>
+                <div className={styles.cardInfo}>
+                  <div className={styles.cardName}>{p.name}</div>
+                  <div className={styles.cardMeta}>
+                    <span>{p.memberCount} membro{p.memberCount !== 1 ? 's' : ''}</span>
+                    <span className={styles.metaDot} aria-hidden="true">·</span>
+                    <span>{p.setlistCount} concerto{p.setlistCount !== 1 ? 's' : ''}</span>
                   </div>
-
-                  {p.description && (
-                    <p className={styles.cardDesc}>{p.description}</p>
-                  )}
-
-                  <div className={styles.cardStats}>
-                    <span className={styles.stat}>
-                      <span className={styles.statNum}>{p.memberCount}</span>
-                      {' '}membro{p.memberCount !== 1 ? 's' : ''}
+                  <div className={styles.cardBadges}>
+                    <span className={styles.typeBadge}>
+                      {PROJECT_TYPE_LABELS[p.type as ProjectType] ?? p.type}
                     </span>
-                    <span className={styles.statDot}>·</span>
-                    <span className={styles.stat}>
-                      <span className={styles.statNum}>{p.setlistCount}</span>
-                      {' '}concerto{p.setlistCount !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-
-                  <div className={styles.cardFooter}>
                     <span className={styles.roleBadge} data-role={p.myRole}>
                       {ROLE_LABELS[p.myRole as keyof typeof ROLE_LABELS] ?? p.myRole}
                     </span>
-                    <button
-                      className={styles.enterBtn}
-                      style={{ background: p.color }}
-                      onClick={e => { e.stopPropagation(); navigate(`/projects/${p.id}`) }}
-                    >
-                      Entrar
-                    </button>
                   </div>
                 </div>
+                <span className={styles.cardArrow} aria-hidden="true"><IconChevronRight /></span>
               </div>
             ))}
 
             <button className={styles.addCard} onClick={() => setShowCreate(true)}>
-              <span className={styles.addPlus}>+</span>
+              <IconPlus size={22} />
               <span>Novo projeto</span>
             </button>
           </div>
@@ -318,38 +405,9 @@ export default function ProjectsPage() {
       {import.meta.env.DEV && (
         <div className={styles.versionBar}>
           <span className={styles.versionHash}>v {__COMMIT_HASH__}</span>
-          <button className={styles.refreshBtn} onClick={hardRefresh}>⟳ Hard refresh</button>
-        </div>
-      )}
-
-      {showJoin && (
-        <div className={styles.overlay} onClick={() => { setShowJoin(false); setJoinCode(''); setJoinError(null) }}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <span className={styles.modalTitle}>Entrar com código</span>
-              <button className={styles.closeBtn} onClick={() => { setShowJoin(false); setJoinCode(''); setJoinError(null) }}>✕</button>
-            </div>
-            <p className={styles.joinHint}>Pede ao dono do projeto o código de convite.</p>
-            <div className={styles.field}>
-              <input
-                className={`${styles.input} ${styles.codeInput}`}
-                value={joinCode}
-                onChange={e => { setJoinCode(e.target.value.toUpperCase()); setJoinError(null) }}
-                onKeyDown={e => e.key === 'Enter' && joinByCode()}
-                placeholder="XXXX-0000"
-                maxLength={9}
-                autoFocus
-              />
-              {joinError && <p className={styles.joinError}>{joinError}</p>}
-            </div>
-            <button
-              className={styles.submitBtn}
-              onClick={joinByCode}
-              disabled={joining || !joinCode.trim()}
-            >
-              {joining ? 'A verificar...' : 'Entrar no projeto'}
-            </button>
-          </div>
+          <button className={styles.refreshBtn} onClick={hardRefresh}>
+            <IconRefresh /> Hard refresh
+          </button>
         </div>
       )}
 
@@ -358,7 +416,13 @@ export default function ProjectsPage() {
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <span className={styles.modalTitle}>Criar projeto</span>
-              <button className={styles.closeBtn} onClick={() => { setShowCreate(false); resetCreateForm() }}>✕</button>
+              <button
+                className={styles.closeBtn}
+                onClick={() => { setShowCreate(false); resetCreateForm() }}
+                aria-label="Fechar"
+              >
+                <IconX />
+              </button>
             </div>
 
             <div className={styles.field}>
@@ -418,7 +482,7 @@ export default function ProjectsPage() {
                 <label className={styles.imagePicker} style={{ background: createImagePreview ? 'transparent' : createColor }}>
                   {createImagePreview
                     ? <img src={createImagePreview} alt="" className={styles.imagePreview} />
-                    : <span className={styles.imagePickerIcon}>📷</span>
+                    : <span className={styles.imagePickerIcon}><IconCamera size={22} /></span>
                   }
                   <input
                     type="file"

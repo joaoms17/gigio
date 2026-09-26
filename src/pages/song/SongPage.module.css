@@ -44,7 +44,8 @@
   gap: 8px;
 }
 .editHint {
-  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
   color: var(--text3);
   opacity: 0.6;
   flex-shrink: 0;
@@ -404,6 +405,10 @@
   margin-left: auto;
 }
 .modeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   background: none;
   border: none;
   min-height: 44px;
@@ -422,6 +427,10 @@
 }
 
 .syncEditorBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-height: 44px;
   padding: 0 14px;
   border: 1.5px solid var(--border);
@@ -495,10 +504,22 @@
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 .annTool:hover { background: var(--bg3); }
+.annTool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.annTool:disabled:hover { background: var(--bg); }
 .annToolActive {
   background: var(--gig) !important;
   border-color: var(--gig) !important;
   color: #fff !important;
+}
+
+/* A− / A+ — tamanho da letra do ensaio */
+.annFontBtn {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .annWidths {
@@ -578,14 +599,14 @@
   box-shadow: 0 2px 8px rgba(0,0,0,0.18);
 }
 
-.floatIcon { font-size: 16px; line-height: 1; }
 .floatLabel { font-size: 13px; font-weight: 700; }
 
 /* Tablet */
 @media (min-width: 768px) {
-  .annColor { width: 48px; height: 48px; padding: 9px; }
-  .annTool { width: 48px; height: 48px; font-size: 18px; }
-  .annWidth { width: 48px; height: 48px; }
+  .annColor { width: var(--btn-lg); height: var(--btn-lg); padding: 9px; }
+  .annTool { width: var(--btn-lg); height: var(--btn-lg); font-size: 18px; }
+  .annWidth { width: var(--btn-lg); height: var(--btn-lg); }
+  .annFontBtn { font-size: 15px; }
 }
 
 /* Save bar — sticky footer */

@@ -23,6 +23,42 @@ interface InviteData {
   }
 }
 
+/* ── Ícones SVG inline ── */
+
+function IconX() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  )
+}
+
+function IconCheck() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  )
+}
+
+function IconArrowLeft() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M19 12H5" />
+      <path d="M12 19l-7-7 7-7" />
+    </svg>
+  )
+}
+
+function Logo() {
+  return (
+    <div className={styles.logo} aria-label="gigio">
+      <span className={styles.gig}>gig</span><span className={styles.io}>io</span>
+    </div>
+  )
+}
+
 export default function InvitePage() {
   const { token } = useParams<{ token: string }>()
   const [searchParams] = useSearchParams()
@@ -147,7 +183,7 @@ export default function InvitePage() {
     return (
       <div className={styles.page}>
         <div className={styles.card}>
-          <div className={styles.loading}>A carregar...</div>
+          <div className={styles.loading}>A carregar…</div>
         </div>
       </div>
     )
@@ -157,7 +193,7 @@ export default function InvitePage() {
     return (
       <div className={styles.page}>
         <div className={styles.card}>
-          <div className={styles.logo}>gigio</div>
+          <Logo />
           <h1 className={styles.title}>Tens um convite!</h1>
           <p className={styles.sub}>Faz login ou cria uma conta para aceitar o convite e entrar no projeto.</p>
           <button
@@ -177,7 +213,7 @@ export default function InvitePage() {
       return (
         <div className={styles.page}>
           <div className={styles.card}>
-            <div className={styles.errorIcon}>✕</div>
+            <div className={styles.errorIcon}><IconX /></div>
             <h1 className={styles.title}>Convite inválido</h1>
             <p className={styles.sub}>{inviteError}</p>
             <button className={styles.btn} onClick={() => navigate('/')}>Ir para o início</button>
@@ -189,7 +225,7 @@ export default function InvitePage() {
     if (!invite) {
       return (
         <div className={styles.page}>
-          <div className={styles.card}><div className={styles.loading}>A verificar convite...</div></div>
+          <div className={styles.card}><div className={styles.loading}>A verificar convite…</div></div>
         </div>
       )
     }
@@ -198,9 +234,9 @@ export default function InvitePage() {
       return (
         <div className={styles.page}>
           <div className={styles.card}>
-            <div className={styles.successIcon}>✓</div>
+            <div className={styles.successIcon}><IconCheck /></div>
             <h1 className={styles.title}>Bem-vindo ao projeto!</h1>
-            <p className={styles.sub}>A redirecionar para {invite.bands.name}...</p>
+            <p className={styles.sub}>A redirecionar para {invite.bands.name}…</p>
           </div>
         </div>
       )
@@ -233,7 +269,7 @@ export default function InvitePage() {
               onClick={acceptInvite}
               disabled={accepting}
             >
-              {accepting ? 'A entrar...' : `Entrar em ${invite.bands.name}`}
+              {accepting ? 'A entrar…' : `Entrar em ${invite.bands.name}`}
             </button>
             <button className={styles.declineBtn} onClick={() => navigate('/')}>
               Recusar
@@ -248,7 +284,7 @@ export default function InvitePage() {
   return (
     <div className={styles.page}>
       <div className={styles.card}>
-        <div className={styles.logo}>gigio</div>
+        <Logo />
         <h1 className={styles.title}>Entrar num projeto</h1>
         <p className={styles.sub}>Introduz o código de convite que recebeste.</p>
         <div className={styles.codeForm}>
@@ -262,6 +298,7 @@ export default function InvitePage() {
             autoCorrect="off"
             spellCheck={false}
             onKeyDown={e => e.key === 'Enter' && joinByCode()}
+            aria-label="Código de convite"
           />
           {codeError && <p className={styles.codeError}>{codeError}</p>}
           <button
@@ -269,10 +306,13 @@ export default function InvitePage() {
             onClick={joinByCode}
             disabled={joiningByCode || !codeInput.trim()}
           >
-            {joiningByCode ? 'A verificar...' : 'Entrar no projeto'}
+            {joiningByCode ? 'A verificar…' : 'Entrar no projeto'}
           </button>
         </div>
-        <button className={styles.backLink} onClick={() => navigate('/')}>← Voltar ao início</button>
+        <button className={styles.backLink} onClick={() => navigate('/')}>
+          <IconArrowLeft />
+          Voltar ao início
+        </button>
       </div>
     </div>
   )

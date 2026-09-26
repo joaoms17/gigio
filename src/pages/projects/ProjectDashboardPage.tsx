@@ -56,6 +56,110 @@ function initials(name: string) {
   return ((p[0]?.[0] ?? '') + (p[1]?.[0] ?? '')).toUpperCase() || '?'
 }
 
+/* ── Ícones SVG inline ── */
+
+function IconX({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18" />
+    </svg>
+  )
+}
+
+function IconPlus({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  )
+}
+
+function IconCheck({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  )
+}
+
+function IconArrowLeft({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="20" y1="12" x2="4" y2="12" />
+      <path d="m10 6-6 6 6 6" />
+    </svg>
+  )
+}
+
+function IconCamera({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </svg>
+  )
+}
+
+function IconSearch({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" />
+      <line x1="21" y1="21" x2="16.5" y2="16.5" />
+    </svg>
+  )
+}
+
+function IconMusic({ size = 32 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
+    </svg>
+  )
+}
+
+function IconCalendar({ size = 32 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="18" rx="3" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  )
+}
+
+function IconDownload({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  )
+}
+
+function IconFileText({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+    </svg>
+  )
+}
+
+const TABS: [Tab, string][] = [
+  ['overview', 'Resumo'],
+  ['setlists', 'Concertos'],
+  ['repertoire', 'Repertório'],
+  ['members', 'Membros'],
+  ['settings', 'Definições'],
+]
 
 export default function ProjectDashboardPage() {
   const { user } = useAuth()
@@ -222,6 +326,21 @@ export default function ProjectDashboardPage() {
     if (firstTabRender.current) { firstTabRender.current = false; return }
     load(true)
   }, [activeTab])
+
+  // Segmented control: mede a posição da tab ativa para o deslize do "thumb"
+  const tabsRef = useRef<HTMLDivElement | null>(null)
+  const [tabThumb, setTabThumb] = useState<{ left: number; width: number } | null>(null)
+  useEffect(() => {
+    const measure = () => {
+      const el = tabsRef.current?.querySelector<HTMLElement>('[data-active]')
+      if (el) setTabThumb({ left: el.offsetLeft, width: el.offsetWidth })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    let cancelled = false
+    document.fonts?.ready.then(() => { if (!cancelled) measure() }).catch(() => {})
+    return () => { cancelled = true; window.removeEventListener('resize', measure) }
+  }, [activeTab, loading])
 
   async function saveSettings() {
     if (!project || !settingsName.trim()) return
@@ -414,7 +533,18 @@ export default function ProjectDashboardPage() {
 
   if (loading) {
     return (
-      <div className={styles.loading}>A carregar projeto...</div>
+      <div className={styles.page} aria-busy="true">
+        <div className={styles.heroSkeleton}>
+          <div className="skeleton" style={{ width: 84, height: 84, borderRadius: 20, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="skeleton" style={{ height: 30, width: '55%', marginBottom: 12 }} />
+            <div className="skeleton" style={{ height: 14, width: '35%' }} />
+          </div>
+        </div>
+        <div className="skeleton" style={{ height: 52, borderRadius: 999, marginBottom: 26 }} />
+        <div className="skeleton" style={{ height: 110, borderRadius: 18, marginBottom: 12 }} />
+        <div className="skeleton" style={{ height: 110, borderRadius: 18 }} />
+      </div>
     )
   }
 
@@ -422,7 +552,9 @@ export default function ProjectDashboardPage() {
     return (
       <div className={styles.errorState}>
         <p>{error ?? 'Projeto não encontrado.'}</p>
-        <button className={styles.backLink} onClick={() => navigate('/')}>← Voltar</button>
+        <button className={styles.backLink} onClick={() => navigate('/')}>
+          <IconArrowLeft /> Voltar
+        </button>
       </div>
     )
   }
@@ -437,13 +569,13 @@ export default function ProjectDashboardPage() {
             Sem ligação — a mostrar dados em cache
           </div>
         )}
-        {/* Header */}
+        {/* Header — mini-herói do projeto */}
         <div className={styles.header}>
           <Breadcrumbs items={[
             { label: 'Projetos', to: '/' },
             { label: project.name },
           ]} />
-          <div className={styles.projectHead}>
+          <div className={styles.hero} style={{ '--project-tint': `${projectColor}24` } as React.CSSProperties}>
             <label
               className={`${styles.projectAvatar} ${canManage ? styles.avatarEditable : ''}`}
               style={{ background: projectColor }}
@@ -455,7 +587,7 @@ export default function ProjectDashboardPage() {
               }
               {canManage && (
                 <>
-                  <span className={styles.avatarEditIcon}>📷</span>
+                  <span className={styles.avatarEditIcon}><IconCamera /></span>
                   <input
                     type="file"
                     accept="image/*"
@@ -480,37 +612,49 @@ export default function ProjectDashboardPage() {
                 </>
               )}
             </label>
-            <div>
+            <div className={styles.heroInfo}>
               <h1 className={styles.projectName}>{project.name}</h1>
               <div className={styles.projectMeta}>
                 <span className={styles.typeBadge}>{PROJECT_TYPE_LABELS[project.type as ProjectType] ?? project.type}</span>
-                <span className={styles.metaDot}>·</span>
+                <span className={styles.metaDot} aria-hidden="true">·</span>
                 <span className={styles.metaText}>{members.length} membro{members.length !== 1 ? 's' : ''}</span>
-                <span className={styles.metaDot}>·</span>
+                <span className={styles.metaDot} aria-hidden="true">·</span>
                 <span className={styles.metaText}>{setlists.length} concerto{setlists.length !== 1 ? 's' : ''}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className={styles.tabs} style={{ '--tab-color': projectColor } as React.CSSProperties}>
-          {([
-            ['overview', 'Resumo'],
-            ['setlists', 'Concertos'],
-            ['repertoire', 'Repertório'],
-            ['members', 'Membros'],
-            ['settings', 'Definições'],
-          ] as [Tab, string][]).map(([id, label]) => (
-            <button
-              key={id}
-              className={`${styles.tab} ${activeTab === id ? styles.tabActive : ''}`}
-              onClick={() => setTab(id)}
-              style={activeTab === id ? { color: projectColor, borderBottomColor: projectColor } : undefined}
-            >
-              {label}
-            </button>
-          ))}
+        {/* Tabs — segmented control pill */}
+        <div className={styles.tabsWrap}>
+          <div
+            className={styles.tabs}
+            ref={tabsRef}
+            role="tablist"
+            aria-label="Secções do projeto"
+            style={{ '--tab-ring': `${projectColor}59` } as React.CSSProperties}
+          >
+            <span
+              className={styles.tabThumb}
+              aria-hidden="true"
+              style={tabThumb
+                ? { width: tabThumb.width, transform: `translateX(${tabThumb.left}px)`, opacity: 1 }
+                : undefined}
+            />
+            {TABS.map(([id, label]) => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={activeTab === id}
+                data-active={activeTab === id || undefined}
+                className={`${styles.tab} ${activeTab === id ? styles.tabActive : ''}`}
+                onClick={() => setTab(id)}
+                style={activeTab === id ? { color: projectColor } : undefined}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className={styles.content}>
@@ -542,7 +686,16 @@ export default function ProjectDashboardPage() {
                   </div>
                   <div className={styles.recentList}>
                     {setlists.slice(0, 3).map(s => (
-                      <div key={s.id} className={styles.recentItem} onClick={() => navigate(`/setlist/${s.id}`)}>
+                      <div
+                        key={s.id}
+                        className={styles.recentItem}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate(`/setlist/${s.id}`)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/setlist/${s.id}`) }
+                        }}
+                      >
                         <div className={styles.recentInfo}>
                           <div className={styles.recentName}>{s.name}</div>
                           <div className={styles.recentSub}>
@@ -604,16 +757,16 @@ export default function ProjectDashboardPage() {
                   {songs.length > 0 && (
                     <>
                       <button className={styles.exportBtn} onClick={() => exportRepertoirePdf(false)} disabled={exporting}>
-                        Exportar lista
+                        <IconDownload /> Exportar lista
                       </button>
                       <button className={styles.exportBtn} onClick={() => exportRepertoirePdf(true)} disabled={exporting}>
-                        {exporting ? 'A preparar…' : 'Exportar repertório'}
+                        <IconFileText /> {exporting ? 'A preparar…' : 'Exportar repertório'}
                       </button>
                     </>
                   )}
                   {canEdit && (
                     <button className={styles.addBtn} style={{ background: projectColor }} onClick={() => navigate(`/search?project=${project.id}`)}>
-                      + Pesquisar letra
+                      <IconPlus /> Pesquisar letra
                     </button>
                   )}
                 </div>
@@ -621,7 +774,7 @@ export default function ProjectDashboardPage() {
 
               {songs.length === 0 ? (
                 <div className={styles.emptyTab}>
-                  <div className={styles.emptyTabIcon}>🎵</div>
+                  <div className={styles.emptyTabIcon}><IconMusic /></div>
                   <h3 className={styles.emptyTabTitle}>Este projeto ainda não tem músicas</h3>
                   <p className={styles.emptyTabSub}>Adiciona a primeira música ao repertório.</p>
                   {canEdit && (
@@ -636,12 +789,15 @@ export default function ProjectDashboardPage() {
                 </div>
               ) : (
                 <>
-                  <input
-                    className={styles.songSearchInput}
-                    placeholder="Filtrar por título ou artista..."
-                    value={songSearch}
-                    onChange={e => setSongSearch(e.target.value)}
-                  />
+                  <div className={styles.songSearchWrap}>
+                    <span className={styles.songSearchIcon}><IconSearch /></span>
+                    <input
+                      className={styles.songSearchInput}
+                      placeholder="Filtrar por título ou artista..."
+                      value={songSearch}
+                      onChange={e => setSongSearch(e.target.value)}
+                    />
+                  </div>
                   <div className={styles.songList}>
                     {songs
                       .filter(s => !songSearch || `${s.title} ${s.artist}`.toLowerCase().includes(songSearch.toLowerCase()))
@@ -649,7 +805,12 @@ export default function ProjectDashboardPage() {
                         <div
                           key={s.id}
                           className={styles.songRow}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => navigate(`/songs/${s.id}?project=${project.id}`)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/songs/${s.id}?project=${project.id}`) }
+                          }}
                         >
                           <div className={styles.songInfo}>
                             <div className={styles.songTitle}>{s.title}</div>
@@ -676,7 +837,7 @@ export default function ProjectDashboardPage() {
                               disabled={deletingSong === s.id}
                               title="Remover do repertório"
                             >
-                              {deletingSong === s.id ? '...' : '✕'}
+                              {deletingSong === s.id ? '…' : <IconX />}
                             </button>
                           )}
                         </div>
@@ -701,14 +862,14 @@ export default function ProjectDashboardPage() {
                 </div>
                 {canEdit && (
                   <button className={styles.addBtn} style={{ background: projectColor }} onClick={createSetlist}>
-                    + Novo concerto
+                    <IconPlus /> Novo concerto
                   </button>
                 )}
               </div>
 
               {setlists.length === 0 ? (
                 <div className={styles.emptyTab}>
-                  <div className={styles.emptyTabIcon}>📋</div>
+                  <div className={styles.emptyTabIcon}><IconCalendar /></div>
                   <h3 className={styles.emptyTabTitle}>Ainda não existem concertos neste projeto</h3>
                   <p className={styles.emptyTabSub}>Cria o primeiro concerto para ensaio ou apresentação.</p>
                   {canEdit && (
@@ -724,7 +885,16 @@ export default function ProjectDashboardPage() {
               ) : (
                 <div className={styles.setlistGrid}>
                   {setlists.map(s => (
-                    <div key={s.id} className={styles.setlistCard} onClick={() => navigate(`/setlist/${s.id}`)}>
+                    <div
+                      key={s.id}
+                      className={styles.setlistCard}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/setlist/${s.id}`)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/setlist/${s.id}`) }
+                      }}
+                    >
                       <div className={styles.setlistAccent} style={{ background: projectColor }} />
                       <div className={styles.setlistBody}>
                         <div className={styles.setlistName}>{s.name}</div>
@@ -741,7 +911,7 @@ export default function ProjectDashboardPage() {
                   ))}
                   {canEdit && (
                     <button className={styles.newSetlistCard} onClick={createSetlist}>
-                      <span>+</span>
+                      <IconPlus size={20} />
                       <span>Novo concerto</span>
                     </button>
                   )}
@@ -819,8 +989,9 @@ export default function ProjectDashboardPage() {
                             className={styles.removeBtn}
                             onClick={() => removeMember(m.user_id, name)}
                             title={`Remover ${name}`}
+                            aria-label={`Remover ${name}`}
                           >
-                            ✕
+                            <IconX size={14} />
                           </button>
                         )}
                       </div>
@@ -883,10 +1054,10 @@ export default function ProjectDashboardPage() {
                     <div className={styles.codeRow}>
                       <code className={styles.inviteCode}>{project.invite_code}</code>
                       <button className={styles.copyCodeBtn} onClick={copyInviteCode}>
-                        {inviteCopied === 'code' ? '✓' : 'Copiar código'}
+                        {inviteCopied === 'code' ? <><IconCheck /> Copiado</> : 'Copiar código'}
                       </button>
                       <button className={styles.copyCodeBtn} onClick={copyJoinLink}>
-                        {inviteCopied === 'link' ? '✓ Link copiado' : 'Copiar link'}
+                        {inviteCopied === 'link' ? <><IconCheck /> Link copiado</> : 'Copiar link'}
                       </button>
                     </div>
                   </div>
@@ -900,6 +1071,7 @@ export default function ProjectDashboardPage() {
             <div className={styles.settingsPage}>
               <h2 className={styles.tabTitle}>Definições do projeto</h2>
 
+              <div className={styles.settingsCard}>
               {canManage ? (
                 <>
                   <div className={styles.field}>
@@ -978,12 +1150,13 @@ export default function ProjectDashboardPage() {
                     onClick={saveSettings}
                     disabled={savingSettings || !settingsName.trim()}
                   >
-                    {savingSettings ? 'A guardar...' : settingsSaved ? '✓ Guardado' : 'Guardar alterações'}
+                    {savingSettings ? 'A guardar...' : settingsSaved ? <><IconCheck /> Guardado</> : 'Guardar alterações'}
                   </button>
                 </>
               ) : (
                 <p className={styles.noPermNote}>Só o owner ou admin podem alterar as definições do projeto.</p>
               )}
+              </div>
 
               <div className={styles.dangerZone}>
                 <div className={styles.dangerTitle}>ZONA DE PERIGO</div>
@@ -1006,7 +1179,9 @@ export default function ProjectDashboardPage() {
           <div className={styles.createModal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div className={styles.modalTitle}>Novo concerto</div>
-              <button className={styles.modalClose} onClick={() => setShowCreateSetlist(false)}>✕</button>
+              <button className={styles.modalClose} onClick={() => setShowCreateSetlist(false)} aria-label="Fechar">
+                <IconX />
+              </button>
             </div>
             <div className={styles.modalBody}>
               <div className={styles.modalField}>

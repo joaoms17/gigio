@@ -15,17 +15,19 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg'],
+      includeAssets: ['favicon-32.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'Gigio',
         short_name: 'Gigio',
         description: 'Setlists e letras para músicos ao vivo',
-        theme_color: '#FF4D6D',
-        background_color: '#ffffff',
+        theme_color: '#0E0E12',
+        background_color: '#0E0E12',
         display: 'standalone',
         orientation: 'any',
         icons: [
-          { src: '/icons.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {

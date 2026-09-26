@@ -25,6 +25,92 @@ interface ManualState {
   setlistId: string | null
 }
 
+/* ── Ícones SVG inline ── */
+
+function IconSearch({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" />
+      <line x1="21" y1="21" x2="16.5" y2="16.5" />
+    </svg>
+  )
+}
+
+function IconPlus({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  )
+}
+
+function IconCheck({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  )
+}
+
+function IconX({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18" />
+    </svg>
+  )
+}
+
+function IconFile({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7Z" />
+      <polyline points="14 2 14 7 19 7" />
+      <line x1="9" y1="13" x2="15" y2="13" />
+      <line x1="9" y1="17" x2="13" y2="17" />
+    </svg>
+  )
+}
+
+function IconPencil({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    </svg>
+  )
+}
+
+function IconBook({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+    </svg>
+  )
+}
+
+function IconMic({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 10a7 7 0 0 0 14 0" />
+      <line x1="12" y1="17" x2="12" y2="21" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+    </svg>
+  )
+}
+
+function IconAlert({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  )
+}
+
 export default function SearchPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -334,23 +420,42 @@ export default function SearchPage() {
           )}
         </div>
 
-        <form onSubmit={handleSearch} className={styles.searchForm}>
-          <input
-            className={styles.searchInput}
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Título da música..."
-            autoFocus
-          />
-          <input
-            className={styles.artistInput}
-            value={artistQuery}
-            onChange={e => setArtistQuery(e.target.value)}
-            placeholder="Artista (opcional)"
-          />
-          <button className={styles.searchBtn} type="submit" disabled={loading}>
-            {loading ? 'A pesquisar...' : 'Pesquisar'}
-          </button>
+        {/* ── Pesquisa como herói ── */}
+        <form onSubmit={handleSearch} className={styles.searchHero}>
+          <div className={styles.heroRow}>
+            <div className={styles.searchWrap}>
+              <span className={styles.searchIcon}><IconSearch /></span>
+              <input
+                className={styles.searchInput}
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Título da música..."
+                autoFocus
+              />
+            </div>
+            <label className={`${styles.pdfHeroBtn} ${importingPdf ? styles.btnBusy : ''}`}>
+              <IconFile />
+              <span className={styles.pdfHeroLabel}>{importingPdf ? 'A ler PDF...' : 'Importar PDF'}</span>
+              <input
+                type="file"
+                accept="application/pdf"
+                style={{ display: 'none' }}
+                disabled={importingPdf}
+                onChange={e => { const f = e.target.files?.[0]; if (f) importPdf(f); e.target.value = '' }}
+              />
+            </label>
+          </div>
+          <div className={styles.heroSubRow}>
+            <input
+              className={styles.artistInput}
+              value={artistQuery}
+              onChange={e => setArtistQuery(e.target.value)}
+              placeholder="Artista (opcional)"
+            />
+            <button className={styles.searchBtn} type="submit" disabled={loading}>
+              {loading ? 'A pesquisar...' : 'Pesquisar'}
+            </button>
+          </div>
         </form>
 
         <div className={styles.results}>
@@ -366,14 +471,19 @@ export default function SearchPage() {
             const isSaved = saved.includes(k)
             const isSaving = saving === k
             return (
-              <div key={k} className={styles.resultRow}>
+              <div key={k} className={styles.resultCard}>
                 <div className={styles.info}>
                   <div className={styles.resultTitle}>
                     {r.title}
-                    <span className={`${styles.badge} ${r.source === 'lrclib' ? styles.lrclib : styles.text}`}>
+                    <span className={`${styles.badge} ${r.source === 'lrclib' ? styles.badgeLrclib : styles.badgeText}`}>
                       {r.source === 'lrclib' ? 'LRClib' : 'Texto'}
                     </span>
-                    {r.has_sync && <span className={styles.syncBadge}>sync ✓</span>}
+                    {r.has_sync && (
+                      <span className={styles.syncBadge}>
+                        <IconCheck size={11} />
+                        sync
+                      </span>
+                    )}
                     {alreadyOwned(r) && <span className={styles.ownedBadge}>já tens</span>}
                   </div>
                   <div className={styles.resultArtist}>
@@ -392,7 +502,19 @@ export default function SearchPage() {
                     onClick={() => setlistId ? doAdd(r, setlistId) : projectId ? doAdd(r, null, true) : setPicker(r)}
                     disabled={isSaved || !!saving}
                   >
-                    {isSaving ? '...' : isSaved ? (setlistId ? '✓ Adicionada' : '✓ Guardado') : '+ Adicionar'}
+                    {isSaving ? (
+                      '...'
+                    ) : isSaved ? (
+                      <>
+                        <IconCheck />
+                        {setlistId ? 'Adicionada' : 'Guardado'}
+                      </>
+                    ) : (
+                      <>
+                        <IconPlus />
+                        Adicionar
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -400,9 +522,10 @@ export default function SearchPage() {
           })}
 
           {!loading && searched && searchError && (
-            <div className={styles.noResults}>
-              <p>Sem ligação — não foi possível pesquisar.</p>
-              <p className={styles.noResultsSub}>Verifica a internet e tenta de novo.</p>
+            <div className={styles.stateCard}>
+              <div className={`${styles.stateIcon} ${styles.stateIconError}`}><IconAlert /></div>
+              <p className={styles.stateTitle}>Sem ligação — não foi possível pesquisar.</p>
+              <p className={styles.stateSub}>Verifica a internet e tenta de novo.</p>
               <button className={styles.manualBtn} onClick={runSearch}>
                 Tentar de novo
               </button>
@@ -410,10 +533,12 @@ export default function SearchPage() {
           )}
 
           {!loading && searched && !searchError && results.length === 0 && (
-            <div className={styles.noResults}>
-              <p>Não encontrei letra para "{query}".</p>
-              <p className={styles.noResultsSub}>Tenta outro título/artista ou adiciona manualmente.</p>
+            <div className={styles.stateCard}>
+              <div className={styles.stateIcon}><IconSearch size={26} /></div>
+              <p className={styles.stateTitle}>Não encontrei letra para "{query}".</p>
+              <p className={styles.stateSub}>Tenta outro título/artista ou adiciona manualmente.</p>
               <button className={styles.manualBtn} onClick={() => setManual({ title: query, artist: artistQuery, lyrics: '', setlistId })}>
+                <IconPencil />
                 Adicionar manualmente
               </button>
             </div>
@@ -425,10 +550,12 @@ export default function SearchPage() {
             <span className={styles.fallbackLabel}>Tens uma letra?</span>
             <div className={styles.fallbackBtns}>
               <button className={styles.fallbackBtn} onClick={() => setManual({ title: '', artist: '', lyrics: '', setlistId })}>
-                ✏ Escrever / colar manualmente
+                <IconPencil />
+                Escrever / colar manualmente
               </button>
-              <label className={`${styles.fallbackBtn} ${importingPdf ? styles.fallbackBtnBusy : ''}`}>
-                {importingPdf ? '⏳ A ler PDF...' : '📄 Importar de PDF'}
+              <label className={`${styles.fallbackBtn} ${importingPdf ? styles.btnBusy : ''}`}>
+                <IconFile size={16} />
+                {importingPdf ? 'A ler PDF...' : 'Importar de PDF'}
                 <input
                   type="file"
                   accept="application/pdf"
@@ -451,23 +578,26 @@ export default function SearchPage() {
                 <div className={styles.modalTitle}>{picker.title}</div>
                 <div className={styles.modalArtist}>{picker.artist}</div>
               </div>
-              <button className={styles.closeBtn} onClick={() => setPicker(null)}>✕</button>
+              <button className={styles.closeBtn} onClick={() => setPicker(null)} aria-label="Fechar">
+                <IconX />
+              </button>
             </div>
             <button className={styles.targetRow} onClick={() => doAdd(picker, null)}>
-              <span className={styles.targetIcon}>📚</span>
+              <span className={styles.targetIcon}><IconBook /></span>
               <span>Só na biblioteca</span>
             </button>
             {setlists.length > 0 && <div className={styles.targetDivider}>Ou directo para um concerto</div>}
             <div className={styles.targetList}>
               {setlists.map(s => (
                 <button key={s.id} className={styles.targetRow} onClick={() => doAdd(picker, s.id)}>
-                  <span className={styles.targetIcon}>🎤</span>
+                  <span className={styles.targetIcon}><IconMic /></span>
                   <span>{s.name}</span>
                 </button>
               ))}
             </div>
             <button className={styles.newSetlistRow} onClick={() => createSetlistAndAdd(picker)}>
-              + Novo concerto
+              <IconPlus />
+              Novo concerto
             </button>
           </div>
         </div>
@@ -482,7 +612,9 @@ export default function SearchPage() {
                 <div className={styles.modalTitle}>{preview.result.title}</div>
                 <div className={styles.modalArtist}>{preview.result.artist}</div>
               </div>
-              <button className={styles.closeBtn} onClick={() => setPreview(null)}>✕</button>
+              <button className={styles.closeBtn} onClick={() => setPreview(null)} aria-label="Fechar">
+                <IconX />
+              </button>
             </div>
             <div className={styles.previewBody}>
               {preview.loading ? (
@@ -496,13 +628,19 @@ export default function SearchPage() {
               )}
             </div>
             <div className={styles.modalFooter}>
-              {preview.lines && <span className={styles.syncNote}>✓ Inclui sincronização ({preview.lines.length} linhas)</span>}
+              {preview.lines && (
+                <span className={styles.syncNote}>
+                  <IconCheck />
+                  Inclui sincronização ({preview.lines.length} linhas)
+                </span>
+              )}
               <button
                 className={styles.addBtn}
                 onClick={() => { const r = preview.result; setPreview(null); setlistId ? doAdd(r, setlistId) : projectId ? doAdd(r, null, true) : setPicker(r) }}
                 disabled={!!saving}
               >
-                + Adicionar
+                <IconPlus />
+                Adicionar
               </button>
             </div>
           </div>
@@ -515,7 +653,9 @@ export default function SearchPage() {
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div className={styles.modalTitle}>Nova música</div>
-              <button className={styles.closeBtn} onClick={() => closeManual(false)}>✕</button>
+              <button className={styles.closeBtn} onClick={() => closeManual(false)} aria-label="Fechar">
+                <IconX />
+              </button>
             </div>
             <div className={styles.manualForm}>
               <div className={styles.manualRow}>
@@ -523,8 +663,9 @@ export default function SearchPage() {
                 <input className={styles.manualInput} placeholder="Artista *" value={manual.artist} onChange={e => setManual({ ...manual, artist: e.target.value })} />
               </div>
               <div className={styles.pdfRow}>
-                <label className={styles.pdfBtn}>
-                  {importingPdf ? '⏳ A ler PDF...' : '📄 Importar letra de PDF'}
+                <label className={`${styles.pdfBtn} ${importingPdf ? styles.btnBusy : ''}`}>
+                  <IconFile size={16} />
+                  {importingPdf ? 'A ler PDF...' : 'Importar letra de PDF'}
                   <input
                     type="file"
                     accept="application/pdf"
@@ -558,7 +699,10 @@ export default function SearchPage() {
       {/* TOAST: adicionada à setlist de origem, sem sair da pesquisa */}
       {addedToast && setlistId && (
         <div className={styles.addedToast} role="status">
-          <span>✓ Adicionada ao concerto</span>
+          <span className={styles.addedToastMsg}>
+            <IconCheck size={15} />
+            Adicionada ao concerto
+          </span>
           <button className={styles.addedToastLink} onClick={() => navigate(`/setlist/${setlistId}`)}>
             Ver concerto
           </button>
