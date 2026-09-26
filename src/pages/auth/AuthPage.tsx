@@ -14,6 +14,38 @@ function friendlyError(msg: string) {
   return msg
 }
 
+/* ── Ícones SVG inline ── */
+
+function IconEye() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function IconEyeOff() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68" />
+      <path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3.5 8 10 8a9.7 9.7 0 0 0 5.39-1.61" />
+      <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+      <line x1="2" y1="2" x2="22" y2="22" />
+    </svg>
+  )
+}
+
+function IconAlert() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  )
+}
+
 export default function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
@@ -107,7 +139,7 @@ export default function AuthPage() {
   return (
     <div className={styles.page}>
       <div className={styles.card}>
-        <div className={styles.logo}>
+        <div className={styles.logo} aria-label="gigio">
           <span className={styles.gig}>gig</span><span className={styles.io}>io</span>
         </div>
         <p className={styles.tagline}>O teu companheiro de palco</p>
@@ -136,25 +168,39 @@ export default function AuthPage() {
                   aria-label={showNewPassword ? 'Ocultar password' : 'Mostrar password'}
                   onClick={() => setShowNewPassword(v => !v)}
                 >
-                  {showNewPassword ? '🙈' : '👁'}
+                  {showNewPassword ? <IconEyeOff /> : <IconEye />}
                 </button>
               </div>
               {error && (
                 <p className={styles.error}>
-                  <span className={styles.errorIcon} aria-hidden="true">⚠</span>
+                  <span className={styles.errorIcon}><IconAlert /></span>
                   {error}
                 </p>
               )}
               <button className={styles.btn} type="submit" disabled={updatingPassword}>
-                {updatingPassword ? '...' : 'Guardar nova password'}
+                {updatingPassword ? '…' : 'Guardar nova password'}
               </button>
             </form>
           </>
         ) : (
           <>
-            <div className={styles.modeTabs}>
-              <button className={mode === 'login' ? styles.activeTab : styles.tab} onClick={() => setMode('login')}>Entrar</button>
-              <button className={mode === 'register' ? styles.activeTab : styles.tab} onClick={() => setMode('register')}>Criar conta</button>
+            <div className={styles.modeTabs} role="tablist" aria-label="Entrar ou criar conta">
+              <button
+                role="tab"
+                aria-selected={mode === 'login'}
+                className={mode === 'login' ? styles.activeTab : styles.tab}
+                onClick={() => setMode('login')}
+              >
+                Entrar
+              </button>
+              <button
+                role="tab"
+                aria-selected={mode === 'register'}
+                className={mode === 'register' ? styles.activeTab : styles.tab}
+                onClick={() => setMode('register')}
+              >
+                Criar conta
+              </button>
             </div>
 
             <form onSubmit={handleSubmit} className={styles.form}>
@@ -198,7 +244,7 @@ export default function AuthPage() {
                   aria-label={showPassword ? 'Ocultar password' : 'Mostrar password'}
                   onClick={() => setShowPassword(v => !v)}
                 >
-                  {showPassword ? '🙈' : '👁'}
+                  {showPassword ? <IconEyeOff /> : <IconEye />}
                 </button>
               </div>
               {error && (
@@ -206,13 +252,13 @@ export default function AuthPage() {
                   <p className={styles.success}>{error}</p>
                 ) : (
                   <p className={styles.error}>
-                    <span className={styles.errorIcon} aria-hidden="true">⚠</span>
+                    <span className={styles.errorIcon}><IconAlert /></span>
                     {error}
                   </p>
                 )
               )}
               <button className={styles.btn} type="submit" disabled={loading}>
-                {loading ? '...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+                {loading ? '…' : mode === 'login' ? 'Entrar' : 'Criar conta'}
               </button>
               {mode === 'login' && (
                 <button
@@ -221,7 +267,7 @@ export default function AuthPage() {
                   onClick={forgotPassword}
                   disabled={sendingReset}
                 >
-                  {sendingReset ? 'A enviar...' : 'Esqueci-me da password'}
+                  {sendingReset ? 'A enviar…' : 'Esqueci-me da password'}
                 </button>
               )}
             </form>

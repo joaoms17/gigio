@@ -17,6 +17,12 @@ interface Props {
   strokeWidth: number
   clearTrigger: number
   disabled?: boolean   // when true, pointer-events:none so page can scroll
+  /**
+   * Element whose size is the coordinate basis for the strokes (the lyrics
+   * block). Its height tracks the text (font size changes, rewraps) instead
+   * of the pane's min-height. Falls back to the layer element itself.
+   */
+  contentRef?: { current: HTMLElement | null }
 }
 
 export interface AnnotationHandle {
@@ -27,6 +33,8 @@ export const ANN_STORAGE_KEY = (id: string) => `gigio_ann_v1_${id}`
 
 export interface SavedAnnotations {
   w: number
+  /** Content height at draw time — optional: older payloads only stored `w`. */
+  h?: number
   strokes: Stroke[]
 }
 
@@ -116,15 +124,24 @@ function getScrollParent(el: HTMLElement | null): HTMLElement | null {
   return null
 }
 
-/** Scale stroke coordinates from the width they were drawn at to the current width. */
-function scaleStrokes(strokes: Stroke[], fromW: number, toW: number): Stroke[] {
-  if (!fromW || !toW || fromW === toW) return strokes
-  const k = toW / fromW
-  return strokes.map(s => ({ ...s, pts: s.pts.map(p => p * k) }))
+/** Scale stroke coordinates by independent X/Y ratios. */
+function scaleStrokes(strokes: Stroke[], kx: number, ky: number): Stroke[] {
+  if (!isFinite(kx) || !isFinite(ky) || kx <= 0 || ky <= 0 || (kx === 1 && ky === 1)) return strokes
+  return strokes.map(s => ({ ...s, pts: s.pts.map((p, i) => p * (i % 2 === 0 ? kx : ky)) }))
+}
+
+/**
+ * Ratios to map coordinates saved at (fromW, fromH) onto (toW, toH).
+ * Legacy payloads have no height — Y then follows the width ratio, as before.
+ */
+function scaleRatios(fromW: number, fromH: number | undefined, toW: number, toH: number) {
+  const kx = fromW > 0 && toW > 0 ? toW / fromW : 1
+  const ky = fromH && fromH > 0 && toH > 0 ? toH / fromH : kx
+  return { kx, ky }
 }
 
 const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationLayer(
-  { songId, userId, tool, color, strokeWidth, clearTrigger, disabled = false },
+  { songId, userId, tool, color, strokeWidth, clearTrigger, disabled = false, contentRef },
   ref
 ) {
   const layerRef = useRef<HTMLDivElement>(null)
@@ -137,8 +154,10 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   const currentRef = useRef<Stroke | null>(null)
   const activePointerRef = useRef<number | null>(null)
   const prevClearRef = useRef(clearTrigger)
-  // Width the current stroke coordinates are expressed in (for rotation/resize rescaling)
+  // Dimensions the current stroke coordinates are expressed in (for
+  // rotation/resize/font-size rescaling): content width and content height
   const strokesWRef = useRef(0)
+  const strokesHRef = useRef(0)
 
   const loadedRef = useRef(false)
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -160,23 +179,27 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
 
   useEffect(() => {
     loadedRef.current = false
-    const curW = layerRef.current?.offsetWidth ?? 0
-    const local = loadAnnotations(songId)
-    // Strokes are saved with the width they were drawn at — rescale to the
-    // current width so rotation/resize keeps them aligned with the text
-    setStrokes(scaleStrokes(local?.strokes ?? [], local?.w ?? 0, curW))
-    strokesWRef.current = curW || local?.w || 0
-    historyRef.current = []
+    // Strokes are saved with the content size (w, h) they were drawn at —
+    // rescale X by the width ratio and Y by the height ratio so rotation,
+    // resizes and font-size changes keep them aligned with the text
+    const adopt = (payload: SavedAnnotations | null) => {
+      const basisEl = contentRef?.current ?? layerRef.current
+      const curW = basisEl?.offsetWidth ?? 0
+      const curH = basisEl?.offsetHeight ?? 0
+      const { kx, ky } = scaleRatios(payload?.w ?? 0, payload?.h, curW, curH)
+      setStrokes(scaleStrokes(payload?.strokes ?? [], kx, ky))
+      strokesWRef.current = curW || payload?.w || 0
+      strokesHRef.current = curH || (payload?.h ? payload.h * ky : 0)
+      historyRef.current = []
+    }
+    adopt(loadAnnotations(songId))
     loadedRef.current = true
     if (userId) {
       pullAnnotations(songId, userId).then(remote => {
         if (!remote) return
         const localNow = loadAnnotations(songId)
         if (!localNow || localNow.strokes.length === 0) {
-          const w = layerRef.current?.offsetWidth ?? 0
-          setStrokes(scaleStrokes(remote.strokes, remote.w ?? 0, w))
-          strokesWRef.current = w || remote.w || 0
-          historyRef.current = []
+          adopt(remote)
           try { localStorage.setItem(ANN_STORAGE_KEY(songId), JSON.stringify(remote)) } catch {}
         }
       })
@@ -185,10 +208,12 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
 
   useEffect(() => {
     if (!loadedRef.current) return
-    // Save with the width the coordinates are expressed in, not whatever the
-    // layout happens to measure mid-rotation
-    const w = strokesWRef.current || layerRef.current?.offsetWidth || svgW
-    const payload: SavedAnnotations = { w, strokes }
+    // Save with the dimensions the coordinates are expressed in, not whatever
+    // the layout happens to measure mid-rotation
+    const basisEl = contentRef?.current ?? layerRef.current
+    const w = strokesWRef.current || basisEl?.offsetWidth || svgW
+    const h = strokesHRef.current || basisEl?.offsetHeight || 0
+    const payload: SavedAnnotations = { w, h, strokes }
     try { localStorage.setItem(ANN_STORAGE_KEY(songId), JSON.stringify(payload)) } catch {}
     if (userId) {
       if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
@@ -235,21 +260,42 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   useEffect(() => {
     const el = layerRef.current
     if (!el) return
-    const obs = new ResizeObserver(e => {
-      const newW = e[0].contentRect.width
-      setSvgW(newW)
-      setSvgH(e[0].contentRect.height)
-      // Rotation/resize: rescale existing strokes to the new width
-      if (newW > 0 && strokesWRef.current > 0 && Math.abs(newW - strokesWRef.current) > 1) {
-        const fromW = strokesWRef.current
-        strokesWRef.current = newW
-        setStrokes(prev => scaleStrokes(prev, fromW, newW))
-        historyRef.current = historyRef.current.map(snap => scaleStrokes(snap, fromW, newW))
-      } else if (newW > 0 && strokesWRef.current === 0) {
-        strokesWRef.current = newW
+    const basisEl = contentRef?.current ?? el
+
+    // Rotation/resize/font-size change: rescale existing strokes from the
+    // basis they are expressed in to the new content size (X by the width
+    // ratio, Y by the height ratio)
+    const rescale = (newW: number, newH: number) => {
+      const fromW = strokesWRef.current
+      const fromH = strokesHRef.current
+      // First real measurement: adopt it as the basis, points stay as-is
+      if (fromW === 0 && newW > 0) strokesWRef.current = newW
+      if (fromH === 0 && newH > 0) strokesHRef.current = newH
+      if (fromW <= 0 || newW <= 0) return
+      const wChanged = Math.abs(newW - fromW) > 1
+      const hChanged = fromH > 0 && newH > 0 && Math.abs(newH - fromH) > 1
+      if (!wChanged && !hChanged) return
+      const { kx, ky } = scaleRatios(fromW, fromH, newW, newH)
+      strokesWRef.current = newW
+      strokesHRef.current = newH > 0 ? newH : fromH > 0 ? fromH * ky : 0
+      setStrokes(prev => scaleStrokes(prev, kx, ky))
+      historyRef.current = historyRef.current.map(snap => scaleStrokes(snap, kx, ky))
+    }
+
+    const obs = new ResizeObserver(entries => {
+      for (const en of entries) {
+        // The svg canvas always spans the layer itself
+        if (en.target === el) {
+          setSvgW(en.contentRect.width)
+          setSvgH(en.contentRect.height)
+        }
+        if (en.target === basisEl) {
+          rescale(en.contentRect.width, en.contentRect.height)
+        }
       }
     })
     obs.observe(el)
+    if (basisEl !== el) obs.observe(basisEl)
     setSvgW(el.offsetWidth)
     setSvgH(el.offsetHeight)
     return () => obs.disconnect()

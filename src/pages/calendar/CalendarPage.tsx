@@ -17,6 +17,13 @@ interface Setlist {
 const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
 const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
+const STATUS_LABELS: Record<string, string> = {
+  draft: 'rascunho',
+  preparing: 'em preparação',
+  final: 'final',
+  archived: 'arquivado',
+}
+
 function toYMD(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
@@ -24,6 +31,12 @@ function toYMD(d: Date) {
 function parseLocal(dateStr: string) {
   const [y, m, d] = dateStr.split('-').map(Number)
   return new Date(y, m - 1, d)
+}
+
+function monthShort(dateStr: string) {
+  return parseLocal(dateStr)
+    .toLocaleDateString('pt-PT', { month: 'short' })
+    .replace('.', '')
 }
 
 function buildCalendarDays(year: number, month: number) {
@@ -38,6 +51,41 @@ function buildCalendarDays(year: number, month: number) {
     days.push(new Date(year, month, 1 - startOffset + i))
   }
   return days
+}
+
+/* ── Ícones SVG inline ── */
+
+function IconChevronLeft() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  )
+}
+
+function IconChevronRight({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  )
+}
+
+function IconPlus({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  )
+}
+
+function IconPlay({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true">
+      <path d="M8 5.5v13a1 1 0 0 0 1.53.85l10.2-6.5a1 1 0 0 0 0-1.7L9.53 4.65A1 1 0 0 0 8 5.5Z" />
+    </svg>
+  )
 }
 
 export default function CalendarPage() {
@@ -135,19 +183,27 @@ export default function CalendarPage() {
   return (
     <div className={styles.page}>
 
-      {/* Month header */}
-      <div className={styles.monthNav}>
-        <button className={styles.navBtn} onClick={prevMonth} aria-label="Mês anterior">‹</button>
-        <h1 className={styles.monthTitle}>{MONTHS[month]} {year}</h1>
-        <button className={styles.navBtn} onClick={nextMonth} aria-label="Mês seguinte">›</button>
-        <button
-          className={styles.todayBtn}
-          onClick={goToday}
-          disabled={viewingCurrentMonth && selected === todayStr}
-        >
-          Hoje
-        </button>
+      {/* Header: título + navegação de mês em segmented */}
+      <div className={styles.header}>
+        <h1 className={styles.title}>Calendário</h1>
+        <div className={styles.segmented} role="group" aria-label="Navegação de mês">
+          <button className={styles.segBtn} onClick={prevMonth} aria-label="Mês anterior">
+            <IconChevronLeft />
+          </button>
+          <button
+            className={`${styles.segBtn} ${styles.segToday}`}
+            onClick={goToday}
+            disabled={viewingCurrentMonth && selected === todayStr}
+          >
+            Hoje
+          </button>
+          <button className={styles.segBtn} onClick={nextMonth} aria-label="Mês seguinte">
+            <IconChevronRight />
+          </button>
+        </div>
       </div>
+
+      <h2 className={styles.monthTitle}>{MONTHS[month]} {year}</h2>
 
       {/* Weekday labels */}
       <div className={styles.weekRow}>
@@ -211,15 +267,17 @@ export default function CalendarPage() {
                 onClick={createOnSelectedDay}
                 disabled={creating}
               >
+                <IconPlus />
                 {creating
                   ? 'A criar...'
-                  : `＋ Criar concerto a ${parseLocal(selected).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' })}`}
+                  : `Criar concerto a ${parseLocal(selected).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' })}`}
               </button>
             </>
           ) : (
             <div className={styles.eventList}>
               {selectedEvents.map(ev => {
                 const accent = ev.band?.color ?? '#7C3AED'
+                const statusLabel = ev.status ? STATUS_LABELS[ev.status] : undefined
                 return (
                   <div
                     key={ev.id}
@@ -228,22 +286,34 @@ export default function CalendarPage() {
                     tabIndex={0}
                     onClick={() => navigate(`/setlist/${ev.id}`)}
                     onKeyDown={e => { if (e.key === 'Enter') navigate(`/setlist/${ev.id}`) }}
-                    style={{ borderLeftColor: accent }}
                   >
+                    <div className={styles.dateBlock} style={{ borderColor: accent }}>
+                      <span className={styles.dateDay}>{parseLocal(ev.date).getDate()}</span>
+                      <span className={styles.dateMonth}>{monthShort(ev.date)}</span>
+                    </div>
                     <div className={styles.eventInfo}>
                       <div className={styles.eventName}>{ev.name}</div>
                       <div className={styles.eventMeta}>
                         {ev.band?.name && <span style={{ color: accent }}>{ev.band.name}</span>}
-                        {ev.venue && <span className={styles.eventVenue}> · {ev.venue}</span>}
+                        {ev.venue && (
+                          <span className={styles.eventVenue}>
+                            {ev.band?.name ? ' · ' : ''}{ev.venue}
+                          </span>
+                        )}
                       </div>
                     </div>
+                    {statusLabel && (
+                      <span className={styles.statusBadge} data-status={ev.status ?? undefined}>
+                        {statusLabel}
+                      </span>
+                    )}
                     <button
                       className={styles.playBtn}
                       aria-label={`Iniciar concerto ${ev.name}`}
                       title="Iniciar concerto"
                       onClick={e => { e.stopPropagation(); navigate(`/setlist/${ev.id}/concert`) }}
                     >
-                      ▶
+                      <IconPlay />
                     </button>
                   </div>
                 )
@@ -273,15 +343,15 @@ export default function CalendarPage() {
                   onClick={() => navigate(`/setlist/${ev.id}`)}
                   onKeyDown={e => { if (e.key === 'Enter') navigate(`/setlist/${ev.id}`) }}
                 >
-                  <div className={styles.mDateBadge} style={{ background: accent + '22', color: accent }}>
-                    <span className={styles.mDay}>{d.getDate()}</span>
-                    <span className={styles.mMon}>{d.toLocaleDateString('pt-PT', { month: 'short' }).replace('.', '')}</span>
+                  <div className={styles.dateBlock} style={{ borderColor: accent }}>
+                    <span className={styles.dateDay}>{d.getDate()}</span>
+                    <span className={styles.dateMonth}>{monthShort(ev.date)}</span>
                   </div>
                   <div className={styles.mInfo}>
                     <div className={styles.mName}>{ev.name}</div>
                     {ev.band?.name && <div className={styles.mProject} style={{ color: accent }}>{ev.band.name}</div>}
                   </div>
-                  <span className={styles.mChevron}>›</span>
+                  <span className={styles.mChevron}><IconChevronRight size={20} /></span>
                 </div>
               )
             })}

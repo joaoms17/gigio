@@ -6,9 +6,10 @@ const PAD_V = 16
 const PAD_H = 20
 
 /**
- * Read-only view of lyrics + rehearsal annotations, scaled to fit the
- * available width. Renders at the width the strokes were drawn at and
- * applies a CSS transform so the drawing stays pixel-aligned with the text.
+ * Read-only view of lyrics + rehearsal annotations. The text renders at its
+ * natural size for the available width; the stroke coordinates (saved with
+ * the content width `w` and height `h` they were drawn at) are rescaled —
+ * X by the width ratio, Y by the height ratio — to stay aligned with it.
  */
 export default function AnnotatedLyrics({
   songId, lyrics, userId, bgColor, textColor, activeLine, accentColor, fontSize, lineHeight,
@@ -56,8 +57,9 @@ export default function AnnotatedLyrics({
 
   // Width of the drawing area (inside padding)
   const contentW = Math.max(0, outerW - padH * 2)
-  const baseW = data?.w && data.w > 0 ? data.w : contentW
-  const scale = contentW > 0 && baseW > 0 ? contentW / baseW : 1
+  const xRatio = data?.w && data.w > 0 && contentW > 0 ? contentW / data.w : 1
+  // Dados antigos sem `h` guardado: Y segue o rácio de largura, como antes
+  const yRatio = data?.h && data.h > 0 && innerH > 0 ? innerH / data.h : xRatio
 
   const isDark = !!bgColor
 
@@ -69,22 +71,13 @@ export default function AnnotatedLyrics({
         borderRadius: isDark ? 0 : 12,
         overflow: 'hidden',
         padding: `${padV}px ${padH}px`,
-        height: innerH > 0 ? innerH * scale + padV * 2 : undefined,
         color: textColor ?? '#0f0f14',
         ['--text' as any]: textColor ?? '#0f0f14',
         ['--text2' as any]: isDark ? 'rgba(255,255,255,0.55)' : '#5c5c78',
         ['--text3' as any]: isDark ? 'rgba(255,255,255,0.30)' : '#9898b4',
       }}
     >
-      <div
-        ref={innerRef}
-        style={{
-          position: 'relative',
-          width: baseW || '100%',
-          transform: `scale(${scale})`,
-          transformOrigin: 'top left',
-        }}
-      >
+      <div ref={innerRef} style={{ position: 'relative' }}>
         <LyricsView lyrics={lyrics} activeLine={activeLine} accent={accentColor} fontSize={fontSize} lineHeight={lineHeight} />
         {data && data.strokes.length > 0 && (
           <svg
@@ -93,9 +86,9 @@ export default function AnnotatedLyrics({
             {data.strokes.map(s => (
               <path
                 key={s.id}
-                d={annotationPath(s.pts)}
+                d={annotationPath(s.pts.map((p, i) => p * (i % 2 === 0 ? xRatio : yRatio)))}
                 stroke={s.color}
-                strokeWidth={s.width}
+                strokeWidth={s.width * xRatio}
                 fill="none"
                 strokeLinecap="round"
                 strokeLinejoin="round"

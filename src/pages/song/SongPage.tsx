@@ -27,6 +27,78 @@ const ANN_WIDTHS = [
   { id: 'thick',  value: 8,  size: 11, label: 'Traço grosso' },
 ]
 
+// Tamanho da letra no modo ensaio — A− / A+ na rehearsalBar, persistido
+// globalmente (a preferência do músico vale para todas as músicas)
+const REHEARSAL_FONT_KEY = 'gigio-rehearsal-font-size'
+const REHEARSAL_FONT_MIN = 22
+const REHEARSAL_FONT_MAX = 56
+const REHEARSAL_FONT_STEP = 4
+const REHEARSAL_FONT_DEFAULT = 32
+
+function loadRehearsalFont(): number {
+  try {
+    const v = parseInt(localStorage.getItem(REHEARSAL_FONT_KEY) ?? '', 10)
+    if (Number.isFinite(v)) return Math.min(REHEARSAL_FONT_MAX, Math.max(REHEARSAL_FONT_MIN, v))
+  } catch {}
+  return REHEARSAL_FONT_DEFAULT
+}
+
+/* Ícones SVG inline (stroke) — substituem os glifos Unicode dos botões */
+const ICON_PROPS = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+  'aria-hidden': true,
+} as const
+
+function IconPencil({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON_PROPS}>
+      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+    </svg>
+  )
+}
+
+function IconEditText({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON_PROPS}>
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  )
+}
+
+function IconMusic({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON_PROPS}>
+      <path d="M9 18V5l12-2v13" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="16" r="3" />
+    </svg>
+  )
+}
+
+function IconUndo({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON_PROPS}>
+      <polyline points="9 14 4 9 9 4" />
+      <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+    </svg>
+  )
+}
+
+function IconScrollV({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON_PROPS}>
+      <path d="M12 4v16" />
+      <polyline points="8 8 12 4 16 8" />
+      <polyline points="8 16 12 20 16 16" />
+    </svg>
+  )
+}
+
 type Tab = 'lyrics' | 'chords' | 'details'
 
 const TAG_SUGGESTIONS = [
@@ -97,6 +169,18 @@ export default function SongPage() {
   const [annClear, setAnnClear] = useState(0)
   const [annScrollMode, setAnnScrollMode] = useState(false)
   const annLayerRef = useRef<AnnotationHandle>(null)
+  // Bloco da letra no ensaio — base de coordenadas das anotações (o
+  // AnnotationLayer re-escala quando a altura/largura do texto muda)
+  const lyricsContentRef = useRef<HTMLDivElement>(null)
+
+  const [rehearsalFont, setRehearsalFont] = useState(loadRehearsalFont)
+  const changeRehearsalFont = useCallback((delta: number) => {
+    setRehearsalFont(v => {
+      const next = Math.min(REHEARSAL_FONT_MAX, Math.max(REHEARSAL_FONT_MIN, v + delta))
+      try { localStorage.setItem(REHEARSAL_FONT_KEY, String(next)) } catch {}
+      return next
+    })
+  }, [])
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isDirtyRef = useRef(false)
@@ -317,7 +401,7 @@ export default function SongPage() {
             placeholder="Título da música"
             aria-label="Título da música (editável)"
           />
-          <span className={styles.editHint} aria-hidden="true">✎</span>
+          <span className={styles.editHint} aria-hidden="true"><IconPencil size={15} /></span>
         </div>
         <input
           className={styles.artistInput}
@@ -377,13 +461,13 @@ export default function SongPage() {
                   className={`${styles.modeBtn} ${mode === 'ensaio' ? styles.modeBtnActive : ''}`}
                   onClick={() => setMode('ensaio')}
                 >
-                  ✏ Ensaio
+                  <IconPencil /> Ensaio
                 </button>
                 <button
                   className={`${styles.modeBtn} ${mode === 'editar' ? styles.modeBtnActive : ''}`}
                   onClick={() => setMode('editar')}
                 >
-                  ✎ Editar letra
+                  <IconEditText /> Editar letra
                 </button>
               </div>
               <button
@@ -392,7 +476,7 @@ export default function SongPage() {
                 title="Editor de sincronização de letra"
                 aria-label="Abrir editor de sincronização de letra"
               >
-                🎵 Sincronizar
+                <IconMusic /> Sincronizar
               </button>
             </div>
 
@@ -453,7 +537,29 @@ export default function SongPage() {
                     title="Desfazer"
                     aria-label="Desfazer"
                   >
-                    ↩
+                    <IconUndo />
+                  </button>
+
+                  <div className={styles.annDivider} />
+
+                  {/* Font size — A− / A+ */}
+                  <button
+                    className={`${styles.annTool} ${styles.annFontBtn}`}
+                    onClick={() => changeRehearsalFont(-REHEARSAL_FONT_STEP)}
+                    disabled={rehearsalFont <= REHEARSAL_FONT_MIN}
+                    title="Diminuir letra"
+                    aria-label="Diminuir letra"
+                  >
+                    A−
+                  </button>
+                  <button
+                    className={`${styles.annTool} ${styles.annFontBtn}`}
+                    onClick={() => changeRehearsalFont(REHEARSAL_FONT_STEP)}
+                    disabled={rehearsalFont >= REHEARSAL_FONT_MAX}
+                    title="Aumentar letra"
+                    aria-label="Aumentar letra"
+                  >
+                    A+
                   </button>
 
                   {/* Clear all annotations */}
@@ -462,7 +568,7 @@ export default function SongPage() {
                     onClick={async () => {
                       const ok = await confirm({
                         title: 'Limpar anotações',
-                        message: 'Apagar todas as anotações desta música? Podes recuperá-las com ↩ Desfazer logo a seguir.',
+                        message: 'Apagar todas as anotações desta música? Podes recuperá-las com Desfazer logo a seguir.',
                         confirmLabel: 'Limpar',
                         danger: true,
                       })
@@ -476,7 +582,9 @@ export default function SongPage() {
                 <div className={styles.previewWrap}>
                   <div className={`${styles.previewPane} ${!annScrollMode ? styles.previewPaneLocked : ''}`}>
                     <div className={styles.previewInner}>
-                      <LyricsView lyrics={lyrics} fontSize={32} lineHeight={1.6} />
+                      <div ref={lyricsContentRef}>
+                        <LyricsView lyrics={lyrics} fontSize={rehearsalFont} lineHeight={1.6} />
+                      </div>
                       {song && (
                         <AnnotationLayer
                           ref={annLayerRef}
@@ -487,6 +595,7 @@ export default function SongPage() {
                           strokeWidth={annWidth}
                           clearTrigger={annClear}
                           disabled={annScrollMode}
+                          contentRef={lyricsContentRef}
                         />
                       )}
                     </div>
@@ -497,7 +606,7 @@ export default function SongPage() {
                     onClick={() => setAnnScrollMode(m => !m)}
                     title={annScrollMode ? 'Modo scroll — toca para anotar' : 'Modo anotação — toca para scroll'}
                   >
-                    {annScrollMode ? <><span className={styles.floatIcon}>↕</span><span className={styles.floatLabel}>Scroll</span></> : <><span className={styles.floatIcon}>✏</span><span className={styles.floatLabel}>Anotar</span></>}
+                    {annScrollMode ? <><IconScrollV /><span className={styles.floatLabel}>Scroll</span></> : <><IconPencil /><span className={styles.floatLabel}>Anotar</span></>}
                   </button>
                 </div>
               </>

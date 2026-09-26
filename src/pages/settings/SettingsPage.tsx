@@ -15,6 +15,77 @@ const DEFAULT_THEME: ConcertTheme = {
   bg: '#0d0d0d', active_color: '#ffffff', accent_color: '#FF4D6D', font_size: 26, line_height: 1.6
 }
 
+/* Cor do utilizador — mesma paleta/hashing do Layout para consistência */
+const PALETTE = ['#7C3AED', '#FF4D6D', '#2563EB', '#059669', '#D97706', '#DB2777', '#0891B2', '#9333EA']
+function colorFor(s: string) {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return PALETTE[h % PALETTE.length]
+}
+
+/* ── Ícones SVG inline ── */
+
+function IconSun() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  )
+}
+
+function IconMoon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+    </svg>
+  )
+}
+
+function IconMonitor() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="4" width="20" height="13" rx="2" />
+      <path d="M8 21h8M12 17v4" />
+    </svg>
+  )
+}
+
+function IconCheck({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  )
+}
+
+function IconBook() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+    </svg>
+  )
+}
+
+function IconLogout() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
+    </svg>
+  )
+}
+
+function IconLineHeight() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3v18M8.5 6.5 12 3l3.5 3.5M8.5 17.5 12 21l3.5-3.5" />
+    </svg>
+  )
+}
+
 export default function SettingsPage() {
   const { user } = useAuth()
   const confirmDialog = useConfirm()
@@ -92,61 +163,63 @@ export default function SettingsPage() {
     window.location.href = '/auth'
   }
 
+  const userColor = colorFor(user?.id ?? '')
+
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>Definições</h1>
 
-      {/* Account */}
+      {/* Perfil */}
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>CONTA</div>
+        <div className={styles.sectionTitle}>Perfil</div>
         <div className={styles.card}>
-          <div className={styles.accountRow}>
-            <div className={styles.accountAvatar}>
+          <div className={styles.profileRow}>
+            <div className={styles.avatar} style={{ background: userColor }} aria-hidden="true">
               {displayName ? displayName[0].toUpperCase() : user?.email?.[0]?.toUpperCase() ?? '?'}
             </div>
-            <div className={styles.accountInfo}>
+            <div className={styles.profileInfo}>
+              <label className={styles.fieldLabel} htmlFor="settings-display-name">Nome de utilizador</label>
+              <div className={styles.fieldInputRow}>
+                <input
+                  id="settings-display-name"
+                  className={styles.fieldInput}
+                  value={displayName}
+                  onChange={e => setDisplayName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveName()}
+                  placeholder="O teu nome"
+                />
+                <button
+                  className={`${styles.saveSmall} ${nameSaved ? styles.saveSmallDone : ''}`}
+                  onClick={saveName}
+                  disabled={savingName || !displayName.trim()}
+                >
+                  {savingName ? '…' : nameSaved ? <IconCheck /> : 'Guardar'}
+                </button>
+              </div>
               <div className={styles.accountEmail}>{user?.email}</div>
             </div>
           </div>
-          <div className={styles.fieldRow}>
-            <label className={styles.fieldLabel}>Nome de utilizador</label>
-            <div className={styles.fieldInputRow}>
-              <input
-                className={styles.fieldInput}
-                value={displayName}
-                onChange={e => setDisplayName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && saveName()}
-                placeholder="O teu nome"
-              />
-              <button
-                className={`${styles.saveSmall} ${nameSaved ? styles.saveSmallDone : ''}`}
-                onClick={saveName}
-                disabled={savingName || !displayName.trim()}
-              >
-                {savingName ? '...' : nameSaved ? '✓' : 'Guardar'}
-              </button>
-            </div>
-          </div>
         </div>
-        <button className={styles.signOutBtn} onClick={signOut}>Sair da conta</button>
       </section>
 
-      {/* Appearance */}
+      {/* Aparência */}
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>APARÊNCIA</div>
+        <div className={styles.sectionTitle}>Aparência</div>
         <div className={styles.card}>
           <div className={styles.row}>
             <div className={styles.rowLabel}>
               <div className={styles.label}>Tema da app</div>
               <div className={styles.hint}>Claro, escuro ou seguir o sistema</div>
             </div>
-            <div className={styles.themeToggle}>
-              {([['light', '☀️ Claro'], ['dark', '🌙 Escuro'], ['system', '⚙ Sistema']] as [ThemePref, string][]).map(([v, label]) => (
+            <div className={styles.themeToggle} role="group" aria-label="Tema da app">
+              {([['light', 'Claro', <IconSun key="i" />], ['dark', 'Escuro', <IconMoon key="i" />], ['system', 'Sistema', <IconMonitor key="i" />]] as [ThemePref, string, React.ReactNode][]).map(([v, label, icon]) => (
                 <button
                   key={v}
                   className={`${styles.themeOption} ${appTheme === v ? styles.themeOptionActive : ''}`}
+                  aria-pressed={appTheme === v}
                   onClick={() => { setAppTheme(v); applyThemePref(v) }}
                 >
+                  {icon}
                   {label}
                 </button>
               ))}
@@ -155,9 +228,9 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* Concert theme */}
+      {/* Modo concerto */}
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>MODO CONCERTO</div>
+        <div className={styles.sectionTitle}>Modo concerto</div>
         <div className={styles.card}>
           <div className={styles.row}>
             <div className={styles.rowLabel}>
@@ -170,6 +243,8 @@ export default function SettingsPage() {
                   key={c} onClick={() => pick('bg', c)}
                   className={`${styles.swatch} ${theme.bg === c ? styles.swatchSel : ''}`}
                   style={{ background: c }}
+                  aria-label={`Cor de fundo ${c}`}
+                  aria-pressed={theme.bg === c}
                 />
               ))}
             </div>
@@ -186,6 +261,8 @@ export default function SettingsPage() {
                   key={c} onClick={() => pick('active_color', c)}
                   className={`${styles.swatch} ${theme.active_color === c ? styles.swatchSel : ''}`}
                   style={{ background: c }}
+                  aria-label={`Cor da linha ativa ${c}`}
+                  aria-pressed={theme.active_color === c}
                 />
               ))}
             </div>
@@ -202,6 +279,8 @@ export default function SettingsPage() {
                   key={c} onClick={() => pick('accent_color', c)}
                   className={`${styles.swatch} ${theme.accent_color === c ? styles.swatchSel : ''}`}
                   style={{ background: c }}
+                  aria-label={`Cor de acento ${c}`}
+                  aria-pressed={theme.accent_color === c}
                 />
               ))}
             </div>
@@ -213,13 +292,14 @@ export default function SettingsPage() {
               <div className={styles.hint}>Tamanho da letra no concerto</div>
             </div>
             <div className={styles.sliderRow}>
-              <span style={{ fontSize: 12, color: 'var(--text3)' }}>A</span>
+              <span className={styles.sliderGlyphSm} aria-hidden="true">A</span>
               <input
                 type="range" min={16} max={48} value={theme.font_size}
                 onChange={e => pick('font_size', Number(e.target.value))}
                 className={styles.slider}
+                aria-label="Tamanho do texto"
               />
-              <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text3)' }}>A</span>
+              <span className={styles.sliderGlyphLg} aria-hidden="true">A</span>
               <span className={styles.sliderVal}>{theme.font_size}px</span>
             </div>
           </div>
@@ -230,11 +310,12 @@ export default function SettingsPage() {
               <div className={styles.hint}>Espaço entre linhas da letra</div>
             </div>
             <div className={styles.sliderRow}>
-              <span style={{ fontSize: 11, color: 'var(--text3)' }}>↕</span>
+              <span className={styles.sliderIcon}><IconLineHeight /></span>
               <input
                 type="range" min={10} max={30} step={1} value={Math.round((theme.line_height ?? 1.6) * 10)}
                 onChange={e => pick('line_height', Number(e.target.value) / 10)}
                 className={styles.slider}
+                aria-label="Espaçamento entre linhas"
               />
               <span className={styles.sliderVal}>{(theme.line_height ?? 1.6).toFixed(1)}</span>
             </div>
@@ -266,14 +347,14 @@ export default function SettingsPage() {
           {themeSaveState === 'saving'
             ? 'A guardar…'
             : themeSaveState === 'saved'
-              ? '✓ Preferências guardadas'
+              ? <><IconCheck size={13} /> Preferências guardadas</>
               : 'As alterações são guardadas automaticamente'}
         </div>
       </section>
 
-      {/* Guide */}
+      {/* Ajuda */}
       <section className={styles.section}>
-        <div className={styles.sectionTitle}>AJUDA</div>
+        <div className={styles.sectionTitle}>Ajuda</div>
         <div className={styles.card}>
           <div className={styles.row}>
             <div className={styles.rowLabel}>
@@ -286,10 +367,20 @@ export default function SettingsPage() {
               rel="noopener noreferrer"
               className={styles.guideBtn}
             >
-              📖 Abrir guia
+              <IconBook />
+              Abrir guia
             </a>
           </div>
         </div>
+      </section>
+
+      {/* Sessão */}
+      <section className={styles.section}>
+        <div className={styles.sectionTitle}>Sessão</div>
+        <button className={styles.signOutBtn} onClick={signOut}>
+          <IconLogout />
+          Sair da conta
+        </button>
       </section>
     </div>
   )

@@ -1,34 +1,42 @@
+/* ── Convites — tema "palco" ── */
+
 .page {
   min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background: linear-gradient(160deg, #fff0f3 0%, #f4f0ff 50%, #f0f7ff 100%);
+  padding: 24px 16px;
+  /* Fundo da app com um toque do gradiente da marca */
+  background:
+    radial-gradient(640px 420px at 8% -8%, rgba(255, 77, 109, 0.13), transparent 68%),
+    radial-gradient(720px 480px at 100% 110%, rgba(124, 58, 237, 0.14), transparent 68%),
+    var(--bg);
 }
 
 .card {
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-radius: 20px;
-  box-shadow: 0 8px 40px rgba(124, 58, 237, 0.12);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 22px;
   width: 100%;
   max-width: 420px;
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
+  animation: pageIn 0.25s ease both;
 }
+
+/* ── Logotipo "gigio" ── */
 
 .logo {
   text-align: center;
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #FF4D6D, #7C3AED);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  padding: 28px 24px 0;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  padding: 32px 24px 0;
 }
+.gig { color: var(--gig); }
+.io  { color: var(--io); }
 
 .loading {
   text-align: center;
@@ -37,76 +45,100 @@
   font-size: 14px;
 }
 
+/* ── Ícones de estado ── */
+
 .errorIcon, .successIcon {
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
-  font-weight: 700;
-  margin: 28px auto 0;
+  margin: 32px auto 0;
 }
-.errorIcon { background: #fee2e2; color: #dc2626; }
-.successIcon { background: #d1fae5; color: #059669; }
+.errorIcon {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--danger);
+}
+.successIcon {
+  background: rgba(16, 185, 129, 0.13);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--success-fg);
+}
 
 .title {
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.3px;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text);
   text-align: center;
-  padding: 16px 24px 8px;
+  padding: 18px 24px 8px;
   margin: 0;
 }
 
 .sub {
   font-size: 14px;
-  color: var(--text3);
+  color: var(--text2);
   text-align: center;
-  padding: 0 24px 20px;
+  padding: 0 24px 22px;
   margin: 0;
   line-height: 1.5;
 }
 
+/* ── CTA primário ── */
+
 .btn {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: calc(100% - 48px);
   margin: 0 24px 24px;
-  padding: 14px;
-  background: linear-gradient(135deg, var(--gig), var(--io));
+  min-height: 52px;
+  padding: 0 20px;
+  background: var(--gig);
   color: #fff;
   border: none;
-  border-radius: var(--radius);
-  font-size: 15px;
+  border-radius: 15px;
+  font-family: var(--font-display);
+  font-size: 17px;
   font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 4px 16px rgba(255, 77, 109, 0.28);
-  transition: opacity 0.15s;
+  letter-spacing: 0.01em;
+  box-shadow: 0 6px 20px rgba(255, 77, 109, 0.32);
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
 }
-.btn:hover { opacity: 0.88; }
+.btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 8px 24px rgba(255, 77, 109, 0.42);
+}
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
-/* Project invite */
+/* ── Convite por token ── */
+
 .projectBanner {
-  padding: 24px 24px 20px;
+  padding: 28px 24px 22px;
   text-align: center;
 }
 .bannerName {
-  font-size: 24px;
-  font-weight: 900;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
   color: #fff;
-  letter-spacing: -0.3px;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
 }
 .bannerType {
-  font-size: 13px;
-  color: rgba(255,255,255,0.7);
-  margin-top: 4px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+  margin-top: 6px;
 }
 
 .inviteBody {
-  padding: 20px 24px 24px;
+  padding: 22px 24px 24px;
 }
 .inviteMsg {
   font-size: 15px;
@@ -114,6 +146,7 @@
   margin: 0 0 12px;
   line-height: 1.5;
 }
+.inviteMsg strong { color: var(--text); }
 .projectDesc {
   font-size: 13px;
   color: var(--text3);
@@ -121,83 +154,118 @@
   line-height: 1.5;
 }
 .inviteMeta {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 .expiryNote {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text3);
 }
 
 .acceptBtn {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  padding: 14px;
+  min-height: 52px;
+  padding: 0 20px;
   border: none;
-  border-radius: var(--radius);
-  font-size: 15px;
+  border-radius: 15px;
+  font-family: var(--font-display);
+  font-size: 17px;
   font-weight: 700;
+  letter-spacing: 0.01em;
   color: #fff;
-  cursor: pointer;
-  transition: opacity 0.15s;
+  box-shadow: var(--shadow-sm);
+  transition: filter 0.15s ease;
   margin-bottom: 10px;
 }
-.acceptBtn:hover { opacity: 0.88; }
+.acceptBtn:hover:not(:disabled) { filter: brightness(1.1); }
 .acceptBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .declineBtn {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  padding: 12px;
+  min-height: 48px;
+  padding: 0 20px;
   background: none;
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 14px;
+  border: 1.5px solid var(--border2);
+  border-radius: 14px;
+  font-size: 15px;
   font-weight: 600;
-  color: var(--text3);
-  cursor: pointer;
-  transition: border-color 0.15s;
+  color: var(--text2);
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
-.declineBtn:hover { border-color: var(--text3); }
+.declineBtn:hover { border-color: var(--text3); background: var(--bg3); color: var(--text); }
 
-/* Code form */
+/* ── Entrada por código ── */
+
 .codeForm {
   padding: 0 24px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 .codeInput {
-  padding: 14px 16px;
+  min-height: 56px;
+  padding: 12px 16px;
   border: 1.5px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 14px;
   background: var(--bg);
   color: var(--text);
-  font-size: 20px;
+  font-size: 22px !important;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.22em;
   text-align: center;
   text-transform: uppercase;
-  font-family: monospace;
-  transition: border-color 0.15s;
+  font-family: var(--font-display);
+  transition: border-color 0.15s ease;
 }
 .codeInput:focus { outline: none; border-color: var(--gig); }
-.codeInput::placeholder { font-weight: 400; letter-spacing: normal; font-size: 16px; }
+.codeInput::placeholder {
+  color: var(--text3);
+  font-weight: 500;
+  letter-spacing: 0.14em;
+}
 
 .codeError {
   font-size: 13px;
-  color: #dc2626;
+  font-weight: 600;
+  color: var(--danger);
   margin: 0;
   text-align: center;
 }
 
+/* .btn dentro do codeForm já tem margem lateral própria — anula-a */
+.codeForm .btn {
+  width: 100%;
+  margin: 0 0 24px;
+}
+
 .backLink {
-  display: block;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
   padding: 16px 24px;
   background: none;
   border: none;
+  border-top: 1px solid var(--border);
   font-size: 13px;
+  font-weight: 600;
   color: var(--text3);
-  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
 }
-.backLink:hover { color: var(--gig); }
+.backLink:hover { color: var(--gig); background: var(--bg3); }
+
+/* ── Responsivo ── */
+
+@media (max-width: 420px) {
+  .page { padding: 16px; }
+  .title { font-size: 23px; }
+  .bannerName { font-size: 24px; }
+  .codeInput { font-size: 20px !important; letter-spacing: 0.16em; }
+}
