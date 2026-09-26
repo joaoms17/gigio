@@ -10,6 +10,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import { useConfirm } from '../../components/ConfirmDialog'
+import { useToast } from '../../components/Toast'
 import ProjectPickerModal from '../../components/ProjectPickerModal'
 import SetlistImportModal from '../../components/SetlistImportModal'
 import { supabase } from '../../lib/supabase'
@@ -66,6 +67,7 @@ export default function SetlistPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const confirmDialog = useConfirm()
+  const toast = useToast()
   const [searchParams] = useSearchParams()
   const autoAddDone = useRef(false)
   const [setlist, setSetlist] = useState<Setlist | null>(null)
@@ -198,7 +200,7 @@ export default function SetlistPage() {
     const { error } = await supabase.from('setlist_songs').insert(
       toAdd.map((s, i) => ({ setlist_id: id, song_id: s.id, position: basePos + i }))
     )
-    if (error) { alert('Erro ao adicionar: ' + error.message); return }
+    if (error) { toast('Erro ao adicionar: ' + error.message, { type: 'error' }); return }
     await loadSongs()
     closeLibrary()
   }
@@ -268,7 +270,7 @@ export default function SetlistPage() {
     const row = songs.find(s => s.id === ssId)
     if (!row) return
     const { error } = await supabase.from('setlist_songs').delete().eq('id', ssId)
-    if (error) { alert('Erro ao remover: ' + error.message); return }
+    if (error) { toast('Erro ao remover: ' + error.message, { type: 'error' }); return }
     setSongs(prev => prev.filter(s => s.id !== ssId))
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
     setRemovedSong(row)
@@ -289,7 +291,7 @@ export default function SetlistPage() {
       custom_intro: row.custom_intro ?? null,
       custom_ending: row.custom_ending ?? null,
     }).select('*, song:songs(*)').single()
-    if (error || !data) { alert('Erro ao anular: ' + (error?.message ?? 'tenta de novo')); return }
+    if (error || !data) { toast('Erro ao anular: ' + (error?.message ?? 'tenta de novo'), { type: 'error' }); return }
     setSongs(prev => [...prev, data as Row].sort((a, b) => a.position - b.position))
   }
 
@@ -325,9 +327,9 @@ export default function SetlistPage() {
     if (!id) return
     if (!await confirmDialog({ title: 'Apagar concerto', message: `Apagar o concerto "${setlist?.name}"? Esta ação não pode ser desfeita.`, confirmLabel: 'Apagar', danger: true })) return
     const { error: e1 } = await supabase.from('setlist_songs').delete().eq('setlist_id', id)
-    if (e1) { alert('Erro ao apagar músicas do concerto: ' + e1.message); return }
+    if (e1) { toast('Erro ao apagar músicas do concerto: ' + e1.message, { type: 'error' }); return }
     const { error: e2 } = await supabase.from('setlists').delete().eq('id', id)
-    if (e2) { alert('Erro ao apagar concerto: ' + e2.message); return }
+    if (e2) { toast('Erro ao apagar concerto: ' + e2.message, { type: 'error' }); return }
     setlist?.band_id ? navigate(`/projects/${setlist.band_id}?tab=setlists`) : navigate('/setlists')
   }
 
@@ -339,7 +341,7 @@ export default function SetlistPage() {
       .insert({ name: `${setlist.name} (cópia)`, owner_id: user.id, band_id: projectId, is_shared: true })
       .select()
       .single()
-    if (error) { alert('Erro ao duplicar: ' + error.message); return }
+    if (error) { toast('Erro ao duplicar: ' + error.message, { type: 'error' }); return }
     if (newSl && songs.length) {
       await supabase.from('setlist_songs').insert(
         songs.map((s, i) => ({ setlist_id: newSl.id, song_id: s.song_id, position: i }))
@@ -449,7 +451,7 @@ export default function SetlistPage() {
       <\/script>
       </body></html>`
     const w = window.open('', '_blank')
-    if (!w) { alert('Permite pop-ups para exportar o PDF.'); return }
+    if (!w) { toast('Permite pop-ups para exportar o PDF.', { type: 'error' }); return }
     w.document.write(html)
     w.document.close()
   }

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ConfirmProvider } from './components/ConfirmDialog'
+import { ToastProvider } from './components/Toast'
 import { useAuth } from './hooks/useAuth'
 import Layout from './components/Layout'
 import AuthPage from './pages/auth/AuthPage'
@@ -80,7 +81,9 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <ConfirmProvider>
-          <AppRoutes />
+          <ToastProvider>
+            <AppRoutes />
+          </ToastProvider>
         </ConfirmProvider>
       </AuthProvider>
     </BrowserRouter>

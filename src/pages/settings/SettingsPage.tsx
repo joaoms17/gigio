@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useConfirm } from '../../components/ConfirmDialog'
+import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { getThemePref, applyThemePref, type ThemePref } from '../../lib/theme'
@@ -17,6 +18,7 @@ const DEFAULT_THEME: ConcertTheme = {
 export default function SettingsPage() {
   const { user } = useAuth()
   const confirmDialog = useConfirm()
+  const toast = useToast()
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_THEME)
   const [appTheme, setAppTheme] = useState<ThemePref>(getThemePref())
   const [themeSaved, setThemeSaved] = useState(false)
@@ -41,7 +43,7 @@ export default function SettingsPage() {
   async function saveTheme() {
     if (!user) return
     const { error } = await supabase.from('profiles').update({ concert_theme: theme }).eq('id', user.id)
-    if (error) { alert('Erro ao guardar as preferências: ' + error.message); return }
+    if (error) { toast('Erro ao guardar as preferências: ' + error.message, { type: 'error' }); return }
     setThemeSaved(true)
     setTimeout(() => setThemeSaved(false), 2000)
   }
@@ -51,7 +53,7 @@ export default function SettingsPage() {
     setSavingName(true)
     const { error } = await supabase.from('profiles').update({ display_name: displayName.trim() }).eq('id', user.id)
     setSavingName(false)
-    if (error) { alert('Erro ao guardar o nome: ' + error.message); return }
+    if (error) { toast('Erro ao guardar o nome: ' + error.message, { type: 'error' }); return }
     setNameSaved(true)
     setTimeout(() => setNameSaved(false), 2000)
   }

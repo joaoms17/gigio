@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { uploadProjectImage } from '../../lib/uploadImage'
+import { useToast } from '../../components/Toast'
 import { useAuth } from '../../hooks/useAuth'
 import {
   type Project,
@@ -45,6 +46,7 @@ async function hardRefresh() {
 export default function ProjectsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
   const [projects, setProjects] = useState<ProjectWithCounts[]>([])
   const [loading, setLoading] = useState(true)
   const [isOffline, setIsOffline] = useState(false)
@@ -135,7 +137,7 @@ export default function ProjectsPage() {
       })
       .select()
       .single()
-    if (error) { setCreating(false); alert('Erro ao criar projeto: ' + error.message); return }
+    if (error) { setCreating(false); toast('Erro ao criar projeto: ' + error.message, { type: 'error' }); return }
     if (data && createImage) {
       try {
         const url = await uploadProjectImage(data.id, createImage)

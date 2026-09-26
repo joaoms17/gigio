@@ -1,0 +1,47 @@
+.stack {
+  position: fixed;
+  left: 50%; transform: translateX(-50%);
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  pointer-events: none;
+}
+/* Acima da bottom-nav no mobile (mesmo offset do .undoSnackbar) */
+@media (max-width: 640px) {
+  .stack { bottom: calc(var(--bottomnav-h) + 12px + env(safe-area-inset-bottom, 0px)); }
+}
+
+.toast {
+  display: flex; align-items: center;
+  min-height: 44px;
+  padding: 10px 18px;
+  max-width: calc(100vw - 32px);
+  background: var(--bg3); color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  font-size: 14px; font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  pointer-events: auto;
+  animation: toastIn 0.2s ease-out;
+}
+
+.toast.error {
+  border-color: rgba(239, 68, 68, 0.55);
+  box-shadow: inset 3px 0 0 #ef4444, var(--shadow-lg);
+}
+
+.toast.success {
+  border-color: rgba(52, 211, 153, 0.55);
+  box-shadow: inset 3px 0 0 #34d399, var(--shadow-lg);
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

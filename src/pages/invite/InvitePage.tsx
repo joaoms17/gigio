@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
+import { useToast } from '../../components/Toast'
 import { PROJECT_TYPE_LABELS, ROLE_LABELS } from '../../types'
 import type { ProjectType, ProjectRole } from '../../types'
 import styles from './InvitePage.module.css'
@@ -28,6 +29,7 @@ export default function InvitePage() {
   const inviteCode = searchParams.get('code')
   const { user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
 
   const [invite, setInvite] = useState<InviteData | null>(null)
   const [inviteError, setInviteError] = useState<string | null>(null)
@@ -86,7 +88,7 @@ export default function InvitePage() {
       const { error: insertErr } = await supabase
         .from('band_members')
         .insert({ band_id: invite.project_id, user_id: user.id, role: invite.role })
-      if (insertErr) { alert('Erro ao entrar no projeto: ' + insertErr.message); setAccepting(false); return }
+      if (insertErr) { toast('Erro ao entrar no projeto: ' + insertErr.message, { type: 'error' }); setAccepting(false); return }
     }
 
     await supabase.from('project_invites').update({ status: 'accepted' }).eq('id', invite.id)

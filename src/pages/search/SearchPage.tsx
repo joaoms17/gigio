@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import { useConfirm } from '../../components/ConfirmDialog'
+import { useToast } from '../../components/Toast'
 import { searchLrclib, getLrclibLyrics } from '../../lib/lrclib'
 import { searchGenius } from '../../lib/genius'
 import { getLyricsOvh } from '../../lib/lyricsovh'
@@ -28,6 +29,7 @@ export default function SearchPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const confirm = useConfirm()
+  const toast = useToast()
   const [searchParams] = useSearchParams()
   const projectId = searchParams.get('project')
   const setlistId = searchParams.get('setlist')
@@ -137,7 +139,7 @@ export default function SearchPage() {
       .order('position', { ascending: false }).limit(1).maybeSingle()
     const { error } = await supabase.from('setlist_songs')
       .insert({ setlist_id: setlistId, song_id: songId, position: (last?.position ?? -1) + 1 })
-    if (error) alert('Erro ao adicionar ao concerto: ' + error.message)
+    if (error) toast('Erro ao adicionar ao concerto: ' + error.message, { type: 'error' })
   }
 
   async function doAdd(r: SearchResult, targetSetlistId: string | null, toProject = false) {
@@ -213,7 +215,7 @@ export default function SearchPage() {
         navigate(`/songs/${songId}?project=${projectId ?? ''}`)
       }
     } catch (err: any) {
-      alert('Erro ao guardar: ' + (err?.message ?? err))
+      toast('Erro ao guardar: ' + (err?.message ?? err), { type: 'error' })
     } finally {
       setSaving(null)
     }
@@ -240,7 +242,7 @@ export default function SearchPage() {
         navigate(`/songs/${songId}?project=${projectId}`)
       }
     } catch (err: any) {
-      alert('Erro ao guardar: ' + (err?.message ?? err))
+      toast('Erro ao guardar: ' + (err?.message ?? err), { type: 'error' })
     } finally {
       setSavingManual(false)
     }
@@ -257,7 +259,7 @@ export default function SearchPage() {
         ? { ...m, lyrics, title: m.title || title, artist: m.artist || artist }
         : { title: query || title, artist: artistQuery || artist, lyrics, setlistId })
     } catch (err: any) {
-      alert(err?.message ?? 'Não foi possível ler o PDF. Tenta copiar o texto manualmente.')
+      toast(err?.message ?? 'Não foi possível ler o PDF. Tenta copiar o texto manualmente.', { type: 'error' })
     } finally {
       setImportingPdf(false)
     }

@@ -4,6 +4,7 @@ import Breadcrumbs from '../../components/Breadcrumbs'
 import LyricsView from '../../components/LyricsView'
 import AnnotationLayer, { type AnnotationHandle } from '../../components/AnnotationLayer'
 import { useConfirm } from '../../components/ConfirmDialog'
+import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import type { Song } from '../../types'
@@ -52,6 +53,7 @@ export default function SongPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const confirm = useConfirm()
+  const toast = useToast()
 
   const projectId = searchParams.get('project')
   const setlistId = searchParams.get('setlist')
@@ -97,6 +99,13 @@ export default function SongPage() {
   const saveRef = useRef<() => Promise<void>>(async () => {})
   // Conflict detection: updated_at as seen at load/last save
   const baseUpdatedAtRef = useRef<string | null>(null)
+  // save() also runs from the unmount cleanup — the async confirm dialog
+  // must not pop up (nor overwrite) after the page is gone
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   useEffect(() => {
     if (!id || !user) return
@@ -172,10 +181,14 @@ export default function SongPage() {
       remote.updated_at !== baseUpdatedAtRef.current &&
       remote.updated_by !== user.id
     ) {
-      const overwrite = window.confirm(
-        'Atenção: esta música foi alterada por outro membro enquanto editavas.\n\n' +
-        'OK = guardar por cima das alterações deles · Cancelar = manter as alterações deles (as tuas edições ficam no editor)'
-      )
+      // Página já desmontada (gravação de saída): nunca gravar por cima em conflito
+      if (!mountedRef.current) return
+      const overwrite = await confirm({
+        title: 'Conflito de edição',
+        message: 'Esta música foi alterada por outro membro enquanto editavas.',
+        confirmLabel: 'Gravar por cima',
+        danger: true,
+      })
       if (!overwrite) return
     }
 
@@ -204,7 +217,7 @@ export default function SongPage() {
     setSaving(false)
     if (error) {
       isDirtyRef.current = true
-      alert('Erro ao guardar: ' + error.message)
+      toast('Erro ao guardar: ' + error.message, { type: 'error' })
       return
     }
     baseUpdatedAtRef.current = newUpdatedAt

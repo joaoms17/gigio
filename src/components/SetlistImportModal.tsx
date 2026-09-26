@@ -5,6 +5,7 @@ import { searchLrclib, getLrclibLyrics } from '../lib/lrclib'
 import { searchGenius } from '../lib/genius'
 import { getLyricsOvh } from '../lib/lyricsovh'
 import { useAuth } from '../hooks/useAuth'
+import { useToast } from './Toast'
 import type { Song, SearchResult, LyricLine } from '../types'
 import styles from './SetlistImportModal.module.css'
 
@@ -66,6 +67,7 @@ async function fetchResults(query: string): Promise<SearchResult[]> {
 
 export default function SetlistImportModal({ setlistId, projectId, currentPosition, onClose, onImported }: Props) {
   const { user } = useAuth()
+  const toast = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<Step>('upload')
   const [parsing, setParsing] = useState(false)
@@ -292,7 +294,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
       }
       onImported()
     } catch (err: any) {
-      alert('Erro ao guardar: ' + (err?.message ?? err))
+      toast('Erro ao guardar: ' + (err?.message ?? err), { type: 'error' })
       setBulkImporting(false)
     }
   }
@@ -305,7 +307,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
       await saveSongAndAdd(r)
       advanceSearch(true)
     } catch (err: any) {
-      alert('Erro ao guardar: ' + (err?.message ?? err))
+      toast('Erro ao guardar: ' + (err?.message ?? err), { type: 'error' })
     } finally { setSavingKey(null) }
   }
 

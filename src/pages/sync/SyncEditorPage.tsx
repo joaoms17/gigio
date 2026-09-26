@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useConfirm } from '../../components/ConfirmDialog'
+import { useToast } from '../../components/Toast'
 import type { LyricLine } from '../../types'
 import styles from './SyncEditorPage.module.css'
 
@@ -34,6 +35,7 @@ export default function SyncEditorPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const confirm = useConfirm()
+  const toast = useToast()
 
   const [song, setSong] = useState<{ title: string; artist: string } | null>(null)
   const [lines, setLines] = useState<SyncLine[]>([])
@@ -167,7 +169,7 @@ export default function SyncEditorPage() {
       .upsert({ song_id: id, lines: syncLines }, { onConflict: 'song_id' })
     if (syncError) {
       setSaving(false)
-      alert('Erro ao guardar a sincronização: ' + syncError.message)
+      toast('Erro ao guardar a sincronização: ' + syncError.message, { type: 'error' })
       return
     }
     const { error: songError } = await supabase
@@ -176,7 +178,7 @@ export default function SyncEditorPage() {
       .eq('id', id)
     setSaving(false)
     if (songError) {
-      alert('Erro ao guardar a sincronização: ' + songError.message)
+      toast('Erro ao guardar a sincronização: ' + songError.message, { type: 'error' })
       return
     }
     setDirty(false)
