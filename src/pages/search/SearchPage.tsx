@@ -134,7 +134,13 @@ export default function SearchPage() {
   const [savingManual, setSavingManual] = useState(false)
   const [importingPdf, setImportingPdf] = useState(false)
   const [picker, setPicker] = useState<SearchResult | null>(null)
-  const [addedToast, setAddedToast] = useState(false)
+  // Contador: cada adição reinicia o temporizador de auto-dispensa do toast
+  const [addedToast, setAddedToast] = useState(0)
+  useEffect(() => {
+    if (!addedToast) return
+    const t = setTimeout(() => setAddedToast(0), 6000)
+    return () => clearTimeout(t)
+  }, [addedToast])
   const [setlists, setSetlists] = useState<Setlist[]>([])
   const [owned, setOwned] = useState<Set<string>>(new Set())
 
@@ -264,7 +270,7 @@ export default function SearchPage() {
             if (setlistId) {
               // veio de uma setlist — fica na página de resultados
               setSaved(prev => [...prev, keyOf(r)])
-              setAddedToast(true)
+              setAddedToast(n => n + 1)
             } else {
               navigate(`/setlist/${targetSetlistId}`)
             }
@@ -303,7 +309,7 @@ export default function SearchPage() {
       if (songId && targetSetlistId) {
         if (setlistId) {
           // veio de uma setlist — não expulsar da pesquisa a cada adição
-          setAddedToast(true)
+          setAddedToast(n => n + 1)
         } else {
           navigate(`/setlist/${targetSetlistId}`)
         }
@@ -362,7 +368,7 @@ export default function SearchPage() {
       if (songId && manual.setlistId) {
         if (setlistId) {
           // veio de uma setlist — fica na página, com atalho no toast
-          setAddedToast(true)
+          setAddedToast(n => n + 1)
         } else {
           navigate(`/setlist/${manual.setlistId}`)
         }
@@ -697,7 +703,7 @@ export default function SearchPage() {
       )}
 
       {/* TOAST: adicionada à setlist de origem, sem sair da pesquisa */}
-      {addedToast && setlistId && (
+      {addedToast > 0 && setlistId && (
         <div className={styles.addedToast} role="status">
           <span className={styles.addedToastMsg}>
             <IconCheck size={15} />

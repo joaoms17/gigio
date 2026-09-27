@@ -174,7 +174,12 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
 
   async function handleImport() {
     setImporting(true)
-    let pos = currentPosition
+    // Base = max(position)+1 — o comprimento da lista colide com o unique
+    // (setlist_id, position) quando há buracos deixados por remoções
+    const { data: last } = await supabase.from('setlist_songs')
+      .select('position').eq('setlist_id', setlistId)
+      .order('position', { ascending: false }).limit(1).maybeSingle()
+    let pos = Math.max(currentPosition, (last?.position ?? -1) + 1)
     const inserts: { setlist_id: string; song_id: string; position: number }[] = []
     const missedNames: string[] = []
     for (const e of checkedEntries) {
@@ -184,8 +189,15 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
         else missedNames.push(e.entry.songs[i])
       }
     }
-    if (inserts.length > 0) await Promise.all(inserts.map(row => supabase.from('setlist_songs').insert(row)))
-    setAddedCount(inserts.length)
+    let inserted = inserts.length
+    if (inserts.length > 0) {
+      const results = await Promise.all(inserts.map(row => supabase.from('setlist_songs').insert(row)))
+      inserted = results.filter(r => !r.error).length
+      if (inserted < inserts.length) {
+        toast(`${inserts.length - inserted} música${inserts.length - inserted === 1 ? ' não foi adicionada' : 's não foram adicionadas'} ao concerto`, { type: 'error' })
+      }
+    }
+    setAddedCount(inserted)
     setMissed(missedNames)
     setImporting(false)
     setStep('done')
@@ -294,10 +306,18 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
     }).select().single()
     if (songErr) throw songErr
     if (song && lines?.length) await supabase.from('lyric_syncs').insert({ song_id: song.id, lines })
-    if (song) {
-      const { count } = await supabase.from('setlist_songs').select('*', { count: 'exact', head: true }).eq('setlist_id', setlistId)
-      await supabase.from('setlist_songs').insert({ setlist_id: setlistId, song_id: song.id, position: count ?? 0 })
-    }
+    if (song) await addToSetlist(song.id)
+  }
+
+  // Posição = max(position)+1 — usar o count colide com o unique
+  // (setlist_id, position) quando há buracos deixados por remoções
+  async function addToSetlist(songId: string): Promise<void> {
+    const { data: last } = await supabase.from('setlist_songs')
+      .select('position').eq('setlist_id', setlistId)
+      .order('position', { ascending: false }).limit(1).maybeSingle()
+    const { error } = await supabase.from('setlist_songs')
+      .insert({ setlist_id: setlistId, song_id: songId, position: (last?.position ?? -1) + 1 })
+    if (error) throw error
   }
 
   async function addEmpty(name: string): Promise<void> {
@@ -310,10 +330,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
       project_id: projectId ?? null, is_user_edited: false,
     }).select().single()
     if (songErr) throw songErr
-    if (song) {
-      const { count } = await supabase.from('setlist_songs').select('*', { count: 'exact', head: true }).eq('setlist_id', setlistId)
-      await supabase.from('setlist_songs').insert({ setlist_id: setlistId, song_id: song.id, position: count ?? 0 })
-    }
+    if (song) await addToSetlist(song.id)
   }
 
   async function handleBulkImport() {

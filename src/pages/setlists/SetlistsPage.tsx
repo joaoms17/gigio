@@ -5,6 +5,7 @@ import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './SetlistsPage.module.css'
+import { STATUS_LABELS } from '../../lib/setlistStatus'
 
 interface Row {
   id: string
@@ -17,12 +18,6 @@ interface Row {
   setlist_songs: { count: number }[]
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: 'rascunho',
-  preparing: 'em preparação',
-  final: 'final',
-  archived: 'arquivado',
-}
 
 function dayNumber(dateStr: string): string {
   return String(Number(dateStr.split('-')[2]))

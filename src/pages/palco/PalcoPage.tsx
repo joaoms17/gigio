@@ -4,6 +4,7 @@ import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './PalcoPage.module.css'
+import { STATUS_LABELS } from '../../lib/setlistStatus'
 
 interface Row {
   id: string
@@ -15,11 +16,6 @@ interface Row {
   setlist_songs: { count: number }[]
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: 'rascunho',
-  preparing: 'em preparação',
-  final: 'alinhamento final',
-}
 
 /** Dias entre hoje (local) e uma data 'YYYY-MM-DD'. */
 function daysUntil(dateStr: string): number {

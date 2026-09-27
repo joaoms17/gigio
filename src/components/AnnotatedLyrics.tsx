@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import LyricsView from './LyricsView'
 import { loadAnnotations, pullAnnotations, annotationPath, type SavedAnnotations } from './AnnotationLayer'
 
@@ -61,6 +61,18 @@ export default function AnnotatedLyrics({
   // Dados antigos sem `h` guardado: Y segue o rácio de largura, como antes
   const yRatio = data?.h && data.h > 0 && innerH > 0 ? innerH / data.h : xRatio
 
+  // Caminhos re-escalados memoizados — evita remapear todos os pontos de
+  // todos os traços em cada render (ex.: a cada mudança de linha ativa)
+  const scaledPaths = useMemo(
+    () => (data?.strokes ?? []).map(s => ({
+      id: s.id,
+      color: s.color,
+      width: s.width * xRatio,
+      d: annotationPath(s.pts.map((p, i) => p * (i % 2 === 0 ? xRatio : yRatio))),
+    })),
+    [data, xRatio, yRatio]
+  )
+
   const isDark = !!bgColor
 
   return (
@@ -83,12 +95,12 @@ export default function AnnotatedLyrics({
           <svg
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
           >
-            {data.strokes.map(s => (
+            {scaledPaths.map(s => (
               <path
                 key={s.id}
-                d={annotationPath(s.pts.map((p, i) => p * (i % 2 === 0 ? xRatio : yRatio)))}
+                d={s.d}
                 stroke={s.color}
-                strokeWidth={s.width * xRatio}
+                strokeWidth={s.width}
                 fill="none"
                 strokeLinecap="round"
                 strokeLinejoin="round"
