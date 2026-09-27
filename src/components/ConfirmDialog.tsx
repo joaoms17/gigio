@@ -41,8 +41,10 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
         resolver.current(false)
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // Fase de captura: stopPropagation no bubble não trava outros listeners
+    // do próprio window (ex.: os atalhos do ConcertPage voltavam a disparar)
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [opts])
 
   return (

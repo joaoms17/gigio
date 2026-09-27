@@ -4,6 +4,7 @@ import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './CalendarPage.module.css'
+import { STATUS_LABELS } from '../../lib/setlistStatus'
 
 interface Setlist {
   id: string
@@ -17,12 +18,6 @@ interface Setlist {
 const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
 const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: 'rascunho',
-  preparing: 'em preparação',
-  final: 'final',
-  archived: 'arquivado',
-}
 
 function toYMD(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

@@ -115,7 +115,11 @@ export default function AuthPage() {
     }
     setError('')
     setSendingReset(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim())
+    // Sem redirectTo o link do email aterra na raiz do site, onde não há
+    // listener de PASSWORD_RECOVERY nem formulário de nova password
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/auth`,
+    })
     setSendingReset(false)
     if (error) { setError(friendlyError(error.message)); return }
     toast('Email de recuperação enviado. Vê a tua caixa de entrada.', { type: 'success' })
