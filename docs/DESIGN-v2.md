@@ -131,12 +131,16 @@ título `.entityTitle` a 24–28px; botão fechar 44×44 fantasma com ✕ SVG.
 3. **Linha de metadados mono** em vez de chips cheios: `28 SET · QUINTA DA RIBEIRA · 22 MÚS · 1H18`.
 4. **Laranja só onde há ação ou estado vivo**: botão primário, item de navegação ativo (barra/quadrado),
    linha ativa no palco, foco, "ao vivo". Nunca como decoração de fundo.
-5. **Wordmark** `gigio` condensado 800 minúsculas seguido de um quadrado laranja (■) — no rail, topbar e auth.
+5. **Marca** — componente `src/components/Wordmark.tsx`: `<Wordmark />` desenha "gigio" condensado 800 com os
+   pontos dos dois "i" como **LEDs quadrados** `--accent`; `<BrandMark />` é o símbolo compacto "gi" em tile
+   (tinta/invertido), igual ao ícone da app. Usar sempre os componentes — nunca redesenhar a marca à mão.
+6. **Cores de projeto** — `mapLegacyProjectColor()` (`src/lib/projectColor.ts`) em qualquer LED/tile de banda;
+   remapeia a paleta v1 guardada nos dados. Tema de concerto: `normalizeConcertTheme()` (`src/lib/concertTheme.ts`).
 
 ## 5. Navegação
 
 - Rail (≥641px): fundo `--surface`, hairline à direita; itens 76×64 com ícone SVG + rótulo mono 10px uppercase;
-  ativo = texto `--text` + barra vertical 3px `--accent` à esquerda do item. Marca no topo: quadrado 40px `--accent` com "g" `--on-accent` condensado.
+  ativo = texto `--text` + barra vertical 3px `--accent` à esquerda do item. Marca no topo: `<BrandMark size={40} />`.
 - Tab bar (≤640px): `--surface`, hairline em cima; ativo = ícone `--text` + traço 3px `--accent` por cima do ícone; rótulos mono 10px.
 
 ## 6. Modo palco (concerto)

@@ -4,6 +4,7 @@ import { signIn, signUp } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../../components/Toast'
 import styles from './AuthPage.module.css'
+import Wordmark from '../../components/Wordmark'
 
 /* Benefícios — impressos como uma setlist (01/02/03) */
 const BENEFITS = [
@@ -188,10 +189,7 @@ export default function AuthPage() {
         <header className={styles.brand}>
           {/* Wordmark v2 (§4.5): "gigio" condensado 800 + quadrado laranja no fim — igual à topbar */}
           <h1 className={styles.brandTitle}>
-            <span className={styles.wordmark} role="img" aria-label="gigio">
-              <span aria-hidden="true">gigio</span>
-              <span className={styles.wordmarkDot} aria-hidden="true" />
-            </span>
+            <Wordmark className={styles.wordmark} />
           </h1>
           <p className={styles.brandLine}>Setlists · Letras · Palco</p>
         </header>

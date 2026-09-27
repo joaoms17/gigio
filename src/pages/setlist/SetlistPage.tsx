@@ -23,6 +23,7 @@ import {
 } from '../../lib/concertCache'
 import type { Setlist, SetlistSong, Song } from '../../types'
 import styles from './SetlistPage.module.css'
+import { mapLegacyProjectColor } from '../../lib/projectColor'
 
 type Row = SetlistSong & { song: Song }
 
@@ -42,23 +43,6 @@ function fmtDateLabel(iso: string): string {
   return `${WEEKDAYS[dt.getDay()]} ${pad2(d)} ${MONTHS[m - 1]} ${y}`
 }
 
-/**
- * Paleta de projeto da v1 → equivalente v2 — o MESMO mapa de Projetos, Dashboard e Palco,
- * para o LED de um projeto ter a mesma cor em toda a app (nada de roxo/rosa da v1).
- * Chaves sem "#", em maiúsculas. Cores já v2 (ou personalizadas) passam intactas.
- */
-const LEGACY_PROJECT_COLORS: Record<string, string> = {
-  '7C3AED': '#4CC9F0',
-  'FF4D6D': '#FFC24B',
-  '2563EB': '#2F6FEB',
-  '059669': '#0E9F6E',
-  'D97706': '#B45309',
-  'DB2777': '#A8A29E',
-  '0891B2': '#0891B2',
-  '9333EA': '#64748B',
-  'DC2626': '#DC2626',
-  '16A34A': '#3DDC97',
-}
 /** Primeira amostra v2 — o que Projetos mostra para um projeto sem cor */
 const DEFAULT_PROJECT_COLOR = '#4CC9F0'
 
@@ -67,7 +51,7 @@ function projectLedColor(band: { color?: string | null } | null | undefined): st
   if (!band) return null
   const raw = band.color?.trim()
   if (!raw) return DEFAULT_PROJECT_COLOR
-  return LEGACY_PROJECT_COLORS[raw.replace(/^#/, '').toUpperCase()] ?? raw
+  return mapLegacyProjectColor(raw)
 }
 
 /* ── Ícones: SVG stroke em currentColor ── */

@@ -17,6 +17,7 @@
   --surface: #FFFFFF;           /* painéis / cartões / inputs */
   --surface-2: #F4F3EF;         /* hover, inset, linha selecionada */
   --surface-3: #E4E3DD;         /* pressed, trilhos, skeleton */
+  --seg-active: #FFFFFF;        /* opção ativa de segmented/tabs — sempre mais clara que o trilho */
 
   /* ── Linhas ── */
   --border: #DAD9D3;            /* hairline */
@@ -98,6 +99,7 @@
   --surface: #151517;
   --surface-2: #1D1D20;
   --surface-3: #27272B;
+  --seg-active: #3A3A40;
 
   --border: #2A2A2E;
   --border2: #3D3D43;

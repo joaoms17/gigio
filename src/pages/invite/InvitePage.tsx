@@ -6,6 +6,7 @@ import { useToast } from '../../components/Toast'
 import { PROJECT_TYPE_LABELS, ROLE_LABELS } from '../../types'
 import type { ProjectType, ProjectRole } from '../../types'
 import styles from './InvitePage.module.css'
+import Wordmark from '../../components/Wordmark'
 
 interface InviteData {
   id: string
@@ -92,10 +93,7 @@ function Shell({ children, busy }: { children: ReactNode; busy?: boolean }) {
         <header className={styles.brand}>
           {/* Wordmark v2 (§4.5): "gigio" condensado 800 + quadrado laranja no fim — igual à topbar */}
           <div className={styles.brandTitle}>
-            <span className={styles.wordmark} role="img" aria-label="gigio">
-              <span aria-hidden="true">gigio</span>
-              <span className={styles.wordmarkDot} aria-hidden="true" />
-            </span>
+            <Wordmark className={styles.wordmark} />
           </div>
           <p className={styles.brandLine}>Setlists · Letras · Palco</p>
         </header>

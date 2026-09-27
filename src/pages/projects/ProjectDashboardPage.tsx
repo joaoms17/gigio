@@ -20,6 +20,7 @@ import {
 } from '../../types'
 import { cacheProjectDashboard, getCachedProjectDashboard } from '../../lib/concertCache'
 import styles from './ProjectDashboardPage.module.css'
+import { mapLegacyProjectColor } from '../../lib/projectColor'
 
 type Tab = 'overview' | 'repertoire' | 'setlists' | 'members' | 'settings'
 
@@ -57,27 +58,9 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
 
-/**
- * Cores de projeto da v1 → equivalente v2 (sem rosa, sem roxo, sem o laranja do acento).
- * O MESMO mapa de Projetos, Palco, Concertos, Setlist e Calendário — um projeto tem a
- * mesma cor em toda a app. Aplicado ao renderizar (e ao abrir as definições, para que
- * guardar migre a cor). Quando a paleta em `types` já for v2, o mapa não tem efeito.
- */
-const LEGACY_COLOR_MAP: Record<string, string> = {
-  '#7C3AED': '#4CC9F0',
-  '#FF4D6D': '#FFC24B',
-  '#2563EB': '#2F6FEB',
-  '#059669': '#0E9F6E',
-  '#D97706': '#B45309',
-  '#DB2777': '#A8A29E',
-  '#0891B2': '#0891B2',
-  '#9333EA': '#64748B',
-  '#DC2626': '#DC2626',
-  '#16A34A': '#3DDC97',
-}
 
 function mapColor(c: string): string {
-  return LEGACY_COLOR_MAP[c.trim().toUpperCase()] ?? c
+  return mapLegacyProjectColor(c)
 }
 
 /** Amostras do seletor de cor (paleta v2, sem duplicados) */

@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './PalcoPage.module.css'
 import { STATUS_LABELS } from '../../lib/setlistStatus'
+import { mapLegacyProjectColor } from '../../lib/projectColor'
 
 interface Row {
   id: string
@@ -25,23 +26,6 @@ const PREVIEW_LIMIT = 5
 
 /* ── Cor de projeto ── */
 
-/**
- * Paleta de projeto da v1 → equivalente v2 (o mesmo mapa de Projetos e do Dashboard),
- * para o LED de um projeto ter a mesma cor em toda a app. Chaves sem "#", em maiúsculas.
- * Cores que já são v2 (ou personalizadas) passam intactas.
- */
-const LEGACY_PROJECT_COLORS: Record<string, string> = {
-  '7C3AED': '#4CC9F0',
-  'FF4D6D': '#FFC24B',
-  '2563EB': '#2F6FEB',
-  '059669': '#0E9F6E',
-  'D97706': '#B45309',
-  'DB2777': '#A8A29E',
-  '0891B2': '#0891B2',
-  '9333EA': '#64748B',
-  'DC2626': '#DC2626',
-  '16A34A': '#3DDC97',
-}
 /** Primeira amostra v2 — o que Projetos mostra para um projeto sem cor */
 const DEFAULT_PROJECT_COLOR = '#4CC9F0'
 
@@ -50,7 +34,7 @@ function projectLedColor(band: { color: string | null } | null | undefined): str
   if (!band) return null
   const raw = band.color?.trim()
   if (!raw) return DEFAULT_PROJECT_COLOR
-  return LEGACY_PROJECT_COLORS[raw.replace(/^#/, '').toUpperCase()] ?? raw
+  return mapLegacyProjectColor(raw)
 }
 
 /* ── Datas / formatação ── */

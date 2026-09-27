@@ -1,9 +1,12 @@
 import styles from './Wordmark.module.css'
 
-/** Wordmark "gigio" — os pontos dos "i" são LEDs quadrados no acento. */
-export default function Wordmark({ size = 24, className }: { size?: number; className?: string }) {
+/**
+ * Wordmark "gigio" — os pontos dos "i" são LEDs quadrados no acento.
+ * Sem `size`, herda o font-size do contentor (tamanhos responsivos via CSS).
+ */
+export default function Wordmark({ size, className }: { size?: number; className?: string }) {
   return (
-    <span className={`${styles.wm} ${className ?? ''}`} style={{ fontSize: size }} role="img" aria-label="gigio">
+    <span className={`${styles.wm} ${className ?? ''}`} style={size ? { fontSize: size } : undefined} role="img" aria-label="gigio">
       <span aria-hidden="true">
         g<span className={styles.i}>ı</span>g<span className={styles.i}>ı</span>o
       </span>

@@ -4,6 +4,7 @@ import { signOut } from '../lib/auth'
 import { useAuth } from '../hooks/useAuth'
 import { useConfirm } from './ConfirmDialog'
 import styles from './Layout.module.css'
+import Wordmark, { BrandMark } from './Wordmark'
 
 interface Props { children?: React.ReactNode }
 
@@ -154,7 +155,7 @@ export default function Layout({ children }: Props) {
       <aside className={styles.rail}>
         <div className={styles.railInner}>
           <Link to="/" className={styles.brand} aria-label="gigio — Palco">
-            <span className={styles.logoMark} aria-hidden="true">g</span>
+            <BrandMark size={40} />
           </Link>
 
           <nav className={styles.railNav} aria-label="Navegação principal">
@@ -190,10 +191,7 @@ export default function Layout({ children }: Props) {
 
       {/* ── TOP BAR (telemóvel) ── */}
       <header className={styles.topbar}>
-        <div className={styles.wordmark} role="img" aria-label="gigio">
-          <span aria-hidden="true">gigio</span>
-          <span className={styles.wordmarkDot} aria-hidden="true" />
-        </div>
+        <Wordmark size={27} />
         <button
           className={`${styles.topUser} ${settingsActive ? styles.topUserActive : ''}`}
           onClick={() => navigate('/settings')}

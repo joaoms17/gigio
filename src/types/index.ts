@@ -162,16 +162,16 @@ export const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
 }
 
 export const PROJECT_COLORS = [
-  '#7C3AED',
-  '#FF4D6D',
-  '#2563EB',
-  '#059669',
-  '#D97706',
-  '#DB2777',
+  '#4CC9F0',
+  '#FFC24B',
+  '#2F6FEB',
+  '#0E9F6E',
+  '#B45309',
+  '#A8A29E',
   '#0891B2',
-  '#9333EA',
+  '#64748B',
   '#DC2626',
-  '#16A34A',
+  '#3DDC97',
 ]
 
 export const ROLE_LABELS: Record<ProjectRole, string> = {

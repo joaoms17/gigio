@@ -181,7 +181,12 @@ for (const theme of THEMES) {
       try {
         await page.goto(`http://localhost:${PORT}${route}`, { waitUntil: 'networkidle', timeout: 15000 })
         await page.waitForTimeout(700)
-        await page.screenshot({ path: path.join(OUT, `${name}--${vname}--${theme}.png`), fullPage: name !== 'concerto-modo' && name !== 'sync' })
+        const fullPage = name !== 'concerto-modo' && name !== 'sync'
+        // Numa captura de página inteira, barras position:fixed ficam desenhadas a meio
+        // da página — pô-las em fluxo normal para aparecerem no fim, como ao fazer scroll.
+        const unfix = fullPage ? await page.addStyleTag({ content: '[class*="bottomNav"]{position:static!important}' }) : null
+        await page.screenshot({ path: path.join(OUT, `${name}--${vname}--${theme}.png`), fullPage })
+        if (unfix) await unfix.evaluate(el => el.remove())
         console.log('ok', `${name}--${vname}--${theme}`)
       } catch (e) { console.log('FALHOU', name, vname, theme, String(e).split('\n')[0]) }
     }

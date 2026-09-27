@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { getThemePref, applyThemePref, type ThemePref } from '../../lib/theme'
 import type { ConcertTheme } from '../../types'
 import styles from './SettingsPage.module.css'
+import { DEFAULT_CONCERT_THEME, normalizeConcertTheme } from '../../lib/concertTheme'
 
 /* Paletas do modo palco (v2): pretos de palco + tintas de sinal */
 const BG_SWATCHES = ['#0B0B0C', '#000000', '#17171A', '#0E1520', '#1A110B']
@@ -25,9 +26,7 @@ const SWATCH_NAMES: Record<string, string> = {
   '#4cc9f0': 'Ciano',
 }
 
-const DEFAULT_THEME: ConcertTheme = {
-  bg: '#0B0B0C', active_color: '#F2F1EC', accent_color: '#FF6A26', font_size: 32, line_height: 1.6
-}
+const DEFAULT_THEME: ConcertTheme = DEFAULT_CONCERT_THEME
 
 function sameColor(a: string | undefined, b: string) {
   return (a ?? '').trim().toLowerCase() === b.toLowerCase()
@@ -231,7 +230,7 @@ export default function SettingsPage() {
     if (!user) return
     supabase.from('profiles').select('concert_theme, display_name').eq('id', user.id).single()
       .then(({ data }) => {
-        if (data?.concert_theme) setTheme(data.concert_theme as ConcertTheme)
+        if (data?.concert_theme) setTheme(normalizeConcertTheme(data.concert_theme as Partial<ConcertTheme>))
         if (data?.display_name) setDisplayName(data.display_name)
       })
   }, [user])
