@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -23,17 +23,76 @@ import {
 } from '../../lib/concertCache'
 import type { Setlist, SetlistSong, Song } from '../../types'
 import styles from './SetlistPage.module.css'
+import { mapLegacyProjectColor } from '../../lib/projectColor'
 
 type Row = SetlistSong & { song: Song }
 
-function SortableSongRow({ ss, index, selected, onSelect, onEdit, onRemove, onOverrides }: {
-  ss: Row; index: number; selected: boolean
+/** Posição de setlist sempre com 2 dígitos — a assinatura "01 / 02" da v2 */
+const pad2 = (n: number) => String(n).padStart(2, '0')
+const fmtDur = (sec?: number | null) =>
+  sec ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : ''
+
+/* Abreviaturas fixas (o Intl pt-PT varia entre motores: "seg."/"segunda", "set.") */
+const WEEKDAYS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
+const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+/** "seg 28 set 2026" (maiúsculas via CSS) a partir de "2026-09-28" — data local, sem fuso */
+function fmtDateLabel(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  if (!y || !m || !d) return iso
+  const dt = new Date(y, m - 1, d)
+  return `${WEEKDAYS[dt.getDay()]} ${pad2(d)} ${MONTHS[m - 1]} ${y}`
+}
+
+/** Primeira amostra v2 — o que Projetos mostra para um projeto sem cor */
+const DEFAULT_PROJECT_COLOR = '#4CC9F0'
+
+/** Cor do projeto pronta a pintar (LED e PDF). null = concerto pessoal, sem projeto. */
+function projectLedColor(band: { color?: string | null } | null | undefined): string | null {
+  if (!band) return null
+  const raw = band.color?.trim()
+  if (!raw) return DEFAULT_PROJECT_COLOR
+  return mapLegacyProjectColor(raw)
+}
+
+/* ── Ícones: SVG stroke em currentColor ── */
+function Ico({ size = 16, sw = 2, children }: { size?: number; sw?: number; children: ReactNode }) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"
+    >{children}</svg>
+  )
+}
+const P = {
+  grip: <path d="M5 8h14M5 12h14M5 16h14" />,
+  pencil: <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />,
+  close: <path d="M6 6l12 12M18 6L6 18" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  note: <><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></>,
+  doc: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /></>,
+  list: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></>,
+  /* Exportações: o MESMO download do Repertório (seta + base) */
+  download: <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />,
+  /* Importar: seta a ENTRAR num documento — não se confunde com o download */
+  import: <><path d="M5 10V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-1" /><path d="M14 3v5h5M2 14h9M8 11l3 3-3 3" /></>,
+  copy: <><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></>,
+  flag: <path d="M4 21V4h12l-2 4 2 4H4" />,
+  search: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>,
+  chevron: <path d="M9 6l6 6-6 6" />,
+  check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
+  sliders: <path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6" />,
+  trash: <><path d="M4 7h16M10 11v6M14 11v6" /><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4h6v3" /></>,
+  mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
+}
+
+function SortableSongRow({ ss, index, last, selected, onSelect, onEdit, onRemove, onOverrides }: {
+  ss: Row; index: number; last: boolean; selected: boolean
   onSelect: (ss: Row) => void
   onEdit: (songId: string) => void; onRemove: (id: string) => void
   onOverrides: (ss: Row) => void
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: ss.id })
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+  const style = { transform: CSS.Transform.toString(transform), transition }
   const hasOverrides = !!(ss.performance_key || ss.notes || ss.custom_intro || ss.custom_ending)
   const openOv = (e: MouseEvent) => { e.stopPropagation(); onOverrides(ss) }
   // Ecrã largo: clique seleciona para pré-visualizar no painel direito.
@@ -42,14 +101,12 @@ function SortableSongRow({ ss, index, selected, onSelect, onEdit, onRemove, onOv
     if (window.matchMedia('(min-width: 1024px)').matches) onSelect(ss)
     else onOverrides(ss)
   }
-  const dur = ss.song?.duration_sec
-    ? `${Math.floor(ss.song.duration_sec / 60)}:${String(ss.song.duration_sec % 60).padStart(2, '0')}`
-    : ''
+  const dur = fmtDur(ss.song?.duration_sec)
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`${styles.songRow} ${isDragging ? styles.dragging : ''} ${selected ? styles.songRowSelected : ''}`}
+      className={`${styles.songRow} ${last ? styles.songRowLast : ''} ${isDragging ? styles.dragging : ''} ${selected ? styles.songRowSelected : ''}`}
       onClick={onRowClick}
     >
       <button
@@ -61,19 +118,13 @@ function SortableSongRow({ ss, index, selected, onSelect, onEdit, onRemove, onOv
         aria-label="Arrastar para reordenar"
         title="Arrastar para reordenar"
       >
-        <svg width="14" height="18" viewBox="0 0 14 18" fill="currentColor" aria-hidden="true">
-          <circle cx="4" cy="3" r="1.6" /><circle cx="10" cy="3" r="1.6" />
-          <circle cx="4" cy="9" r="1.6" /><circle cx="10" cy="9" r="1.6" />
-          <circle cx="4" cy="15" r="1.6" /><circle cx="10" cy="15" r="1.6" />
-        </svg>
+        <Ico size={18}>{P.grip}</Ico>
       </button>
-      <div className={styles.songNum}>{index + 1}</div>
+      <span className={styles.songNum}>{pad2(index + 1)}</span>
       <div className={styles.songMain}>
-        <div className={styles.titleLine}>
-          <span className={styles.songTitle}>{ss.song?.title}</span>
-        </div>
+        <span className={styles.songTitle}>{ss.song?.title}</span>
         <div className={styles.metaLine}>
-          <span className={styles.songArtist}>{ss.song?.artist}</span>
+          {ss.song?.artist && <span className={styles.songArtist}>{ss.song.artist}</span>}
           {ss.performance_key && (
             <button
               className={styles.keyChip}
@@ -81,36 +132,41 @@ function SortableSongRow({ ss, index, selected, onSelect, onEdit, onRemove, onOv
               aria-label={`Tom nesta setlist: ${ss.performance_key} — editar tom e notas`}
             >{ss.performance_key}</button>
           )}
+          {ss.song?.has_sync && <span className={styles.syncChip} aria-label="Letra sincronizada">Sync</span>}
           {ss.notes && (
-            <span className={styles.metaIndicator} onClick={openOv} aria-label={`Notas: ${ss.notes}`} title={ss.notes}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /></svg>
+            <span className={styles.metaIndicator} role="img" onClick={openOv} aria-label={`Notas: ${ss.notes}`} title={ss.notes}>
+              <Ico size={15}>{P.doc}</Ico>
             </span>
           )}
           {(ss.custom_intro || ss.custom_ending) && (
-            <span className={styles.metaIndicator} onClick={openOv} aria-label="Tem intro/final custom" title="Tem intro/final custom">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 21V4h12l-2 4 2 4H4" /></svg>
+            <span className={styles.metaIndicator} role="img" onClick={openOv} aria-label="Tem intro/final custom" title="Tem intro/final custom">
+              <Ico size={15}>{P.flag}</Ico>
             </span>
           )}
-          {ss.song?.has_sync && <span className={styles.syncBadge} aria-label="Letra sincronizada">sync</span>}
           {!hasOverrides && (
-            <button className={styles.ghostChip} onClick={openOv}>＋ Tom · Notas</button>
+            <button className={styles.ghostChip} onClick={openOv} aria-label="Definir tom e notas neste concerto">
+              <Ico size={12} sw={2.4}>{P.plus}</Ico>Tom · notas
+            </button>
           )}
-          {dur && <span className={styles.songDur}>{dur}</span>}
         </div>
       </div>
+      {/* Duração: coluna mono à direita em todas as larguras */}
+      {dur && <span className={styles.songDur}>{dur}</span>}
+      {/* Telemóvel: ✎ escondido (o toque na linha abre tom/notas, com atalho para a música);
+          pega e ✕ só aparecem no modo "Editar" da lista */}
       <div className={styles.songActions}>
-        <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onEdit(ss.song_id) }} aria-label="Editar música" title="Editar música">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+        <button className={`${styles.iconBtn} ${styles.iconBtnEdit}`} onClick={e => { e.stopPropagation(); onEdit(ss.song_id) }} aria-label="Editar música" title="Editar música">
+          <Ico size={17}>{P.pencil}</Ico>
         </button>
-        <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onRemove(ss.id) }} aria-label="Remover da setlist" title="Remover da setlist">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        <button className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={e => { e.stopPropagation(); onRemove(ss.id) }} aria-label="Remover da setlist" title="Remover da setlist">
+          <Ico size={17}>{P.close}</Ico>
         </button>
       </div>
     </div>
   )
 }
 
-/** Pré-visualização de letra: secções [X] como etiquetas, linhas vazias como respiro */
+/** Pré-visualização de letra: secções [X] como rótulos mono, linhas vazias como respiro */
 function PreviewLyrics({ text }: { text: string }) {
   return (
     <>
@@ -162,6 +218,9 @@ export default function SetlistPage() {
   const [showImport, setShowImport] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
   const [canDelete, setCanDelete] = useState(false)
+  // Telemóvel (≤640px): pega de arrasto e ✕ só em modo "Editar" — liberta largura ao texto.
+  // Em ≥641px o CSS ignora este estado (as ações estão sempre visíveis).
+  const [editMode, setEditMode] = useState(false)
 
   // Painel direito (≥1024px): música selecionada para pré-visualização.
   // Derivado com fallback para a primeira música — sobrevive a remoções/reordenações.
@@ -186,7 +245,7 @@ export default function SetlistPage() {
           setSetlist(data)
           setProjectName((data as any).bands?.name ?? null)
           setProjectImage((data as any).bands?.image_url ?? null)
-          setProjectColor((data as any).bands?.color ?? null)
+          setProjectColor(projectLedColor((data as any).bands))
           setName(data.name)
           setVenue(data.venue ?? '')
           setDate(data.date ?? '')
@@ -209,7 +268,7 @@ export default function SetlistPage() {
             setSetlist(cached)
             setProjectName(cached.bands?.name ?? null)
             setProjectImage(cached.bands?.image_url ?? null)
-            setProjectColor(cached.bands?.color ?? null)
+            setProjectColor(projectLedColor(cached.bands))
             setName(cached.name)
             setVenue(cached.venue ?? '')
             setDate(cached.date ?? '')
@@ -358,6 +417,15 @@ export default function SetlistPage() {
     setOverrideRow(null)
   }
 
+  // Atalho do modal para a página da música (no telemóvel o ✎ da linha está escondido).
+  // Guarda primeiro o tom/notas para não perder o que foi escrito.
+  async function openSongFromOverrides() {
+    if (!overrideRow || ovSaving) return
+    const songId = overrideRow.song_id
+    await saveOverrides()
+    navigate(`/songs/${songId}?setlist=${id}`)
+  }
+
   async function removeSong(ssId: string) {
     const row = songs.find(s => s.id === ssId)
     if (!row) return
@@ -390,6 +458,9 @@ export default function SetlistPage() {
   useEffect(() => () => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
   }, [])
+
+  // Lista vazia: o botão "Editar" desaparece — sair do modo para não voltar "preso" nele
+  useEffect(() => { if (songs.length === 0) setEditMode(false) }, [songs.length])
 
   async function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e
@@ -487,15 +558,18 @@ export default function SetlistPage() {
   }
 
   const selectedRow = songs.find(s => s.id === selectedId) ?? songs[0] ?? null
+  const selectedIndex = selectedRow ? songs.findIndex(s => s.id === selectedRow.id) : -1
+  const selectedDur = fmtDur(selectedRow?.song?.duration_sec)
   const previewText = ((selectedRow?.song?.edited_lyrics ?? selectedRow?.song?.lyrics) ?? '').trim()
-  const overrideSummary = selectedRow
-    ? [
-        selectedRow.performance_key && `tom neste concerto: ${selectedRow.performance_key}`,
-        selectedRow.custom_intro && `intro: ${selectedRow.custom_intro}`,
-        selectedRow.custom_ending && `final: ${selectedRow.custom_ending}`,
-        selectedRow.notes && `notas: ${selectedRow.notes}`,
-      ].filter(Boolean).join(' · ')
-    : ''
+  // Resumo dos overrides deste concerto — pares rótulo/valor para a linha mono
+  const overrideItems: [string, string][] = selectedRow
+    ? ([
+        ['Tom', selectedRow.performance_key],
+        ['Intro', selectedRow.custom_intro],
+        ['Final', selectedRow.custom_ending],
+        ['Notas', selectedRow.notes],
+      ] as [string, string | undefined][]).filter((p): p is [string, string] => !!p[1])
+    : []
 
   const totalSec = songs.reduce((acc, s) => acc + (s.song?.duration_sec ?? 0), 0)
   const totalMin = Math.floor(totalSec / 60)
@@ -510,12 +584,16 @@ export default function SetlistPage() {
     <>
       <div className={styles.page}>
         {isOffline && (
-          <div className={styles.offlineBanner}>
-            Sem ligação — a mostrar dados em cache
+          <div className={styles.offlineBanner} role="status">
+            <span className={styles.offlineLed} aria-hidden="true" />
+            <span className={styles.offlineTag}>Offline</span>
+            <span className={styles.offlineText}>Sem ligação — a mostrar dados em cache</span>
           </div>
         )}
-        <div className={styles.header}>
-          <div className={styles.headerLeft}>
+
+        {/* ══ HEADER ══ ≥1024px: título à esquerda, ações à direita */}
+        <header className={styles.header}>
+          <div className={styles.headMain}>
             <Breadcrumbs items={
               setlist?.band_id
                 ? [
@@ -538,35 +616,62 @@ export default function SetlistPage() {
                   if (e.key === 'Enter') saveName()
                   else if (e.key === 'Escape') cancelNameEdit()
                 }}
+                aria-label="Nome do concerto"
                 autoFocus
               />
             ) : (
-              <h1 className={styles.title} onClick={() => setEditingName(true)}>
-                {setlist?.name ?? '...'} <span className={styles.editHint}>✎</span>
+              <h1 className={styles.title}>
+                {setlist ? (
+                  <button type="button" className={styles.titleBtn} onClick={() => setEditingName(true)} title="Editar nome">
+                    <span className={styles.titleText}>{setlist.name}</span>
+                    <span className={styles.editHint} aria-hidden="true"><Ico size={18}>{P.pencil}</Ico></span>
+                  </button>
+                ) : (
+                  <span className={`skeleton ${styles.titleSkeleton}`} aria-label="A carregar" />
+                )}
               </h1>
             )}
+
+            {/* Linha de metadados mono — só texto e separadores, como no Palco,
+                Dashboard e Concertos: SEG 28 SET 2026 · LOCAL · 12 MÚS · 40 MIN
+                Data e local editáveis inline — parecem texto; hairline só em hover/foco */}
             <div className={styles.metaRow}>
-              <span className={styles.songsChip}>
-                ♪ {songs.length} música{songs.length !== 1 ? 's' : ''}
-                {totalMin > 0 ? ` · ~${durationLabel}` : ''}
-              </span>
+              <label className={`${styles.metaField} ${styles.dateField} ${!date ? styles.metaEmpty : ''}`}>
+                <span className={styles.metaBox}>
+                  <span className={styles.metaText} aria-hidden="true">{date ? fmtDateLabel(date) : 'Sem data'}</span>
+                </span>
+                {/* Input nativo invisível por cima: o toque em qualquer ponto abre o seletor */}
+                <input
+                  className={styles.dateInput}
+                  type="date"
+                  value={date}
+                  onChange={e => saveDate(e.target.value)}
+                  aria-label="Data do concerto"
+                />
+              </label>
+              <span className={styles.metaSep} aria-hidden="true">·</span>
               <div className={styles.venueWrap}>
-                <div className={styles.metaField}>
-                  <span className={styles.metaIcon} aria-hidden="true">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                <label className={styles.metaField}>
+                  <span className={styles.metaBox}>
+                    <span className={styles.venueBox} data-value={venue || 'Local / evento'}>
+                      <input
+                        className={styles.venueInput}
+                        value={venue}
+                        size={1}
+                        onChange={e => onVenueInput(e.target.value)}
+                        onBlur={e => saveVenue(e.target.value)}
+                        title={venue || undefined}
+                        placeholder="Local / evento"
+                        aria-label="Local do concerto"
+                        autoComplete="off"
+                      />
+                    </span>
                   </span>
-                  <input
-                    className={styles.venueInput}
-                    value={venue}
-                    onChange={e => onVenueInput(e.target.value)}
-                    onBlur={e => saveVenue(e.target.value)}
-                    placeholder="Local / evento..."
-                  />
-                </div>
+                </label>
                 {showVenueDrop && (
-                  <div className={styles.venueDrop}>
+                  <div className={styles.venueDrop} role="listbox" aria-label="Sugestões de local">
                     {venueSuggestions.map((s, i) => (
-                      <div key={i} className={styles.venueDropItem}
+                      <div key={i} className={styles.venueDropItem} role="option" aria-selected={false}
                         onMouseDown={e => { e.preventDefault(); saveVenue(s.name) }}
                       >
                         <span className={styles.venueDropName}>{s.name}</span>
@@ -576,106 +681,155 @@ export default function SetlistPage() {
                   </div>
                 )}
               </div>
-              <div className={styles.metaField}>
-                <span className={styles.metaIcon} aria-hidden="true">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
-                </span>
-                <input
-                  className={styles.dateInput}
-                  type="date"
-                  value={date}
-                  onChange={e => saveDate(e.target.value)}
-                />
-              </div>
+              <span className={`${styles.metaSep} ${styles.metaSepCount}`} aria-hidden="true">·</span>
+              {/* "12 mús" — a mesma abreviatura das linhas de Concertos, Palco e Dashboard */}
+              <span className={styles.metaCount}>
+                {songs.length} mús
+                {totalMin > 0 ? ` · ${durationLabel}` : ''}
+              </span>
             </div>
           </div>
-          <div className={styles.headerActions}>
+
+          <div className={styles.headActions}>
+            {/* Ação-assinatura: largura natural (ícone + padding), igual ao Palco */}
             <button className={styles.concertBtn} onClick={() => navigate(`/setlist/${id}/concert`)}>
-              ▶ Iniciar Concerto
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d="M7 4.5v15l12.5-7.5L7 4.5Z" />
+              </svg>
+              Iniciar concerto
             </button>
-            <div className={styles.secondaryActions}>
+            {/* Barra de ferramentas: botões secundários SOLTOS — o mesmo tratamento
+                do Repertório ("Lista PDF", "Repertório PDF", ambos com download).
+                Sempre UMA linha, sem scroll. Telemóvel: colunas iguais, ícone por
+                cima do rótulo e "PDF" como micro-etiqueta mono por baixo */}
+            <div className={styles.toolbar} role="group" aria-label="Mais ações do concerto">
               {setlist?.band_id && (
-                <button className={styles.dupBtn} onClick={() => setShowImport(true)}>Importar PDF</button>
+                <button className={styles.toolBtn} onClick={() => setShowImport(true)} title="Importar alinhamento de um PDF">
+                  <Ico size={16}>{P.import}</Ico><span className={styles.toolLabel}>Importar</span>
+                </button>
               )}
-              <button className={styles.dupBtn} onClick={() => exportPdf(false)}>Exportar lista</button>
-              <button className={styles.dupBtn} onClick={() => exportPdf(true)}>Exportar repertório</button>
-              <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>Duplicar</button>
-              {/* Apagar mudou para o fundo da página — ver deleteLink */}
+              <button className={styles.toolBtn} onClick={() => exportPdf(false)} title="Exportar a lista de músicas em PDF">
+                <Ico size={16}>{P.download}</Ico>
+                <span className={styles.toolLabel}>Lista <span className={styles.toolTag}>PDF</span></span>
+              </button>
+              <button className={styles.toolBtn} onClick={() => exportPdf(true)} title="Exportar o repertório com letras em PDF">
+                <Ico size={16}>{P.download}</Ico>
+                <span className={styles.toolLabel}>Repertório <span className={styles.toolTag}>PDF</span></span>
+              </button>
+              <button className={styles.toolBtn} onClick={() => setDuplicating(true)} title="Duplicar para outro projeto">
+                <Ico size={16}>{P.copy}</Ico><span className={styles.toolLabel}>Duplicar</span>
+              </button>
             </div>
           </div>
-        </div>
+        </header>
 
         {/* ≥1024px: duas colunas — alinhamento à esquerda, pré-visualização à direita */}
         <div className={styles.columns}>
-          <div className={styles.songList}>
+          <section className={styles.songList} aria-label="Alinhamento">
             <div className={styles.listHeader}>
-              <span className={styles.listTitle}>Ordem das músicas</span>
-              <button className={styles.addBtn} onClick={loadLibrary} disabled={libraryLoading}>
-                {libraryLoading ? 'A carregar...' : '+ Adicionar'}
-              </button>
+              <span className={styles.listLabel}>
+                {projectColor && <span className={styles.led} style={{ background: projectColor }} aria-hidden="true" />}
+                <span className={styles.listLabelText}>Alinhamento</span>
+                {songs.length > 0 && <span className={styles.listCount}>· {pad2(songs.length)}</span>}
+              </span>
+              <div className={styles.listHeadActions}>
+                {songs.length > 0 && (
+                  <button
+                    className={`${styles.editToggle} ${editMode ? styles.editToggleOn : ''}`}
+                    onClick={() => setEditMode(v => !v)}
+                    aria-pressed={editMode}
+                  >{editMode ? 'Concluir' : 'Editar'}</button>
+                )}
+                <button className={styles.secondaryBtn} onClick={loadLibrary} disabled={libraryLoading}>
+                  <Ico size={16} sw={2.2}>{P.plus}</Ico>
+                  {libraryLoading ? 'A carregar…' : 'Adicionar'}
+                </button>
+              </div>
             </div>
 
             {songsLoading ? (
-              <div aria-hidden="true">
+              <div className={styles.skeletonList} aria-hidden="true">
                 {[0, 1, 2, 3, 4].map(i => (
                   <div key={i} className={`skeleton ${styles.skeletonRow}`} />
                 ))}
               </div>
             ) : songs.length === 0 ? (
               <div className={styles.empty}>
-                <p>Sem músicas ainda</p>
-                <button className={styles.addBtn} onClick={loadLibrary} disabled={libraryLoading}>+ Adicionar música</button>
+                <span className={styles.emptyIcon} aria-hidden="true"><Ico size={28} sw={1.8}>{P.list}</Ico></span>
+                <p className={styles.emptyTitle}>Sem músicas ainda</p>
+                <p className={styles.emptyText}>Adiciona músicas do repertório para montar o alinhamento.</p>
+                <button className={styles.secondaryBtn} onClick={loadLibrary} disabled={libraryLoading}>
+                  <Ico size={16} sw={2.2}>{P.plus}</Ico>Adicionar música
+                </button>
               </div>
             ) : (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={songs.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                  {songs.map((ss, i) => (
-                    <SortableSongRow
-                      key={ss.id}
-                      ss={ss}
-                      index={i}
-                      selected={selectedRow?.id === ss.id}
-                      onSelect={row => setSelectedId(row.id)}
-                      onEdit={songId => navigate(`/songs/${songId}?setlist=${id}`)}
-                      onRemove={removeSong}
-                      onOverrides={openOverrides}
-                    />
-                  ))}
-                </SortableContext>
-              </DndContext>
+              <div className={`${styles.rows} ${editMode ? styles.rowsEdit : ''}`}>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext items={songs.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                    {songs.map((ss, i) => (
+                      <SortableSongRow
+                        key={ss.id}
+                        ss={ss}
+                        index={i}
+                        last={i === songs.length - 1}
+                        selected={selectedRow?.id === ss.id}
+                        onSelect={row => setSelectedId(row.id)}
+                        onEdit={songId => navigate(`/songs/${songId}?setlist=${id}`)}
+                        onRemove={removeSong}
+                        onOverrides={openOverrides}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              </div>
             )}
-          </div>
+          </section>
 
           {/* Painel da música selecionada — só leitura + 2 ações; escondido <1024px via CSS */}
           <aside className={styles.previewPanel} aria-label="Pré-visualização da música selecionada">
             {songsLoading ? (
-              <div aria-hidden="true">
+              <div className={styles.skeletonList} aria-hidden="true">
                 {[0, 1, 2].map(i => (
                   <div key={i} className={`skeleton ${styles.skeletonRow}`} />
                 ))}
               </div>
             ) : !selectedRow ? (
               <div className={styles.previewEmpty}>
-                <span className={styles.previewEmptyIcon} aria-hidden="true">♪</span>
-                <p>Adiciona músicas ao alinhamento para veres a letra aqui.</p>
+                <span className={styles.emptyIcon} aria-hidden="true"><Ico size={28} sw={1.8}>{P.note}</Ico></span>
+                <p className={styles.emptyTitle}>Nada para mostrar</p>
+                <p className={styles.emptyText}>Adiciona músicas ao alinhamento para veres a letra aqui.</p>
               </div>
             ) : (
               <>
                 <div className={styles.previewHeader}>
-                  <div className={styles.previewHeadText}>
-                    <h2 className={styles.previewSongTitle}>{selectedRow.song?.title}</h2>
-                    <div className={styles.previewArtist}>{selectedRow.song?.artist}</div>
-                    {overrideSummary && <div className={styles.previewOverridesLine}>{overrideSummary}</div>}
+                  <div className={styles.previewKicker}>
+                    <span className={styles.previewKickerNum}>{pad2(selectedIndex + 1)}</span>
+                    <span>/ {pad2(songs.length)}</span>
+                    {selectedDur && <><span aria-hidden="true">·</span><span>{selectedDur}</span></>}
+                    {selectedRow.song?.has_sync && <span className={styles.syncChip}>Sync</span>}
                   </div>
+                  <h2 className={styles.previewSongTitle}>{selectedRow.song?.title}</h2>
+                  {selectedRow.song?.artist && <div className={styles.previewArtist}>{selectedRow.song.artist}</div>}
+                  {overrideItems.length > 0 && (
+                    <div className={styles.ovSummary} aria-label="Alterações neste concerto">
+                      <span className={styles.ovSummaryLabel}>Neste concerto</span>
+                      {overrideItems.map(([k, v]) => (
+                        <span key={k} className={styles.ovSummaryItem}>
+                          <span className={styles.ovSummaryKey}>{k}</span>
+                          <span className={styles.ovSummaryVal}>{v}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div className={styles.previewActions}>
                     <button
-                      className={styles.previewActionBtn}
+                      className={styles.secondaryBtn}
                       onClick={() => navigate(`/songs/${selectedRow.song_id}?setlist=${id}`)}
-                    >✎ Editar letra</button>
+                    ><Ico size={16}>{P.pencil}</Ico>Editar letra</button>
                     <button
-                      className={styles.previewActionBtn}
+                      className={styles.secondaryBtn}
                       onClick={() => openOverrides(selectedRow)}
-                    >Tom & notas</button>
+                    ><Ico size={16}>{P.sliders}</Ico>Tom &amp; notas</button>
                   </div>
                 </div>
                 {previewText ? (
@@ -684,12 +838,13 @@ export default function SetlistPage() {
                   </div>
                 ) : (
                   <div className={styles.previewEmpty}>
-                    <span className={styles.previewEmptyIcon} aria-hidden="true">🎤</span>
-                    <p>Esta música ainda não tem letra.</p>
+                    <span className={styles.emptyIcon} aria-hidden="true"><Ico size={28} sw={1.8}>{P.mic}</Ico></span>
+                    <p className={styles.emptyTitle}>Sem letra</p>
+                    <p className={styles.emptyText}>Esta música ainda não tem letra.</p>
                     <button
-                      className={styles.addBtn}
+                      className={styles.secondaryBtn}
                       onClick={() => navigate(`/songs/${selectedRow.song_id}?setlist=${id}`)}
-                    >+ Adicionar letra</button>
+                    ><Ico size={16} sw={2.2}>{P.plus}</Ico>Adicionar letra</button>
                   </div>
                 )}
               </>
@@ -699,6 +854,7 @@ export default function SetlistPage() {
 
         {canDelete && (
           <button className={styles.deleteLink} onClick={deleteSetlist}>
+            <Ico size={16}>{P.trash}</Ico>
             Apagar este concerto
           </button>
         )}
@@ -707,59 +863,86 @@ export default function SetlistPage() {
       {/* Per-setlist overrides modal */}
       {overrideRow && (
         <div className={styles.overlay} onClick={() => setOverrideRow(null)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+          <div
+            className={styles.modal}
+            role="dialog" aria-modal="true" aria-labelledby="ov-title"
+            onClick={e => e.stopPropagation()}
+          >
             <div className={styles.modalHeader}>
-              <div>
-                <span className={styles.modalTitle}>{overrideRow.song?.title}</span>
-                <div className={styles.ovSubtitle}>Só neste concerto — não altera a música original</div>
+              <div className={styles.modalHeadText}>
+                <div className={styles.kicker}>
+                  <span className={styles.kickerLed} aria-hidden="true" />
+                  Só neste concerto
+                </div>
+                <h2 id="ov-title" className={styles.modalTitle}>{overrideRow.song?.title}</h2>
+                <p className={styles.modalSub}>Não altera a música original.</p>
               </div>
-              <button className={styles.closeBtn} onClick={() => setOverrideRow(null)} aria-label="Fechar">✕</button>
+              <button className={styles.closeBtn} onClick={() => setOverrideRow(null)} aria-label="Fechar">
+                <Ico size={20}>{P.close}</Ico>
+              </button>
             </div>
 
-            <div className={styles.ovField}>
-              <label className={styles.ovLabel}>Tom nesta setlist</label>
-              <input
-                className={styles.ovInput}
-                value={ovKey}
-                onChange={e => setOvKey(e.target.value)}
-                placeholder={overrideRow.song?.performance_key || overrideRow.song?.original_key || 'ex: G, Am, F#'}
-              />
+            <div className={styles.modalBody}>
+              <div className={styles.ovField}>
+                <label className={styles.ovLabel} htmlFor="ov-key">Tom nesta setlist</label>
+                <input
+                  id="ov-key"
+                  className={`${styles.input} ${styles.inputMono}`}
+                  value={ovKey}
+                  onChange={e => setOvKey(e.target.value)}
+                  placeholder={overrideRow.song?.performance_key || overrideRow.song?.original_key || 'ex: G, Am, F#'}
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className={styles.ovField}>
+                <label className={styles.ovLabel} htmlFor="ov-intro">Intro</label>
+                <input
+                  id="ov-intro"
+                  className={styles.input}
+                  value={ovIntro}
+                  onChange={e => setOvIntro(e.target.value)}
+                  placeholder="ex: 4 compassos só bateria"
+                />
+              </div>
+
+              <div className={styles.ovField}>
+                <label className={styles.ovLabel} htmlFor="ov-ending">Final</label>
+                <input
+                  id="ov-ending"
+                  className={styles.input}
+                  value={ovEnding}
+                  onChange={e => setOvEnding(e.target.value)}
+                  placeholder="ex: termina em fade, segue direto para a próxima"
+                />
+              </div>
+
+              <div className={styles.ovField}>
+                <label className={styles.ovLabel} htmlFor="ov-notes">Notas</label>
+                <textarea
+                  id="ov-notes"
+                  className={`${styles.input} ${styles.textarea}`}
+                  value={ovNotes}
+                  onChange={e => setOvNotes(e.target.value)}
+                  placeholder="Notas visíveis no modo concerto..."
+                  rows={3}
+                />
+              </div>
+
+              {/* Atalho para a música (no telemóvel substitui o ✎ da linha) */}
+              <button className={styles.ovSongLink} onClick={openSongFromOverrides} disabled={ovSaving}>
+                <Ico size={16}>{P.pencil}</Ico>
+                <span className={styles.ovSongLinkLabel}>Editar letra e música</span>
+                <Ico size={16}>{P.chevron}</Ico>
+              </button>
             </div>
 
-            <div className={styles.ovField}>
-              <label className={styles.ovLabel}>Intro</label>
-              <input
-                className={styles.ovInput}
-                value={ovIntro}
-                onChange={e => setOvIntro(e.target.value)}
-                placeholder="ex: 4 compassos só bateria"
-              />
+            <div className={`${styles.modalFooter} ${styles.modalFooterSplit}`}>
+              <button className={styles.secondaryBtn} onClick={() => setOverrideRow(null)}>Cancelar</button>
+              <button className={styles.primaryBtn} onClick={saveOverrides} disabled={ovSaving}>
+                {ovSaving ? 'A guardar…' : 'Guardar'}
+              </button>
             </div>
-
-            <div className={styles.ovField}>
-              <label className={styles.ovLabel}>Final</label>
-              <input
-                className={styles.ovInput}
-                value={ovEnding}
-                onChange={e => setOvEnding(e.target.value)}
-                placeholder="ex: termina em fade, segue direto para a próxima"
-              />
-            </div>
-
-            <div className={styles.ovField}>
-              <label className={styles.ovLabel}>Notas</label>
-              <textarea
-                className={styles.ovTextarea}
-                value={ovNotes}
-                onChange={e => setOvNotes(e.target.value)}
-                placeholder="Notas visíveis no modo concerto..."
-                rows={3}
-              />
-            </div>
-
-            <button className={styles.ovSaveBtn} onClick={saveOverrides} disabled={ovSaving}>
-              {ovSaving ? 'A guardar...' : 'Guardar'}
-            </button>
           </div>
         </div>
       )}
@@ -785,59 +968,101 @@ export default function SetlistPage() {
 
       {showLibrary && (
         <div className={styles.overlay} onClick={closeLibrary}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+          <div
+            className={`${styles.modal} ${styles.modalTall}`}
+            role="dialog" aria-modal="true" aria-labelledby="lib-title"
+            onClick={e => e.stopPropagation()}
+          >
             <div className={styles.modalHeader}>
-              <span className={styles.modalTitle}>Biblioteca</span>
-              <button className={styles.closeBtn} onClick={closeLibrary} aria-label="Fechar">✕</button>
+              <div className={styles.modalHeadText}>
+                <div className={styles.kicker}>Adicionar ao alinhamento</div>
+                <h2 id="lib-title" className={styles.modalTitle}>Biblioteca</h2>
+              </div>
+              <button className={styles.closeBtn} onClick={closeLibrary} aria-label="Fechar">
+                <Ico size={20}>{P.close}</Ico>
+              </button>
             </div>
-            <input
-              className={styles.librarySearch}
-              placeholder="Filtrar músicas..."
-              value={librarySearch}
-              onChange={e => setLibrarySearch(e.target.value)}
-              autoFocus
-            />
-            {libraryLoading ? (
-              <div aria-hidden="true">
-                {[0, 1, 2, 3].map(i => (
-                  <div key={i} className={`skeleton ${styles.skeletonRow}`} />
-                ))}
+
+            <div className={styles.modalTools}>
+              <div className={styles.searchField}>
+                <span className={styles.searchIcon} aria-hidden="true"><Ico size={18}>{P.search}</Ico></span>
+                <input
+                  className={`${styles.input} ${styles.searchInput}`}
+                  placeholder="Filtrar músicas..."
+                  value={librarySearch}
+                  onChange={e => setLibrarySearch(e.target.value)}
+                  aria-label="Filtrar músicas"
+                  autoFocus
+                />
               </div>
-            ) : library.length === 0 ? (
-              <div className={styles.modalEmpty}>
-                <p>{setlist?.band_id ? 'Nenhuma música no repertório do projeto.' : 'Sem músicas na biblioteca.'}</p>
-                <button className={styles.addBtn} onClick={goToSearch}>
-                  🔍 Pesquisar música nova
-                </button>
-              </div>
-            ) : (
-              <>
-                <button className={styles.searchNewBtn} onClick={goToSearch}>
-                  🔍 Pesquisar música que não está aqui
-                </button>
-                {filteredLibrary.map(song => (
-                  <div
-                    key={song.id}
-                    className={`${styles.libraryRow} ${libSelection.has(song.id) ? styles.libraryRowSelected : ''}`}
-                    onClick={() => toggleSelection(song.id)}
-                  >
-                    <div className={styles.songInfo}>
-                      <div className={styles.songTitle}>{song.title}</div>
-                      <div className={styles.songArtist}>{song.artist} {song.has_sync && <span className={styles.syncBadge}>sync ✓</span>}</div>
+            </div>
+
+            <div className={styles.modalBody}>
+              {libraryLoading ? (
+                <div className={styles.skeletonListFlush} aria-hidden="true">
+                  {[0, 1, 2, 3].map(i => (
+                    <div key={i} className={`skeleton ${styles.skeletonRow}`} />
+                  ))}
+                </div>
+              ) : library.length === 0 ? (
+                <div className={styles.modalEmpty}>
+                  <span className={styles.emptyIcon} aria-hidden="true"><Ico size={28} sw={1.8}>{P.note}</Ico></span>
+                  <p className={styles.emptyText}>{setlist?.band_id ? 'Nenhuma música no repertório do projeto.' : 'Sem músicas na biblioteca.'}</p>
+                  <button className={styles.secondaryBtn} onClick={goToSearch}>
+                    <Ico size={16}>{P.search}</Ico>Pesquisar música nova
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button className={styles.searchNewBtn} onClick={goToSearch}>
+                    <Ico size={18}>{P.search}</Ico>
+                    <span className={styles.searchNewLabel}>Pesquisar música que não está aqui</span>
+                    <Ico size={16}>{P.chevron}</Ico>
+                  </button>
+                  {filteredLibrary.length > 0 ? (
+                    <div className={styles.libList}>
+                      {filteredLibrary.map(song => {
+                        const sel = libSelection.has(song.id)
+                        return (
+                          <div
+                            key={song.id}
+                            className={`${styles.libraryRow} ${sel ? styles.libraryRowSelected : ''}`}
+                            role="checkbox"
+                            aria-checked={sel}
+                            tabIndex={0}
+                            onClick={() => toggleSelection(song.id)}
+                            onKeyDown={e => {
+                              if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleSelection(song.id) }
+                            }}
+                          >
+                            <span className={`${styles.check} ${sel ? styles.checkOn : ''}`} aria-hidden="true">
+                              {sel && <Ico size={14} sw={3}>{P.check}</Ico>}
+                            </span>
+                            <div className={styles.libInfo}>
+                              <div className={styles.libTitle}>{song.title}</div>
+                              <div className={styles.libMeta}>
+                                {song.artist && <span className={styles.libArtist}>{song.artist}</span>}
+                                {song.has_sync && <span className={styles.syncChip}>Sync</span>}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
-                    <span className={libSelection.has(song.id) ? styles.selIconChecked : styles.selIcon}>
-                      {libSelection.has(song.id) ? '✓' : '○'}
-                    </span>
-                  </div>
-                ))}
-                {libSelection.size > 0 && (
-                  <div className={styles.modalAddBar}>
-                    <button className={styles.addSelectedBtn} onClick={addSelectedSongs}>
-                      + Adicionar {libSelection.size} música{libSelection.size !== 1 ? 's' : ''}
-                    </button>
-                  </div>
-                )}
-              </>
+                  ) : (
+                    <p className={styles.libNoMatch}>Nenhuma música corresponde a “{librarySearch}”.</p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {libSelection.size > 0 && (
+              <div className={styles.modalFooter}>
+                <button className={`${styles.primaryBtn} ${styles.primaryBtnWide}`} onClick={addSelectedSongs}>
+                  <Ico size={18} sw={2.4}>{P.plus}</Ico>
+                  Adicionar {libSelection.size} música{libSelection.size !== 1 ? 's' : ''}
+                </button>
+              </div>
             )}
           </div>
         </div>

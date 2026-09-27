@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
@@ -6,6 +6,7 @@ import { useToast } from '../../components/Toast'
 import { PROJECT_TYPE_LABELS, ROLE_LABELS } from '../../types'
 import type { ProjectType, ProjectRole } from '../../types'
 import styles from './InvitePage.module.css'
+import Wordmark from '../../components/Wordmark'
 
 interface InviteData {
   id: string
@@ -23,20 +24,46 @@ interface InviteData {
   }
 }
 
-/* ── Ícones SVG inline ── */
+/* Benefícios — a mesma setlist impressa do login (01/02/03): o convite é,
+   muitas vezes, o primeiro contacto de um músico novo com a app */
+const BENEFITS = [
+  'Setlists partilhadas com a banda, sempre atualizadas',
+  'Letras, tons e anotações de cada música à mão',
+  'Modo palco legível no escuro — mesmo sem internet',
+]
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+/** Códigos de convite têm o formato "ABCD-1234" (migration_bands.sql):
+ *  normaliza o que o utilizador escreve/cola e insere o hífen sozinho. */
+function formatCode(raw: string) {
+  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+  return clean.length > 4 ? `${clean.slice(0, 4)}-${clean.slice(4)}` : clean
+}
+
+/* ── Ícones v2: traço 1.8, cantos secos, currentColor ── */
+
+const ICON = {
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.8,
+  strokeLinecap: 'square' as const,
+  strokeLinejoin: 'miter' as const,
+  'aria-hidden': true,
+}
 
 function IconX() {
   return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
+    <svg {...ICON} width="22" height="22" strokeWidth={2}>
+      <path d="M18 6 6 18M6 6l12 12" />
     </svg>
   )
 }
 
 function IconCheck() {
   return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg {...ICON} width="22" height="22" strokeWidth={2.2}>
       <path d="M20 6 9 17l-5-5" />
     </svg>
   )
@@ -44,18 +71,57 @@ function IconCheck() {
 
 function IconArrowLeft() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M19 12H5" />
-      <path d="M12 19l-7-7 7-7" />
+    <svg {...ICON} width="18" height="18">
+      <path d="M20 12H5M11 18l-6-6 6-6" />
     </svg>
   )
 }
 
-function Logo() {
+function IconArrowRight() {
   return (
-    <div className={styles.logo} aria-label="gigio">
-      <span className={styles.gig}>gig</span><span className={styles.io}>io</span>
+    <svg {...ICON} width="18" height="18" strokeWidth={2}>
+      <path d="M4 12h15M13 6l6 6-6 6" />
+    </svg>
+  )
+}
+
+/** Moldura partilhada: wordmark (cartaz) + painel */
+function Shell({ children, busy }: { children: ReactNode; busy?: boolean }) {
+  return (
+    <div className={styles.page}>
+      <div className={styles.layout}>
+        <header className={styles.brand}>
+          {/* Wordmark v2 (§4.5): "gigio" condensado 800 + quadrado laranja no fim — igual à topbar */}
+          <div className={styles.brandTitle}>
+            <Wordmark className={styles.wordmark} />
+          </div>
+          <p className={styles.brandLine}>Setlists · Letras · Palco</p>
+        </header>
+        {/* Só ≥768: enche a coluna da marca como no login */}
+        <ol className={styles.benefits} aria-label="O que o gigio faz">
+          {BENEFITS.map((b, i) => (
+            <li key={i} className={styles.benefit}>
+              <span className={styles.num} aria-hidden="true">{pad2(i + 1)}</span>
+              <span className={styles.benefitText}>{b}</span>
+            </li>
+          ))}
+        </ol>
+        <main className={styles.panel} aria-busy={busy || undefined}>
+          {children}
+        </main>
+      </div>
     </div>
+  )
+}
+
+function Loading({ label }: { label: string }) {
+  return (
+    <Shell busy>
+      <div className={styles.loading} role="status">
+        <span className={styles.loadingLed} aria-hidden="true" />
+        {label}
+      </div>
+    </Shell>
   )
 }
 
@@ -71,7 +137,7 @@ export default function InvitePage() {
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [accepting, setAccepting] = useState(false)
   const [done, setDone] = useState(false)
-  const [codeInput, setCodeInput] = useState(inviteCode ?? '')
+  const [codeInput, setCodeInput] = useState(formatCode(inviteCode ?? ''))
   const [codeError, setCodeError] = useState<string | null>(null)
   const [joiningByCode, setJoiningByCode] = useState(false)
 
@@ -138,11 +204,15 @@ export default function InvitePage() {
     setJoiningByCode(true)
     setCodeError(null)
 
+    // Formato atual "ABCD-1234"; aceita também códigos antigos sem hífen
+    const code = formatCode(codeInput)
+    const bare = code.replace('-', '')
     const { data: band, error } = await supabase
       .from('bands')
       .select('id, name, type, color, invite_code, invite_expires_at')
-      .eq('invite_code', codeInput.toUpperCase().replace(/[^A-Z0-9]/g, ''))
-      .single()
+      .in('invite_code', code === bare ? [code] : [code, bare])
+      .limit(1)
+      .maybeSingle()
 
     if (error || !band) {
       setCodeError('Código inválido.')
@@ -180,30 +250,23 @@ export default function InvitePage() {
   }
 
   if (authLoading) {
-    return (
-      <div className={styles.page}>
-        <div className={styles.card}>
-          <div className={styles.loading}>A carregar…</div>
-        </div>
-      </div>
-    )
+    return <Loading label="A carregar…" />
   }
 
   if (!user) {
     return (
-      <div className={styles.page}>
-        <div className={styles.card}>
-          <Logo />
-          <h1 className={styles.title}>Tens um convite!</h1>
-          <p className={styles.sub}>Faz login ou cria uma conta para aceitar o convite e entrar no projeto.</p>
-          <button
-            className={styles.btn}
-            onClick={() => navigate(`/auth?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`)}
-          >
-            Entrar / Criar conta
-          </button>
-        </div>
-      </div>
+      <Shell>
+        <div className={styles.label}>Convite</div>
+        <h1 className={styles.title}>Tens um convite!</h1>
+        <p className={styles.sub}>Faz login ou cria uma conta para aceitar o convite e entrar no projeto.</p>
+        <button
+          className={styles.btn}
+          onClick={() => navigate(`/auth?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`)}
+        >
+          Entrar / Criar conta
+          <IconArrowRight />
+        </button>
+      </Shell>
     )
   }
 
@@ -211,109 +274,104 @@ export default function InvitePage() {
   if (token) {
     if (inviteError) {
       return (
-        <div className={styles.page}>
-          <div className={styles.card}>
-            <div className={styles.errorIcon}><IconX /></div>
-            <h1 className={styles.title}>Convite inválido</h1>
-            <p className={styles.sub}>{inviteError}</p>
-            <button className={styles.btn} onClick={() => navigate('/')}>Ir para o início</button>
-          </div>
-        </div>
+        <Shell>
+          <div className={`${styles.stateIcon} ${styles.stateError}`}><IconX /></div>
+          <h1 className={styles.title}>Convite inválido</h1>
+          <p className={styles.sub}>{inviteError}</p>
+          <button className={styles.btnSecondary} onClick={() => navigate('/')}>Ir para o início</button>
+        </Shell>
       )
     }
 
     if (!invite) {
-      return (
-        <div className={styles.page}>
-          <div className={styles.card}><div className={styles.loading}>A verificar convite…</div></div>
-        </div>
-      )
+      return <Loading label="A verificar convite…" />
     }
 
     if (done) {
       return (
-        <div className={styles.page}>
-          <div className={styles.card}>
-            <div className={styles.successIcon}><IconCheck /></div>
-            <h1 className={styles.title}>Bem-vindo ao projeto!</h1>
-            <p className={styles.sub}>A redirecionar para {invite.bands.name}…</p>
-          </div>
-        </div>
+        <Shell>
+          <div className={`${styles.stateIcon} ${styles.stateSuccess}`}><IconCheck /></div>
+          <h1 className={styles.title}>Bem-vindo ao projeto!</h1>
+          <p className={styles.metaLine} role="status">A redirecionar para {invite.bands.name}…</p>
+        </Shell>
       )
     }
 
-    const projectColor = invite.bands.color ?? '#7C3AED'
+    const projectColor = invite.bands.color || 'var(--text3)'
+    const typeLabel = PROJECT_TYPE_LABELS[invite.bands.type as ProjectType] ?? invite.bands.type
+    const expiry = new Date(invite.expires_at).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' })
 
     return (
-      <div className={styles.page}>
-        <div className={styles.card}>
-          <div className={styles.projectBanner} style={{ background: projectColor }}>
-            <div className={styles.bannerName}>{invite.bands.name}</div>
-            <div className={styles.bannerType}>{PROJECT_TYPE_LABELS[invite.bands.type as ProjectType] ?? invite.bands.type}</div>
-          </div>
-          <div className={styles.inviteBody}>
-            <p className={styles.inviteMsg}>
-              Foste convidado para entrar neste projeto como <strong>{ROLE_LABELS[invite.role]}</strong>.
-            </p>
-            {invite.bands.description && (
-              <p className={styles.projectDesc}>{invite.bands.description}</p>
-            )}
-            <div className={styles.inviteMeta}>
-              <span className={styles.expiryNote}>
-                Expira em {new Date(invite.expires_at).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' })}
-              </span>
-            </div>
-            <button
-              className={styles.acceptBtn}
-              style={{ background: projectColor }}
-              onClick={acceptInvite}
-              disabled={accepting}
-            >
-              {accepting ? 'A entrar…' : `Entrar em ${invite.bands.name}`}
-            </button>
-            <button className={styles.declineBtn} onClick={() => navigate('/')}>
-              Recusar
-            </button>
-          </div>
+      <Shell>
+        <div className={styles.label}>Convite para projeto</div>
+        <div className={styles.project}>
+          <span className={styles.led} style={{ background: projectColor }} aria-hidden="true" />
+          <h1 className={styles.projectName}>{invite.bands.name}</h1>
         </div>
-      </div>
+        <p className={styles.metaLine}>
+          {typeLabel}
+          <span className={styles.sep} aria-hidden="true">·</span>
+          {ROLE_LABELS[invite.role]}
+          <span className={styles.sep} aria-hidden="true">·</span>
+          Expira a {expiry}
+        </p>
+        <p className={styles.inviteMsg}>
+          Foste convidado para entrar neste projeto como <strong>{ROLE_LABELS[invite.role]}</strong>.
+        </p>
+        {invite.bands.description && (
+          <p className={styles.projectDesc}>{invite.bands.description}</p>
+        )}
+        <div className={styles.actions}>
+          <button
+            className={styles.btn}
+            onClick={acceptInvite}
+            disabled={accepting}
+          >
+            {accepting ? 'A entrar…' : <>Entrar em {invite.bands.name}<IconArrowRight /></>}
+          </button>
+          <button className={styles.btnGhost} onClick={() => navigate('/')}>
+            Recusar
+          </button>
+        </div>
+      </Shell>
     )
   }
 
   // Code-based join
   return (
-    <div className={styles.page}>
-      <div className={styles.card}>
-        <Logo />
-        <h1 className={styles.title}>Entrar num projeto</h1>
-        <p className={styles.sub}>Introduz o código de convite que recebeste.</p>
-        <div className={styles.codeForm}>
-          <input
-            className={styles.codeInput}
-            value={codeInput}
-            onChange={e => setCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-            placeholder="XXXX-0000"
-            maxLength={9}
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-            onKeyDown={e => e.key === 'Enter' && joinByCode()}
-            aria-label="Código de convite"
-          />
-          {codeError && <p className={styles.codeError}>{codeError}</p>}
-          <button
-            className={styles.btn}
-            onClick={joinByCode}
-            disabled={joiningByCode || !codeInput.trim()}
-          >
-            {joiningByCode ? 'A verificar…' : 'Entrar no projeto'}
-          </button>
-        </div>
-        <button className={styles.backLink} onClick={() => navigate('/')}>
-          <IconArrowLeft />
-          Voltar ao início
+    <Shell>
+      <div className={styles.label}>Código de convite</div>
+      <h1 className={styles.title}>Entrar num projeto</h1>
+      <p className={styles.sub}>Introduz o código de convite que recebeste.</p>
+      <div className={styles.codeForm}>
+        <input
+          className={styles.codeInput}
+          value={codeInput}
+          onChange={e => setCodeInput(formatCode(e.target.value))}
+          placeholder="XXXX-0000"
+          maxLength={9}
+          autoCapitalize="characters"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          onKeyDown={e => e.key === 'Enter' && joinByCode()}
+          aria-label="Código de convite"
+          aria-invalid={codeError ? true : undefined}
+          aria-describedby={codeError ? 'invite-code-error' : undefined}
+        />
+        {codeError && <p id="invite-code-error" className={styles.codeError} role="alert">{codeError}</p>}
+        <button
+          className={styles.btn}
+          onClick={joinByCode}
+          disabled={joiningByCode || !codeInput.trim()}
+        >
+          {joiningByCode ? 'A verificar…' : <>Entrar no projeto<IconArrowRight /></>}
         </button>
       </div>
-    </div>
+      <button className={styles.backLink} onClick={() => navigate('/')}>
+        <IconArrowLeft />
+        Voltar ao início
+      </button>
+    </Shell>
   )
 }

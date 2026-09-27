@@ -1,46 +1,88 @@
+/* Breadcrumbs v2 — micro-rótulo mono "hardware": PROJETOS / BANDA / MÚSICA */
 .crumbs {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 6px;
+  column-gap: 0;
+  row-gap: 0;
+  margin: 0 0 6px -8px;      /* alinha o texto do 1.º item com a margem da página */
   min-width: 0;
+  max-width: calc(100% + 8px);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.2;
 }
-.crumbWrap { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+
+.crumbWrap {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+.crumbWrapLast { flex: 0 1 auto; }
+
+/* Item navegável — alvo ≥44px de altura */
 .crumbLink {
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 8px;
+  background: transparent;
   border: none;
-  padding: 10px 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text3);
-  cursor: pointer;
-  border-radius: 5px;
-  transition: color 0.12s, background 0.12s;
-  white-space: nowrap;
-}
-.crumbLink:hover { color: var(--gig); background: var(--bg2); }
-.crumbLink:active { color: var(--gig); background: var(--bg3); }
-.crumbText {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text3);
-  padding: 10px 8px;
-  white-space: nowrap;
-}
-.crumbCurrent {
-  font-size: 14px;
-  font-weight: 700;
+  border-radius: var(--radius-xs);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
   color: var(--text2);
-  padding: 10px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.12s, background 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) {
+  .crumbLink:hover { color: var(--text); background: var(--surface-2); }
+}
+.crumbLink:active { color: var(--text); background: var(--surface-3); }
+.crumbLink:focus-visible { outline-offset: -2px; }
+
+.crumbText {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 8px;
+  color: var(--text3);
+  white-space: nowrap;
+}
+
+/* Último item = onde estou */
+.crumbCurrent {
+  display: block;
+  min-height: 44px;
+  line-height: 44px;
+  padding: 0 8px;
+  color: var(--text);
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 200px;
+  max-width: min(360px, 100%);
 }
+
 .sep {
-  font-size: 13px;
-  color: var(--text3);
-  opacity: 0.5;
   flex-shrink: 0;
+  color: var(--text3);
+  font-weight: 400;
+  padding: 0 1px;
+  user-select: none;
+}
+
+@media (max-width: 640px) {
+  .crumbLink { max-width: 150px; }
+  .crumbCurrent { max-width: min(200px, 100%); }
 }

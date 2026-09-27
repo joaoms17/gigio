@@ -1,213 +1,984 @@
+/* ═══════════════════════════════════════════════════════════════
+   MODO PALCO — v2 "hardware"
+   O palco é sempre escuro e tem paleta própria, vinda do concert_theme
+   do utilizador e injetada inline em .page:
+     --stage-ink / --stage-ink-2 / --stage-ink-3   tinta (letra) e tons
+     --stage-accent / --stage-accent-soft          acento de sinal
+   As teclas (botões) são brancos translúcidos fixos, como num painel de
+   equipamento — independentes do tema claro/escuro da app.
+═══════════════════════════════════════════════════════════════ */
+
 .page {
   height: 100dvh;
   display: flex;
   flex-direction: column;
   padding: 0 0 env(safe-area-inset-bottom, 0px);
   user-select: none;
+  -webkit-user-select: none;
   overflow: hidden;
+  color: var(--stage-ink);
+  font-family: var(--font-body);
+}
+.page :focus-visible {
+  outline: 2px solid var(--stage-accent);
+  outline-offset: 2px;
 }
 
 /* ──────────────────────────────────────────
-   HEADER — single line: exit · title/sub · actions
+   TECLA — botão de hardware (ações, ‹ ›)
 ────────────────────────────────────────── */
-.header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  flex-wrap: wrap; /* on narrow screens the actions drop to a second row */
-  flex-shrink: 0;
-}
-
-.iconBtn {
-  background: rgba(255,255,255,0.06);
-  border: none;
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: background 0.15s;
-  display: flex;
+.key {
+  position: relative;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  position: relative;
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  color: var(--stage-ink-2);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 /* Transparent hit-area extension without visual change */
-.iconBtn::after {
+.key::after {
   content: '';
   position: absolute;
   inset: -2px;
 }
-.iconBtn:hover:not(:disabled) { background: rgba(255,255,255,0.12); }
-.iconBtn:disabled { opacity: 0.25; cursor: default; pointer-events: none; }
+@media (hover: hover) {
+  .key:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: var(--stage-ink);
+  }
+}
+.key:active:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+/* Desativada = tecla APAGADA (não "partida"): o contorno mantém-se,
+   o corpo fica transparente e só o ícone esmorece */
+.key:disabled {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.07);
+  color: var(--stage-ink-3);
+  cursor: default;
+  pointer-events: none;
+}
+.key:disabled > svg { opacity: 0.4; }
+
+/* Ligada: tecla acesa — corpo mais claro, contorno e ícone na cor de acento */
+.keyOn,
+.keyOn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--stage-accent);
+  border-color: var(--stage-accent);
+}
+/* Travada (≡ com o alinhamento à vista): tecla premida, SEM acento — na
+   paisagem é o estado de repouso, não um sinal; o laranja fica para o que
+   está vivo (contador, linha ativa, ▶) */
+.keyLatched,
+.keyLatched:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: var(--stage-ink);
+}
+
+/* ──────────────────────────────────────────
+   HEADER
+   Telemóvel (grelha): [✕] [07/22] │ título  /  SEMI|MANUAL ……… teclas
+   Tablet (flex):      [✕] [07/22] │ título… ……… teclas   (uma só linha)
+────────────────────────────────────────── */
+.header {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-areas:
+    "exit readout info"
+    "actions actions actions";
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 10px;
+  padding: 10px 16px;
+  padding-top: max(10px, env(safe-area-inset-top, 0px));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+.exitKey { grid-area: exit; }
+
+/* Readout: contador de setlist + tag "ao vivo" */
+.readout {
+  grid-area: readout;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.counter {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.counterNow { color: var(--stage-accent); }
+.counterTotal { color: var(--stage-ink-3); }
+
+.liveTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--stage-ink-2);
+  white-space: nowrap;
+}
+.liveLed {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--stage-accent);
+  flex-shrink: 0;
+  animation: livePulse 1.6s infinite;
+}
 
 .headerInfo {
-  flex: 1;
-  min-width: 150px;
+  grid-area: info;
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.10);
 }
 .headerTitle {
   font-family: var(--font-display);
-  font-size: 19px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  line-height: 1.15;
+  font-stretch: 75%;
+  font-weight: 800;
+  font-size: 21px;
+  line-height: 1.05;
+  letter-spacing: -0.005em;
+  color: var(--stage-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .headerSub {
-  font-size: 13px;
+  margin-top: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   font-weight: 600;
-  margin-top: 2px;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--stage-ink-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.headerCount {
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  font-variant-numeric: tabular-nums;
+/* Tons (G, Em, F#m, Bb) nunca em maiúsculas — "EM"/"BB" mudava o sentido */
+.keyVal {
+  text-transform: none;
+  letter-spacing: 0.02em;
 }
+.headerSub .keyVal { color: var(--stage-ink); }
 
+/* Teclas alinhadas à direita: as condicionais (anotações/acordes/metrónomo)
+   vêm primeiro no DOM, por isso ✎ ≡ e SEMI/MANUAL ficam sempre no mesmo sítio */
 .headerActions {
+  grid-area: actions;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  flex-shrink: 0;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
 }
 
-/* Segmented control Semi/Manual — both options visible, active highlighted */
-.modeSeg {
+/* Segmented SEMI / MANUAL — trilho de tecla, opção ativa acesa */
+.seg {
   display: flex;
   align-items: stretch;
   gap: 2px;
-  background: rgba(255,255,255,0.06);
-  border-radius: 12px;
+  flex: 0 0 auto;
+  margin-left: 4px;
+  height: 44px;
   padding: 3px;
-  height: 46px;
-  box-sizing: border-box;
-  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  max-width: 100%;
 }
-.modeSegBtn {
+.segBtn {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 44px;
+  padding: 0 8px;
   background: transparent;
   border: none;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 0 10px;
-  border-radius: 9px;
+  color: var(--stage-ink-2);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
-  position: relative;
 }
 /* Vertical hit-area extension only — horizontally the two options touch */
-.modeSegBtn::after {
+.segBtn::after {
   content: '';
   position: absolute;
   inset: -5px 0;
 }
-
-/* Song notes */
-.notesBanner {
-  margin: 0 16px 8px;
-  padding: 8px 12px;
-  border: 1px solid;
-  border-radius: 8px;
-  font-size: 12px;
-  flex-shrink: 0;
+.segBtnOn {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--stage-ink);
 }
 
-/* Lyrics — scrollable body (gets all the space the compact chrome frees up) */
+/* Metrónomo visual: LED quadrado a piscar + BPM */
+.metro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.metroLed {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--stage-accent);
+  animation: metroPulse 1s ease-out infinite;
+}
+.metroBpm {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--stage-accent);
+}
+@keyframes metroPulse {
+  0%   { transform: scale(1.15); opacity: 1; }
+  50%  { transform: scale(0.85); opacity: 0.3; }
+  100% { transform: scale(1.15); opacity: 1; }
+}
+
+/* ──────────────────────────────────────────
+   CUE SHEET — intro / nota / final
+────────────────────────────────────────── */
+.cueStack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px 0;
+  flex-shrink: 0;
+}
+.cue {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 6px;
+}
+.cueLabel {
+  flex-shrink: 0;
+  min-width: 44px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--stage-ink-3);
+}
+.cueText {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--stage-ink-2);
+  overflow-wrap: break-word;
+}
+.cueIntro .cueLabel { color: var(--stage-accent); }
+.cueIntro .cueText { color: var(--stage-ink); }
+
+/* ──────────────────────────────────────────
+   CORPO — [coluna de alinhamento ≥1024] + palco (letra + footer)
+   A coluna desce até ao fundo do ecrã; o footer vive dentro do palco,
+   por isso o deck ‹ LINHA ▶ LINHA › centra-se no eixo da letra
+────────────────────────────────────────── */
+.stageBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.stageMain {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* Área da letra: âncora do chip de sincronização sobreposto */
+.lyricsArea {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ──────────────────────────────────────────
+   LETRA
+────────────────────────────────────────── */
 .lyricsScroll {
   flex: 1;
   overflow-y: auto;
   padding: 12px 0 24px;
   min-height: 0;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
-.lyricLineManual {
+/* Entrelinha interna apertada: uma frase que quebra em duas linhas lê-se
+   como UMA frase (antes o intervalo da quebra era igual ao entre frases).
+   O espaço entre frases vem do padding, derivado do line_height do
+   utilizador (--lyric-lh) → uma frase de uma só linha ocupa o mesmo. */
+.lyricLine {
+  /* relative + isolate: o flash e o pulso do cue (z-index -1) ficam por
+     cima do fundo da linha mas por baixo do texto */
+  position: relative;
+  isolation: isolate;
   font-size: var(--lyric-size, 32px);
-  line-height: 2;
-  padding: 4px 16px;
+  font-weight: 400;
+  line-height: 1.22;
+  padding: calc(max(0px, (var(--lyric-lh, 1.6) - 1.22) * 0.5em) + 4px) 16px;
   text-align: center;
-  transition: opacity 0.15s, background 0.18s;
+  text-wrap: balance;
+  color: var(--stage-ink);
+  overflow-wrap: break-word;
   cursor: pointer;
-  min-height: 1.8em;
-  border-radius: 8px;
+  transition: opacity 0.15s, background 0.18s, box-shadow 0.18s;
 }
-.lyricLineManual:active { opacity: 0.6; }
+.lyricLine:active { opacity: 0.6; }
 
-.emptyLyrics {
-  font-size: 18px;
-  font-weight: 600;
-  text-align: center;
-}
-
-/* [Secção] lines rendered as small labels instead of raw 46px lyrics */
-.sectionLabel {
-  font-size: 13px;
+/* Linha ativa — faixa de leitura (teleponto): fundo tintado + barra de acento */
+.lyricActive {
   font-weight: 800;
+  background: var(--stage-accent-soft);
+  box-shadow: inset 3px 0 0 var(--stage-accent);
+}
+
+/* Já cantado — esmorece, mas continua legível num relance (≥3:1 em letra grande) */
+.past { opacity: 0.42; }
+
+/* Parado a meio da música: a barra da linha ativa pulsa (vê-se sem olhar
+   para o footer) */
+.lyricActive.lyricPaused { box-shadow: none; }
+.lyricPaused::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--stage-accent);
+  pointer-events: none;
+  animation: cuePulse 1.6s ease-in-out infinite;
+}
+
+/* "Estamos aqui" — flash curto na linha tocada/ajustada, a esbater.
+   Contorno de 3px e fundo mais cheio quando o acento ≈ tinta da letra
+   (--stage-flash-soft vem do JS) — lê-se com luz de palco */
+.flashRing {
+  position: absolute;
+  inset: 0 6px;
+  z-index: -1;
+  border: 3px solid var(--stage-accent);
+  border-radius: 8px;
+  background: var(--stage-flash-soft, var(--stage-accent-soft));
+  pointer-events: none;
+  animation: lineFlash 0.7s ease-out forwards;
+}
+@keyframes lineFlash {
+  0%, 25% { opacity: 1; }
+  100%    { opacity: 0; }
+}
+
+/* Cue — a 1.ª linha de letra pulsa (a faixa em que se vai tornar) até
+   a música arrancar e o relógio lá chegar */
+.lyricCue::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--stage-accent-soft);
+  box-shadow: inset 3px 0 0 var(--stage-accent);
+  pointer-events: none;
+  animation: cuePulse 1.6s ease-in-out infinite;
+}
+@keyframes cuePulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.2; }
+}
+
+/* Espaçador de topo em cue: só a dica, a letra começa logo a seguir */
+.cueSpacer {
+  flex-shrink: 0;
+  padding: 2px 16px 14px;
+}
+.cueHint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  column-gap: 8px;
+  row-gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   text-align: center;
-  padding: 8px 16px 2px;
+  color: var(--stage-ink-2);
+}
+.cueHintLed {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--stage-accent);
+  animation: cuePulse 1.6s ease-in-out infinite;
+}
+.cueHintPlay {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--stage-accent);
+}
+
+/* Chip de confirmação "SINCRONIZADO · 1:24" — sobreposto, nunca bloqueia */
+.chipSlot {
+  position: absolute;
+  top: 10px;
+  left: 16px;
+  right: 16px;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.syncChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 8px 12px;
+  background: var(--stage-bg);
+  border: 1px solid var(--stage-accent);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--stage-accent);
+  animation: chipLife 1.4s ease-out forwards;
+}
+.syncChipLed {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--stage-accent);
+}
+.syncChipLabel { flex-shrink: 0; }
+/* Valor: tempo ou "→ 08 · TÍTULO" (reticências num título comprido) */
+.syncChipTime {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+  color: var(--stage-ink);
+}
+/* Relógio parado ("POSIÇÃO · 1:24 · EM PAUSA"): LED apagado, tom neutro */
+.syncChipIdle {
+  border-color: rgba(255, 255, 255, 0.22);
+  color: var(--stage-ink-2);
+}
+.syncChipLedOff {
+  background: transparent;
+  border: 1.5px solid currentColor;
+}
+/* Aviso persistente de pausa a meio da música (não esbate) */
+.pauseTag {
+  animation: none;
+  flex-wrap: wrap;
+  justify-content: center;
+  row-gap: 4px;
+  line-height: 1.3;
+  white-space: normal;
+  text-align: center;
+  color: var(--stage-ink);
+}
+.pauseTag > svg {
+  flex-shrink: 0;
+  color: var(--stage-accent);
+}
+@keyframes chipLife {
+  0%   { opacity: 0; transform: translateY(-6px); }
+  10%  { opacity: 1; transform: none; }
+  80%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Modo manual: sem toque para saltar */
+.isStatic { cursor: default; }
+.isStatic:active { opacity: 1; }
+
+/* [Secção] — micro-rótulo mono na cor de acento, ladeado por traços */
+.sectionLabel {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 16px 2px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--stage-accent);
   cursor: pointer;
   transition: opacity 0.15s;
 }
+.sectionLabel::before,
+.sectionLabel::after {
+  content: '';
+  width: 24px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
 
-/* Re-sync button */
+.emptyLyrics {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 16px;
+  text-align: center;
+}
+.emptyTitle {
+  font-family: var(--font-display);
+  font-stretch: 75%;
+  font-weight: 800;
+  font-size: 26px;
+  line-height: 1.05;
+  color: var(--stage-ink-2);
+}
+.emptyHint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--stage-ink-3);
+}
+
+/* Re-sync — tecla acesa em acento */
 .resyncWrap {
   display: flex;
   justify-content: center;
-  padding: 2px 16px 6px;
+  padding: 6px 16px 8px;
   flex-shrink: 0;
 }
 .resyncBtn {
-  padding: 10px 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   min-height: 44px;
-  border-radius: 24px;
-  border: 1.5px solid;
-  background: rgba(255,255,255,0.08);
-  font-size: 15px;
+  padding: 0 20px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--stage-accent);
+  border-radius: 8px;
+  color: var(--stage-accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
   font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   cursor: pointer;
-  letter-spacing: 0.04em;
   transition: background 0.15s;
 }
-.resyncBtn:hover { background: rgba(255,255,255,0.13); }
+.resyncBtn:hover { background: rgba(255, 255, 255, 0.10); }
 
 /* ──────────────────────────────────────────
-   FOOTER — consolidated bar: progress + transport + film strip
+   ACORDES / ANOTAÇÕES
+────────────────────────────────────────── */
+.chordsPre {
+  font-family: var(--font-mono);
+  font-size: calc(var(--lyric-size, 32px) * 0.55);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  padding: 12px 24px;
+  margin: 0;
+  color: var(--stage-ink);
+}
+.transposeNote {
+  padding: 12px 24px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--stage-accent);
+}
+
+.annotationsWrap {
+  padding: 0;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ──────────────────────────────────────────
+   ALINHAMENTO — setlist impressa, sempre à mão
+   ≥1024px: coluna fixa à esquerda da letra (≡ recolhe/expande)
+   <1024px: folha que sobe de baixo (≡ abre)
+────────────────────────────────────────── */
+.sidebar {
+  flex: 0 0 320px;
+  width: 320px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+/* Sem regra CSS a esconder a coluna: quem decide é o JS, com a MESMA media
+   query (min-width: 1024px) — duas fontes de verdade podiam divergir */
+
+.sheetLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+.sheetBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  animation: sheetFade 0.18s ease-out;
+}
+.sheet {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  max-height: 72vh;
+  max-height: 72dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--stage-bg);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: sheetUp 0.22s ease-out;
+}
+/* Alça — também fecha (alvo de 44px com a extensão) */
+.sheetGrip {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 14px 14px 0 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.sheetGrip::after {
+  content: '';
+  position: absolute;
+  inset: -12px 0 0;
+}
+.sheetGripBar {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.28);
+}
+@keyframes sheetUp {
+  from { transform: translateY(32px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+@keyframes sheetFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Cabeçalho: ALINHAMENTO · 12 · 45 MIN ……… [EDITAR ORDEM] */
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 12px 6px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+.panelTitle {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--stage-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.editBtn {
+  position: relative;
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--stage-ink-2);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.editBtn::after {
+  content: '';
+  position: absolute;
+  inset: -5px -2px;
+}
+@media (hover: hover) {
+  .editBtn:hover { background: rgba(255, 255, 255, 0.10); color: var(--stage-ink); }
+}
+.editBtnOn,
+.editBtnOn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--stage-accent);
+  color: var(--stage-accent);
+}
+
+.setlist {
+  position: relative; /* offsetParent das linhas (auto-scroll para a atual) */
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.row {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  transition: opacity 0.15s, background 0.15s;
+}
+.row:first-child { border-top: none; }
+.rowCurrent {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 3px 0 0 var(--stage-accent);
+}
+/* Já tocada: só o título esmorece (opacidade na linha inteira deixava o
+   número mono abaixo de 3:1) */
+.rowPast .rowTitle { color: var(--stage-ink-3); font-weight: 500; }
+.rowPast .rowKey { color: var(--stage-ink-3); border-color: rgba(255, 255, 255, 0.12); }
+/* Coluna com a música a tocar: 1.º toque arma ("TOCA DE NOVO · SALTAR") */
+.rowArmed {
+  background: var(--stage-accent-soft);
+  box-shadow: inset 0 0 0 2px var(--stage-accent);
+}
+
+.rowMain {
+  flex: 1;
+  min-width: 0;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 12px 6px 16px;
+  background: transparent;
+  border: none;
+  color: var(--stage-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) {
+  button.rowMain:hover { background: rgba(255, 255, 255, 0.04); }
+}
+button.rowMain:active { background: rgba(255, 255, 255, 0.08); }
+.rowMainStatic { cursor: default; }
+.rowNum {
+  flex-shrink: 0;
+  min-width: 2ch;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--stage-ink-3);
+}
+.rowCurrent .rowNum { color: var(--stage-accent); }
+.rowText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rowTag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--stage-accent);
+}
+.rowTitle {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rowCurrent .rowTitle { font-weight: 700; }
+/* Chip de tom: transparente, hairline, valor sem maiúsculas forçadas */
+.rowKey {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--stage-ink-2);
+}
+
+/* Só em "Editar ordem": teclas ▲▼ */
+.reorderBtns {
+  display: flex;
+  gap: 4px;
+  padding-right: 10px;
+  flex-shrink: 0;
+}
+.reorderBtn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  color: var(--stage-ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+@media (hover: hover) {
+  .reorderBtn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.10); border-color: rgba(255, 255, 255, 0.18); }
+}
+.reorderBtn:active:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+.reorderBtn:disabled {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.07);
+  cursor: default;
+}
+.reorderBtn:disabled > svg { opacity: 0.3; }
+
+/* ──────────────────────────────────────────
+   FOOTER — transporte: fader + teclas + film strip
 ────────────────────────────────────────── */
 .footer {
   flex-shrink: 0;
-  border-top: 1px solid rgba(255,255,255,0.08);
-  background: rgba(255,255,255,0.03);
-  padding: 6px 16px 10px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  padding: 6px 16px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
 }
 
-/* Line 1 — scrubbable progress (44px hit area, 26px thumb), sync only */
+/* Linha 1 — progresso arrastável (área de toque 44px), só com sync */
 .progressRow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  /* Afastada do deck (4 + 8 = 12px): a mão que procura ‹ LINHA / ▶ não
+     cai na barra */
+  margin-bottom: 8px;
   user-select: none;
 }
 .progressTime {
+  flex-shrink: 0;
+  min-width: 40px;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-  min-width: 36px;
+  color: var(--stage-ink-2);
 }
-.progressTime:last-child { text-align: right; }
+.progressTimeEnd { text-align: right; }
 .progressHit {
   flex: 1;
   min-height: 44px;
@@ -217,279 +988,437 @@
   cursor: pointer;
 }
 .progressBg {
-  flex: 1;
-  height: 6px;
-  background: rgba(255,255,255,0.1);
-  border-radius: 3px;
   position: relative;
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 2px;
 }
-.progressFill { height: 6px; border-radius: 3px; transition: width 0.08s linear; }
-.progressThumb {
+.progressFill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--stage-accent);
+  transition: width 0.08s linear;
+}
+/* Thumb = tampa de fader de mesa de mistura (valores fixos do brief do palco) */
+.fader {
   position: absolute;
   top: 50%;
+  width: 14px;
+  height: 28px;
   transform: translate(-50%, -50%);
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
+  border-radius: 3px;
+  background: #F2F1EC;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
   pointer-events: none;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  transition: left 0.08s linear;
+}
+.fader::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: #111111;
 }
 
-/* Line 2 — transport on the left, film strip on the right */
+/* Linha 2 — ‹ · visor · film strip · ›
+   As teclas de música nos cantos (posição previsível ao vivo); o visor
+   ocupa o espaço flexível; a film strip encosta ao ›. */
 .controlsRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 10px;
+  min-width: 0;
 }
+/* Teclas de MÚSICA: sem corpo (só contorno) e com o nº de destino — nunca
+   se confundem com as teclas de LINHA do deck, que têm corpo */
+.navKey {
+  width: 88px;
+  height: 68px;
+  flex-direction: column;
+  gap: 3px;
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--stage-ink);
+}
+.navKeyNum {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--stage-ink-2);
+}
+.key:disabled .navKeyNum { opacity: 0.5; }
+.deck {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Com transporte: o deck fica entre hairlines verticais, separado das
+   teclas de música por ≥14px */
+.hasTransport .deck {
+  align-self: stretch;
+  padding: 0 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.10);
+  border-right: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.playKey {
+  position: relative;
+  flex-shrink: 0;
+  width: 76px;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--stage-accent);
+  border: none;
+  border-radius: 8px;
+  color: var(--on-accent);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.12s, transform 0.12s;
+}
+@media (hover: hover) {
+  .playKey:hover { opacity: 0.9; }
+}
+.playKey:active { transform: scale(0.96); }
+/* Em pausa a meio da música: anel pulsante à volta do ▶ */
+.playKeyPaused::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border: 2px solid var(--stage-accent);
+  border-radius: 10px;
+  pointer-events: none;
+  animation: cuePulse 1.6s ease-in-out infinite;
+}
+
+/* Deck com sync: [|‹ LINHA] [▶/❚❚] [LINHA ›|] — ajuste fino da letra
+   (seek para o início da linha anterior/seguinte, sem mexer no play) */
 .transport {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
+  gap: 8px;
 }
-.navBtn {
-  width: 88px;
+.lineKey {
+  width: 64px;
   height: 68px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 16px;
-  cursor: pointer;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--stage-ink);
+}
+.lineKeyLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--stage-ink-2);
+}
+.lineKey:disabled .lineKeyLabel { opacity: 0.5; }
+
+/* Visor de estado no slot do play (sem sync / modo manual / acordes):
+   LED apagado + estado / "USA O SCROLL".
+   Telemóvel e tablet retrato: dois andares deliberados (como os cartões
+   "A seguir"); paisagem: uma só linha com separador hairline. */
+.deckNote {
+  min-width: 0;
+  max-width: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  transition: background 0.15s, border-color 0.15s;
-}
-.navBtn:hover:not(:disabled) { background: rgba(255,255,255,0.11); border-color: rgba(255,255,255,0.22); }
-.navBtn:active:not(:disabled) { background: rgba(255,255,255,0.16); }
-.navBtn:disabled { opacity: 0.2; cursor: default; }
-
-.playBtn {
-  border: none;
-  width: 76px;
-  height: 68px;
-  border-radius: 18px;
-  color: #fff;
-  cursor: pointer;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
-  transition: transform 0.12s, opacity 0.12s;
-}
-.playBtn:hover { opacity: 0.88; transform: scale(1.04); }
-.playBtn:active { transform: scale(0.94); }
-
-/* Shown in the play slot when the song has no sync */
-.noSyncNote {
-  font-size: 12px;
-  font-weight: 600;
-  opacity: 0.4;
+  gap: 6px;
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   text-align: center;
-  max-width: 150px;
-  line-height: 1.35;
+  white-space: nowrap;
+}
+.deckMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--stage-ink-2);
+}
+.deckText {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.deckLed {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+.deckHint {
+  font-weight: 600;
+  color: var(--stage-ink-3);
 }
 
-/* Film strip: next 1-2 songs, tap to jump */
+/* Film strip: próximas 1-2 músicas, toque para saltar — ranhuras de
+   largura igual, encostadas ao › */
 .filmStrip {
   display: flex;
   align-items: stretch;
-  justify-content: flex-end;
   gap: 8px;
+  flex: 0 1 auto;
   min-width: 0;
-  flex: 1;
 }
 .stripCard {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 14px;
-  height: 68px;
-  padding: 0 14px;
-  min-width: 0;
-  max-width: 230px;
   flex: 0 1 auto;
+  width: 240px;       /* ranhura fixa; encolhe (reticências) se faltar espaço */
+  min-width: 0;
+  height: 68px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 3px;
+  gap: 7px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  color: var(--stage-ink);
   text-align: left;
-  cursor: pointer;
   overflow: hidden;
+  cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
-.stripCard:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.22); }
-.stripCard:active { background: rgba(255,255,255,0.15); }
+@media (hover: hover) {
+  .stripCard:hover { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.18); }
+}
+.stripCard:active { background: rgba(255, 255, 255, 0.10); }
 .stripLabel {
+  font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-weight: 700;
   line-height: 1;
-}
-.stripTitle {
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.2;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Narrow screens — hide the strip, center the transport */
-@media (max-width: 699.98px) {
-  .filmStrip { display: none; }
-  .controlsRow { justify-content: center; }
-  /* Header em duas linhas sem transbordar: ações ocupam a 2ª linha inteira */
-  .header { flex-wrap: wrap; }
-  .headerActions { margin-left: 0; width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
-  .iconBtn { width: 40px; height: 40px; min-width: 40px; }
-  .modeSeg { height: 40px; }
-  .modeSegBtn { padding: 0 8px; font-size: 10px; }
-}
-
-/* Setlist panel */
-.setlistPanel {
-  border-top: 1px solid;
-  padding: 8px 12px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: 40dvh;
-  overflow-y: auto;
-  flex-shrink: 0;
-}
-.setlistItem {
-  border: none;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 9px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-align: left;
-  transition: background 0.15s, opacity 0.15s;
-}
-.setlistNum {
-  font-size: 10px;
-  font-weight: 700;
-  opacity: 0.5;
-  min-width: 16px;
-}
-.setlistTitle {
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.setlistKey {
-  font-size: 10px;
-  font-weight: 800;
-  flex-shrink: 0;
-}
-
-/* Chords view */
-.chordsPre {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  font-size: calc(var(--lyric-size, 32px) * 0.55);
-  line-height: 1.5;
-  white-space: pre-wrap;
-  padding: 12px 24px;
-  margin: 0;
-}
-.transposeNote {
-  font-size: 13px;
-  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 10px 24px 0;
-  opacity: 0.8;
+  white-space: nowrap;
+  color: var(--stage-ink-3);
 }
+.stripLabelNext { color: var(--stage-accent); }
+.stripTitle {
+  max-width: 100%;
+  font-family: var(--font-display);
+  font-stretch: 75%;
+  font-weight: 800;
+  font-size: 17px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stripCardLater .stripTitle { color: var(--stage-ink-2); }
 
-/* Annotations view */
-.annotationsWrap {
-  padding: 0;
-  max-width: 900px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-/* Banner stack (intro / notes / ending) */
-.bannerStack {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-/* Metronome visual pulse */
-.metroDot {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  display: inline-block;
-  animation: metroPulse 1s ease-out infinite;
-}
-@keyframes metroPulse {
-  0%   { transform: scale(1.35); opacity: 1; }
-  50%  { transform: scale(0.85); opacity: 0.45; }
-  100% { transform: scale(1.35); opacity: 1; }
-}
-
-/* Reorder buttons in setlist panel */
-.reorderBtns {
-  margin-left: auto;
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.reorderBtn {
-  background: none;
-  border: none;
-  font-size: 14px;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  cursor: pointer;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
+/* Micro-linha "A SEGUIR · 08 · TÍTULO" — só no telemóvel (sem film strip) */
+.nextLine {
+  display: none;
+  align-items: baseline;
   justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 4px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--stage-ink-3);
 }
-.reorderBtn:disabled { cursor: default; }
+.nextLine > span { flex-shrink: 0; }
+.nextLineTag { color: var(--stage-accent); font-weight: 700; }
+.nextLine > .nextLineTitle {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--stage-ink-2);
+}
 
 /* ──────────────────────────────────────────
-   TABLET / LARGER SCREENS — scale the reading
-   surfaces up (controls keep the mockup sizes)
+   TELEMÓVEL (≤640px)
 ────────────────────────────────────────── */
-@media (min-width: 768px) {
-  .header { padding: 14px 24px; }
-  .headerActions { gap: 10px; }
-  .headerTitle { font-size: 23px; }
-  .headerSub { font-size: 14px; }
-  .modeSegBtn { font-size: 13px; padding: 0 14px; }
+@media (max-width: 640px) {
+  .header .key { width: 44px; height: 44px; }
+  /* 2.ª linha do header: SEMI/MANUAL encostado à esquerda (por baixo do ✕),
+     teclas encostadas à direita — as fixas nunca mudam de sítio */
+  .seg { order: -1; margin-left: 0; margin-right: auto; }
+  .segBtn { padding: 0 6px; letter-spacing: 0.06em; }
+  .filmStrip { display: none; }
+  .nextLine { display: flex; }
+  /* ‹ │ |‹ ▶ ›| │ › numa linha de 390px (358 úteis):
+     60 + 6 + (1 + 7 + 56 + 6 + 64 + 6 + 56 + 7 + 1) + 6 + 60 = 336.
+     Teclas de música a 14px (+ hairline) das de linha; todas ≥56×68 */
+  .hasTransport { gap: 6px; }
+  .hasTransport .navKey { width: 60px; }
+  .hasTransport .deck { padding: 0 7px; }
+  .transport { gap: 6px; }
+  .lineKey { width: 56px; }
+  .playKey { width: 64px; }
+}
+/* Telemóveis estreitos (≤380px): 5 teclas + SEMI/MANUAL numa linha */
+@media (max-width: 380px) {
+  .headerActions { gap: 2px; }
+  .navKey { width: 80px; }
+  .controlsRow { gap: 8px; }
+  .deckNote { padding: 0; letter-spacing: 0.04em; }
+  /* 56 + 6 + (1 + 5 + 56 + 6 + 60 + 6 + 56 + 5 + 1) + 6 + 56 = 320 (cabe em 328) */
+  .hasTransport { gap: 6px; }
+  .hasTransport .navKey { width: 56px; }
+  .hasTransport .deck { padding: 0 5px; }
+  .lineKey { width: 56px; }
+  .playKey { width: 60px; }
+}
 
-  .sectionLabel { font-size: 17px; padding: 12px 16px 4px; }
-  .notesBanner { font-size: 16px; padding: 12px 18px; }
-  .resyncBtn { font-size: 19px; padding: 14px 32px; border-radius: 30px; }
+/* ──────────────────────────────────────────
+   TABLET (≥641px) — teclas 46px, leitura maior
+────────────────────────────────────────── */
+@media (min-width: 641px) {
+  /* Uma só linha: ✕ · 07/22 │ título (reticências) ……… teclas.
+     Só quando o título ficaria com <170px (muitas teclas condicionais num
+     ecrã estreito) é que as teclas descem para uma 2.ª linha, à direita. */
+  .header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 14px;
+    row-gap: 12px;
+    padding: 12px 24px;
+    padding-top: max(12px, env(safe-area-inset-top, 0px));
+  }
+  .exitKey,
+  .readout { flex: 0 0 auto; }
+  .headerInfo {
+    flex: 1 1 0;
+    min-width: 170px;
+    padding-left: 14px;
+  }
+  .counter { font-size: 26px; }
+  .headerTitle { font-size: 24px; }
+  .headerSub { font-size: 12px; }
+  .headerActions {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .seg { flex: 0 0 auto; height: 46px; margin-left: 4px; }
+  .segBtn { font-size: 11px; padding: 0 14px; }
+  .metroLed { width: 14px; height: 14px; }
 
-  .footer { padding: 8px 24px 12px; }
-  .progressTime { font-size: 13px; min-width: 42px; }
-  .noSyncNote { font-size: 14px; max-width: 220px; }
-  .stripCard { max-width: 280px; }
+  .cueStack { padding: 12px 24px 0; }
+  .cue { padding: 10px 14px; }
+  .cueLabel { font-size: 11px; min-width: 52px; }
+  .cueText { font-size: 16px; }
+
+  /* Letra alinhada às margens de 24px do header/footer */
+  .lyricLine { padding-left: 24px; padding-right: 24px; }
+  .sectionLabel { font-size: 15px; padding: 14px 24px 4px; }
+  .sectionLabel::before,
+  .sectionLabel::after { width: 32px; }
+  .emptyTitle { font-size: 32px; }
+  .emptyHint { font-size: 12px; }
+  .resyncBtn { min-height: 52px; padding: 0 28px; font-size: 14px; }
+  .transposeNote { font-size: 13px; }
+  .cueSpacer { padding: 4px 24px 18px; }
+  .cueHint { font-size: 12px; }
+  .syncChip { font-size: 12px; padding: 9px 14px; }
+
+  .panelHead { padding: 8px 16px 8px 24px; }
+  .panelTitle { font-size: 11px; }
+  .rowMain { gap: 18px; padding-left: 24px; }
+  .rowNum { font-size: 15px; }
+  .rowTitle { font-size: 17px; }
+  .rowKey { font-size: 12px; }
+  .reorderBtns { padding-right: 16px; }
+  /* Coluna (320px): margens mais curtas para o título respirar */
+  .sidebar .panelHead { padding-left: 16px; padding-right: 10px; }
+  .sidebar .panelTitle { font-size: 10px; }
+  .sidebar .rowMain { gap: 14px; padding-left: 16px; padding-right: 10px; }
+  .sidebar .reorderBtns { padding-right: 10px; }
+
+  .footer { padding: 8px 24px 14px; }
+  .progressTime { font-size: 13px; min-width: 44px; }
+  .controlsRow { gap: 12px; }
+  /* O visor não encolhe (o estado lê-se sempre inteiro) — encolhem os
+     cartões da film strip, cujos títulos levam reticências */
+  .deck { flex-shrink: 0; }
+  .deckNote { font-size: 12px; padding: 0 8px; }
   .stripLabel { font-size: 11px; }
-  .stripTitle { font-size: 15px; }
+  .stripTitle { font-size: 19px; }
+}
 
-  .setlistItem { font-size: 17px; padding: 14px 16px; }
-  .setlistNum { font-size: 13px; min-width: 22px; }
-  .setlistKey { font-size: 14px; }
+/* Tablet retrato: teclas um pouco mais juntas para que ✕ · contador ·
+   título · 5 teclas · SEMI|MANUAL caibam numa linha a 820px */
+@media (min-width: 641px) and (max-width: 1023.98px) {
+  .headerActions { gap: 6px; }
+  .segBtn { padding: 0 12px; }
+}
 
+/* Tablet estreito (641–759px): só o cartão "A seguir" — dois cartões
+   ficavam com ~100px e o título ilegível */
+@media (min-width: 641px) and (max-width: 759.98px) {
+  .stripCardLater { display: none; }
+  /* 12 (gap) + 1 + 8 = 21px entre ‹ e |‹ — mais espaço para "A seguir" */
+  .hasTransport .deck { padding: 0 8px; }
+}
+/* Com as teclas de linha no deck, abaixo de 1024px só cabe "A seguir" */
+@media (max-width: 1023.98px) {
+  .hasTransport .stripCardLater { display: none; }
+}
+
+/* Tablet paisagem / desktop */
+@media (min-width: 1024px) {
+  .counter { font-size: 28px; }
+  .headerTitle { font-size: 26px; }
+  .headerActions { gap: 10px; }
+
+  .stripCard { width: 280px; }
+
+  /* Visor numa só linha — há espaço de sobra até à film strip */
+  .deckNote { flex-direction: row; gap: 12px; padding: 0 12px; }
+  .deckHint {
+    padding-left: 12px;
+    border-left: 1px solid rgba(255, 255, 255, 0.14);
+  }
+}
+
+/* Acordes seguem o mesmo limiar que escala a letra (isTablet ≥768px no JS) */
+@media (min-width: 768px) {
   .chordsPre { font-size: calc(var(--lyric-size, 32px) * 0.75); }
-  .reorderBtn { font-size: 16px; }
-  .metroDot { width: 22px; height: 22px; }
+}
+
+/* Movimento reduzido: sem pulsos nem deslizes (o flash e o chip ficam —
+   são a confirmação da sincronização, e só esbatem) */
+@media (prefers-reduced-motion: reduce) {
+  .lyricCue::before,
+  .lyricPaused::after,
+  .playKeyPaused::after,
+  .cueHintLed { animation: none; }
+  .sheet,
+  .sheetBackdrop { animation: none; }
 }

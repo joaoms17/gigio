@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useId, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { extractSetlistFromPdf, normalizeTitle, type SetlistEntry } from '../lib/pdfSetlist'
 import { searchLrclib, getLrclibLyrics } from '../lib/lrclib'
@@ -32,6 +32,51 @@ interface LyricsPreview {
 }
 
 type Step = 'upload' | 'review' | 'done' | 'search' | 'bulk'
+
+/* ── Apresentação v2 ── */
+
+/** Contagens e posições sempre com 2 dígitos: 01, 02… */
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+function Svg({ size = 20, strokeWidth = 2, className, children }: {
+  size?: number; strokeWidth?: number; className?: string; children: ReactNode
+}) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true" focusable="false">
+      {children}
+    </svg>
+  )
+}
+const IconClose = () => <Svg><path d="M6 6l12 12M18 6L6 18" /></Svg>
+const IconFile = () => (
+  <Svg size={28} strokeWidth={1.75}>
+    <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" />
+    <path d="M14 3v5h5M9 13h6M9 17h4" />
+  </Svg>
+)
+const IconUpload = () => <Svg size={18}><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 15v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4" /></Svg>
+const IconCheck = ({ size = 14 }: { size?: number }) => <Svg size={size} strokeWidth={2.5}><path d="M5 12.5l4.5 4.5L19 7.5" /></Svg>
+const IconArrowRight = () => <Svg size={18}><path d="M5 12h14M13 6l6 6-6 6" /></Svg>
+const IconArrowLeft = () => <Svg size={18}><path d="M19 12H5M11 6l-6 6 6 6" /></Svg>
+const IconPlus = () => <Svg size={18}><path d="M12 5v14M5 12h14" /></Svg>
+const IconEye = () => (
+  <Svg size={18}>
+    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </Svg>
+)
+const IconChevronDown = ({ className }: { className?: string }) => <Svg className={className}><path d="M6 9l6 6 6-6" /></Svg>
+const IconSearch = ({ size = 18 }: { size?: number }) => (
+  <Svg size={size} strokeWidth={size > 20 ? 1.75 : 2}><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></Svg>
+)
+const IconOffline = () => (
+  <Svg size={28} strokeWidth={1.75}>
+    <path d="M2 2l20 20M16.7 11.1a11 11 0 0 1 2.3 1.5M5 12.6a11 11 0 0 1 5.2-2.4M10.7 5.1A16 16 0 0 1 22.6 9M1.4 9a16 16 0 0 1 4.7-2.9M8.5 16.1a6 6 0 0 1 7 0M12 20h.01" />
+  </Svg>
+)
+const IconAlert = () => <Svg size={18}><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5.5M12 16.5h.01" /></Svg>
 
 function matchScore(pdfName: string, result: SearchResult): number {
   const q = normalizeTitle(pdfName)
@@ -74,9 +119,11 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
   const { user } = useAuth()
   const toast = useToast()
   const confirm = useConfirm()
+  const titleId = useId()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<Step>('upload')
   const [parsing, setParsing] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [entries, setEntries] = useState<MatchedEntry[]>([])
   const [importing, setImporting] = useState(false)
@@ -381,328 +428,538 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
     step === 'upload' ? 'Importar concerto de PDF' :
     step === 'review' ? 'Rever entradas' :
     step === 'done'   ? 'Importação concluída' :
-    step === 'bulk'   ? `Músicas em falta (${missed.length})` :
-    `Pesquisar (${searchIndex + 1}/${searchQueue.length})`
+    step === 'bulk'   ? 'Músicas em falta' :
+    (searchQueue[searchIndex] ?? 'Pesquisar')
+  // Micro-rótulo mono por cima do título — passo / contagem
+  const stepKicker =
+    step === 'upload' ? 'Passo 01 / 03 · Ficheiro' :
+    step === 'review' ? 'Passo 02 / 03 · Rever' :
+    step === 'done'   ? 'Passo 03 / 03 · Resultado' :
+    step === 'bulk'   ? `Em falta · ${pad2(missed.length)}` :
+    `Pesquisar · ${pad2(searchIndex + 1)} / ${pad2(searchQueue.length)}`
+  const withResultCount = missed.filter(n => (preloaded[n]?.length ?? 0) > 0).length
+
+  function confClass(score: number) {
+    return score >= 80 ? styles.chipOk : score >= 50 ? styles.chipWarn : styles.chipDanger
+  }
 
   return (
     <div
       className={styles.overlay}
       onClick={() => { if (step === 'upload' && !parsing) handleClose() }}
     >
-      <div className={styles.modal} onClick={e => e.stopPropagation()}>
-        <div className={styles.header}>
-          <span className={styles.title}>{stepTitle}</span>
-          <button className={styles.close} onClick={requestClose}>✕</button>
-        </div>
+      <div
+        className={styles.modal}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onClick={e => e.stopPropagation()}
+      >
+        <header className={styles.header}>
+          <div className={styles.headText}>
+            <div className={styles.kicker}>{stepKicker}</div>
+            <h2 id={titleId} className={styles.title}>{stepTitle}</h2>
+          </div>
+          <button
+            type="button"
+            className={styles.close}
+            onClick={requestClose}
+            disabled={importing || bulkImporting}
+            aria-label="Fechar"
+          >
+            <IconClose />
+          </button>
+        </header>
 
+        {/* ═══ 01 · Ficheiro ═══ */}
         {step === 'upload' && (
-          <div className={styles.body}>
-            <div className={styles.uploadZone} onClick={() => fileInputRef.current?.click()}
-              onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
-              onDragOver={e => e.preventDefault()}
+          <div className={styles.scroll}>
+            <button
+              type="button"
+              className={`${styles.dropZone} ${dragOver ? styles.dropZoneOver : ''}`}
+              aria-label="Escolher PDF da setlist"
+              aria-disabled={parsing}
+              aria-describedby={`${titleId}-drop`}
+              onClick={() => { if (!parsing) fileInputRef.current?.click() }}
+              onDrop={e => {
+                e.preventDefault(); setDragOver(false)
+                if (parsing) return
+                const f = e.dataTransfer.files[0]; if (f) handleFile(f)
+              }}
+              onDragOver={e => { e.preventDefault(); if (!dragOver && !parsing) setDragOver(true) }}
+              onDragLeave={e => {
+                // Ignora a passagem para elementos filhos (evita piscar o estado)
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false)
+              }}
             >
-              <div className={styles.uploadIcon}>📄</div>
-              <div className={styles.uploadHint}>Clica ou arrasta um PDF aqui</div>
-              <div className={styles.uploadSub}>Números e ruído são removidos automaticamente</div>
-            </div>
+              <span className={styles.dropIcon}><IconFile /></span>
+              <span className={styles.dropTitle}>{dragOver ? 'Larga para importar' : 'Setlist em PDF'}</span>
+              <span id={`${titleId}-drop`} className={styles.dropSub}>Números e ruído são removidos automaticamente</span>
+              <span className={styles.dropCta} aria-hidden="true"><IconUpload />Escolher PDF</span>
+              <span className={styles.dropMeta}>ou arrasta o ficheiro para aqui</span>
+            </button>
             <input ref={fileInputRef} type="file" accept=".pdf,application/pdf"
-              style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
-            {parsing && <div className={styles.parseSpinner}>A analisar PDF...</div>}
-            {error && <div className={styles.error}>{error}</div>}
+              style={{ display: 'none' }}
+              onChange={e => {
+                const f = e.target.files?.[0]
+                // Limpa o valor para permitir voltar a escolher o mesmo ficheiro após um erro
+                e.target.value = ''
+                if (f) handleFile(f)
+              }} />
+            {parsing && (
+              <div className={styles.status} role="status">
+                <div className={styles.progressLabel}>A analisar PDF…</div>
+                <div className={styles.track}><div className={styles.indeterminate} /></div>
+              </div>
+            )}
+            {error && (
+              <div className={styles.error} role="alert">
+                <IconAlert />
+                <span>{error}</span>
+              </div>
+            )}
           </div>
         )}
 
+        {/* ═══ 02 · Rever ═══ */}
         {step === 'review' && (
           <>
-            <div className={styles.reviewInfo}>
-              {entries.length} entrada{entries.length !== 1 ? 's' : ''} · {totalSongs} música{totalSongs !== 1 ? 's' : ''} · {foundCount} encontrada{foundCount !== 1 ? 's' : ''} na biblioteca
+            <div className={styles.strip}>
+              <div className={styles.stripGroup}>
+                <span><b className={styles.stripNum}>{pad2(entries.length)}</b> entrada{entries.length !== 1 ? 's' : ''}</span>
+                <span className={styles.sep} aria-hidden="true">·</span>
+                <span><b className={styles.stripNum}>{pad2(totalSongs)}</b> música{totalSongs !== 1 ? 's' : ''}</span>
+                <span className={styles.sep} aria-hidden="true">·</span>
+                <span><b className={styles.stripNum}>{pad2(foundCount)}</b> na biblioteca</span>
+              </div>
             </div>
-            <div className={styles.entryList}>
-              {entries.map(e => (
-                <label key={e.id} className={`${styles.entryRow} ${!e.checked ? styles.entryUnchecked : ''}`}>
-                  <input type="checkbox" className={styles.checkbox} checked={e.checked}
-                    onChange={() => setEntries(prev => prev.map(x => x.id === e.id ? { ...x, checked: !x.checked } : x))} />
-                  <div className={styles.entryInfo}>
-                    {e.entry.songs.length === 1 ? (
-                      <div className={styles.songName}>{e.entry.songs[0]}</div>
-                    ) : (
-                      <>
-                        <div className={styles.medleyLabel}>Medley</div>
-                        {e.entry.songs.map((s, i) => <div key={i} className={styles.medleySong}>{s}</div>)}
-                      </>
-                    )}
-                  </div>
-                  <div className={styles.matchCol}>
-                    {e.entry.songs.map((_s, i) => e.matches[i] ? (
-                      <div key={i} className={styles.matchFound}>✓ {e.matches[i]!.title}</div>
-                    ) : (
-                      <div key={i} className={styles.matchMissed}>? não encontrada</div>
-                    ))}
-                  </div>
-                </label>
-              ))}
+            <div className={styles.scroll}>
+              <div className={styles.list}>
+                {entries.map((e, idx) => (
+                  <label key={e.id} className={`${styles.row} ${styles.entryRow} ${!e.checked ? styles.rowOff : ''}`}>
+                    <input type="checkbox" className={styles.checkbox} checked={e.checked}
+                      onChange={() => setEntries(prev => prev.map(x => x.id === e.id ? { ...x, checked: !x.checked } : x))} />
+                    <span className={styles.num}>{pad2(idx + 1)}</span>
+                    <span className={styles.entryInfo}>
+                      {e.entry.songs.length > 1 && (
+                        <span className={styles.medleyLabel}>Medley · {pad2(e.entry.songs.length)}</span>
+                      )}
+                      <span className={e.entry.songs.length > 1 ? styles.medleySongs : styles.singleSong}>
+                        {e.entry.songs.map((s, i) => {
+                          const m = e.matches[i]
+                          return (
+                            <span key={i} className={styles.songLine}>
+                              <span className={styles.songText}>
+                                <span className={styles.songName}>{s}</span>
+                                {m && normalizeTitle(m.title) !== normalizeTitle(s) && (
+                                  <span className={styles.matchTitle}>
+                                    <IconArrowRight />
+                                    <span className={styles.matchTitleText}>{m.title}</span>
+                                  </span>
+                                )}
+                              </span>
+                              {m
+                                ? <span className={`${styles.chip} ${styles.chipOk}`}><IconCheck size={11} />Biblioteca</span>
+                                : <span className={`${styles.chip} ${styles.chipWarn}`}>Em falta</span>}
+                            </span>
+                          )
+                        })}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
             <div className={styles.footer}>
-              <button className={styles.cancelBtn} onClick={onClose}>Cancelar</button>
-              <button className={styles.importBtn} onClick={handleImport} disabled={totalSongs === 0 || importing}>
-                {importing ? 'A importar...' : `Importar${foundCount > 0 ? ` ${foundCount} encontradas` : ''}`}
+              <button type="button" className={styles.btnSecondary} onClick={onClose}>Cancelar</button>
+              <button type="button" className={styles.btnPrimary} onClick={handleImport} disabled={totalSongs === 0 || importing}>
+                {importing ? 'A importar…' : `Importar${foundCount > 0 ? ` ${foundCount} encontradas` : ''}`}
               </button>
             </div>
           </>
         )}
 
+        {/* ═══ 03 · Resultado ═══ */}
         {step === 'done' && (
-          <div className={styles.body}>
-            <div className={styles.doneIcon}>✅</div>
-            <div className={styles.doneTitle}>{addedCount} música{addedCount !== 1 ? 's' : ''} adicionada{addedCount !== 1 ? 's' : ''} da biblioteca</div>
-            {missed.length > 0 ? (
-              <div className={styles.missedSection}>
-                <div className={styles.missedTitle}>{missed.length} não encontrada{missed.length !== 1 ? 's' : ''} na biblioteca</div>
-                {missed.map((name, i) => {
-                  const pre = preloaded[name]
-                  return (
-                    <div key={i} className={styles.missedItem}>
-                      {name}
-                      {Array.isArray(pre) && (
-                        <span className={styles.preloadReady}> · {pre.length} resultado{pre.length !== 1 ? 's' : ''}</span>
-                      )}
-                    </div>
-                  )
-                })}
-                {!isPreloadingDone && preloadTotal.current > 0 && (
-                  <div className={styles.preloadProgress}>
-                    A pré-carregar pesquisas... {preloadDone}/{preloadTotal.current}
-                  </div>
-                )}
-                <button className={styles.searchMissedBtn} onClick={startBulk}>
-                  Pesquisar {missed.length} música{missed.length !== 1 ? 's' : ''} em falta →
-                </button>
+          <>
+            <div className={styles.scroll}>
+              <div className={styles.readout}>
+                <div className={styles.readoutCell}>
+                  <span className={styles.readoutNum}>{pad2(addedCount)}</span>
+                  <span className={styles.readoutLabel}>
+                    música{addedCount !== 1 ? 's' : ''} adicionada{addedCount !== 1 ? 's' : ''} da biblioteca
+                  </span>
+                </div>
+                <div className={styles.readoutCell}>
+                  <span className={`${styles.readoutNum} ${missed.length > 0 ? styles.readoutWarn : ''}`}>{pad2(missed.length)}</span>
+                  <span className={styles.readoutLabel}>
+                    não encontrada{missed.length !== 1 ? 's' : ''} na biblioteca
+                  </span>
+                </div>
               </div>
-            ) : (
-              <button className={styles.doneBtn} onClick={handleClose}>Fechar</button>
-            )}
-            {missed.length > 0 && (
-              <button className={styles.cancelBtn} style={{ display: 'block', margin: '10px auto 0', textAlign: 'center' }} onClick={handleClose}>
-                Fechar sem pesquisar
-              </button>
-            )}
-          </div>
+
+              {missed.length > 0 && (
+                <section className={styles.section}>
+                  <div className={styles.sectionHead}>
+                    <span className={styles.label}>Em falta · pesquisa online</span>
+                  </div>
+                  {!isPreloadingDone && preloadTotal.current > 0 && (
+                    <div className={styles.progress} role="status">
+                      <div className={styles.progressLabel}>
+                        <span className={styles.progressCount}>{pad2(preloadDone)}/{pad2(preloadTotal.current)}</span>
+                        <span className={styles.progressSep} aria-hidden="true">—</span>
+                        <span className={styles.progressTitle}>A pré-carregar pesquisas…</span>
+                      </div>
+                      <div className={styles.track}>
+                        <div className={styles.fill}
+                          style={{ width: `${Math.round(preloadDone / preloadTotal.current * 100)}%` }} />
+                      </div>
+                    </div>
+                  )}
+                  <div className={styles.list}>
+                    {missed.map((name, i) => {
+                      const pre = preloaded[name]
+                      return (
+                        <div key={i} className={`${styles.row} ${styles.missedRow}`}>
+                          <span className={styles.num}>{pad2(i + 1)}</span>
+                          <span className={styles.missedName}>{name}</span>
+                          {Array.isArray(pre) ? (
+                            <span className={`${styles.chip} ${pre.length > 0 ? styles.chipOk : ''}`}>
+                              {pre.length} resultado{pre.length !== 1 ? 's' : ''}
+                            </span>
+                          ) : pre === null ? (
+                            <span className={`${styles.chip} ${styles.chipWarn}`}>Sem ligação</span>
+                          ) : (
+                            <span className={styles.chip}>A pesquisar</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
+            </div>
+            <div className={`${styles.footer} ${styles.footerStack}`}>
+              {missed.length > 0 ? (
+                <>
+                  <button type="button" className={styles.btnSecondary} onClick={handleClose}>
+                    Fechar sem pesquisar
+                  </button>
+                  <button type="button" className={styles.btnPrimary} onClick={startBulk}>
+                    Pesquisar {missed.length} música{missed.length !== 1 ? 's' : ''} em falta
+                    <IconArrowRight />
+                  </button>
+                </>
+              ) : (
+                <button type="button" className={styles.btnPrimary} onClick={handleClose}>Fechar</button>
+              )}
+            </div>
+          </>
         )}
 
+        {/* ═══ Pesquisa um a um ═══ */}
         {step === 'search' && (
-          <div className={styles.searchStep}>
-            {lyricsPreview ? (
-              /* ── Lyrics preview ── */
-              <>
-                <div className={styles.previewHeader}>
-                  <button className={styles.backBtn} onClick={() => setLyricsPreview(null)}>← Voltar</button>
-                  <div className={styles.previewMeta}>
-                    <div className={styles.previewTitle}>{lyricsPreview.result.title}</div>
-                    <div className={styles.previewArtist}>{lyricsPreview.result.artist}</div>
+          lyricsPreview ? (
+            /* ── Pré-visualização da letra ── */
+            <>
+              <div className={styles.previewBar}>
+                <button type="button" className={styles.btnGhost} onClick={() => setLyricsPreview(null)}>
+                  <IconArrowLeft />
+                  <span>Voltar</span>
+                </button>
+                <div className={styles.previewMeta}>
+                  <div className={styles.previewTitle}>{lyricsPreview.result.title}</div>
+                  <div className={styles.previewArtist}>{lyricsPreview.result.artist}</div>
+                </div>
+                {lyricsPreview.result.has_sync && <span className={`${styles.chip} ${styles.chipOk}`}>Sync</span>}
+              </div>
+              <div className={styles.scroll}>
+                {lyricsPreview.loading ? (
+                  <div className={styles.skelLines} role="status" aria-label="A carregar letra">
+                    {[72, 58, 80, 44, 66, 52, 76, 38].map((w, i) => (
+                      <span key={i} className={`skeleton ${styles.skelLine}`} style={{ width: `${w}%` }} />
+                    ))}
                   </div>
-                  <button
-                    className={styles.resultAddBtn}
-                    onClick={() => pickResult(lyricsPreview.result)}
-                    disabled={savingKey !== null}
-                  >
-                    {savingKey ? '...' : '+ Adicionar'}
-                  </button>
-                </div>
-                <div className={styles.lyricsScroll}>
-                  {lyricsPreview.loading
-                    ? <div className={styles.parseSpinner}>A carregar letra...</div>
-                    : <pre className={styles.lyricsText}>{lyricsPreview.lyrics}</pre>
-                  }
-                </div>
-              </>
-            ) : (
-              /* ── Results list ── */
-              <>
-                <div className={styles.searchCurrent}>{searchQueue[searchIndex]}</div>
-                <div className={styles.searchForm}>
+                ) : (
+                  <pre className={styles.lyricsText}>{lyricsPreview.lyrics}</pre>
+                )}
+              </div>
+              <div className={styles.footer}>
+                <button
+                  type="button"
+                  className={styles.btnPrimary}
+                  onClick={() => pickResult(lyricsPreview.result)}
+                  disabled={savingKey !== null}
+                >
+                  {savingKey ? 'A guardar…' : <><IconPlus />Adicionar ao concerto</>}
+                </button>
+              </div>
+            </>
+          ) : (
+            /* ── Lista de resultados ── */
+            <>
+              <div className={styles.toolbar}>
+                <div className={styles.searchField}>
+                  <span className={styles.searchIcon}><IconSearch /></span>
                   <input
-                    className={styles.searchInput}
+                    className={styles.input}
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && runManualSearch()}
                     placeholder="Pesquisar..."
+                    aria-label="Pesquisar título ou artista"
+                    enterKeyHint="search"
                   />
-                  <button className={styles.searchBtn} onClick={runManualSearch} disabled={searchLoading}>
-                    {searchLoading ? '...' : 'Pesquisar'}
-                  </button>
                 </div>
+                <button type="button" className={styles.btnSecondary} onClick={runManualSearch} disabled={searchLoading}>
+                  {searchLoading ? '…' : 'Pesquisar'}
+                </button>
+              </div>
 
-                {searchLoading
-                  ? <div className={styles.parseSpinner}>A pesquisar...</div>
-                  : searchError
-                    ? (
-                      <div className={styles.noResults}>
-                        <div>Sem ligação — não foi possível pesquisar.</div>
-                        <button
-                          className={styles.retryBtn}
-                          onClick={() => loadResults(searchQuery.trim() || searchQueue[searchIndex], true)}
-                        >
-                          Tentar de novo
-                        </button>
+              <div className={styles.scroll}>
+                {searchLoading ? (
+                  <div className={styles.list} role="status" aria-label="A pesquisar">
+                    {[0, 1, 2, 3].map(i => (
+                      <div key={i} className={`${styles.row} ${styles.skelRow}`}>
+                        <span className={`skeleton ${styles.skelTitle}`} />
+                        <span className={`skeleton ${styles.skelSub}`} />
                       </div>
-                    )
-                  : searchResults.length > 0
-                    ? (
-                      <div className={styles.resultList}>
-                        {searchResults.slice(0, 8).map(r => {
-                          const key = `${r.source}-${r.external_id}`
-                          return (
-                            <div key={key} className={styles.resultRow}>
-                              <div className={styles.resultInfo}>
-                                <div className={styles.resultTitle}>{r.title}</div>
-                                <div className={styles.resultArtist}>{r.artist}</div>
+                    ))}
+                  </div>
+                ) : searchError ? (
+                  <div className={styles.empty}>
+                    <span className={styles.emptyIcon}><IconOffline /></span>
+                    <div className={styles.emptyTitle}>Sem ligação</div>
+                    <p className={styles.emptyText}>Não foi possível pesquisar.</p>
+                    <button
+                      type="button"
+                      className={styles.btnSecondary}
+                      onClick={() => loadResults(searchQuery.trim() || searchQueue[searchIndex], true)}
+                    >
+                      Tentar de novo
+                    </button>
+                  </div>
+                ) : searchResults.length > 0 ? (
+                  <>
+                    <div className={styles.sectionHead}>
+                      <span className={styles.label}>Resultados · {pad2(Math.min(searchResults.length, 8))}</span>
+                    </div>
+                    <div className={styles.list}>
+                      {searchResults.slice(0, 8).map(r => {
+                        const key = `${r.source}-${r.external_id}`
+                        return (
+                          <div key={key} className={`${styles.row} ${styles.resultRow}`}>
+                            <div className={styles.resultInfo}>
+                              <div className={styles.resultTitle}>{r.title}</div>
+                              <div className={styles.resultMeta}>
+                                <span className={styles.resultArtist}>{r.artist}</span>
+                                {r.has_sync && <span className={`${styles.chip} ${styles.chipOk}`}>Sync</span>}
                               </div>
-                              {r.has_sync && <span className={styles.syncBadge}>sync</span>}
-                              <button className={styles.previewBtn} onClick={() => openPreview(r)}>Ver</button>
-                              <button
-                                className={styles.resultAddBtn}
-                                onClick={() => pickResult(r)}
-                                disabled={savingKey !== null}
-                              >
-                                {savingKey === key ? '...' : '+ Adicionar'}
-                              </button>
                             </div>
-                          )
-                        })}
-                      </div>
-                    ) : searchQuery
-                      ? <div className={styles.noResults}>Sem resultados. Tenta outro nome.</div>
-                      : null
-                }
+                            <button
+                              type="button"
+                              className={`${styles.btnSecondary} ${styles.btnCompact}`}
+                              onClick={() => openPreview(r)}
+                              aria-label={`Ver letra de ${r.title}`}
+                            >
+                              <IconEye />
+                              <span className={styles.btnText}>Ver</span>
+                            </button>
+                            <button
+                              type="button"
+                              className={`${styles.btnSecondary} ${styles.btnCompact}`}
+                              onClick={() => pickResult(r)}
+                              disabled={savingKey !== null}
+                              aria-label={`Adicionar ${r.title}`}
+                            >
+                              {savingKey === key
+                                ? <span className={styles.busy}>…</span>
+                                : <><IconPlus /><span className={styles.btnText}>Adicionar</span></>}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </>
+                ) : searchQuery ? (
+                  <div className={styles.empty}>
+                    <span className={styles.emptyIcon}><IconSearch size={28} /></span>
+                    <div className={styles.emptyTitle}>Sem resultados</div>
+                    <p className={styles.emptyText}>Tenta outro nome.</p>
+                  </div>
+                ) : null}
+              </div>
 
-                <div className={styles.searchActions}>
-                  <button className={styles.skipBtn} onClick={() => advanceSearch(false)} disabled={savingKey !== null}>
-                    Saltar →
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+              <div className={styles.footer}>
+                <span className={styles.footerMeta}>
+                  {addedFromSearch > 0 && `${pad2(addedFromSearch)} adicionada${addedFromSearch !== 1 ? 's' : ''}`}
+                </span>
+                <button type="button" className={styles.btnSecondary} onClick={() => advanceSearch(false)} disabled={savingKey !== null}>
+                  Saltar
+                  <IconArrowRight />
+                </button>
+              </div>
+            </>
+          )
         )}
 
+        {/* ═══ Em falta · importação em lote ═══ */}
         {step === 'bulk' && (
-          <div className={styles.searchStep}>
-            {bulkProgress ? (
-              /* Progresso item a item durante o import em lote */
-              <div className={styles.bulkSummary}>
-                <div className={styles.bulkSummaryRow}>
-                  <span className={styles.bulkProgressLabel}>
-                    {bulkProgress.done + 1}/{bulkProgress.total} — {bulkProgress.current}
-                  </span>
-                </div>
-                <div className={styles.bulkProgressBar}>
-                  <div className={styles.bulkProgressFill}
-                    style={{ width: `${Math.round(bulkProgress.done / bulkProgress.total * 100)}%` }} />
-                </div>
-              </div>
-            ) : (
-              <div className={styles.bulkSummary}>
-                <div className={styles.bulkSummaryRow}>
-                  <span>{bulkSelected.length} de {missed.length} selecionadas</span>
-                  {preloadTotal.current > 0 && (
-                    <span className={styles.preloadProgress}>
-                      {isPreloadingDone
-                        ? `${missed.filter(n => (preloaded[n]?.length ?? 0) > 0).length} com resultado`
-                        : `A carregar... ${preloadDone}/${preloadTotal.current}`}
+          <>
+            <div className={styles.strip}>
+              {bulkProgress ? (
+                /* Progresso item a item durante o import em lote */
+                <div className={styles.progress} role="status">
+                  <div className={styles.progressLabel}>
+                    <span className={styles.progressCount}>
+                      {pad2(bulkProgress.done + 1)}/{pad2(bulkProgress.total)}
                     </span>
-                  )}
-                </div>
-                {preloadTotal.current > 0 && !isPreloadingDone && (
-                  <div className={styles.bulkProgressBar}>
-                    <div className={styles.bulkProgressFill}
-                      style={{ width: `${Math.round(preloadDone / preloadTotal.current * 100)}%` }} />
+                    <span className={styles.progressSep} aria-hidden="true">—</span>
+                    <span className={styles.progressTitle}>{bulkProgress.current}</span>
                   </div>
-                )}
-              </div>
-            )}
-            <div className={styles.bulkList}>
-              {missed.map(name => {
-                const isAdded = bulkAdded.has(name)
-                const checked = bulkChecked[name] !== false
-                const results = preloaded[name]
-                const topResult = getBulkResult(name)
-                const isExpanded = bulkExpanded === name
-                return (
-                  <div key={name}>
-                    <label className={`${styles.bulkRow} ${!checked && !isAdded ? styles.bulkUnchecked : ''}`}>
-                      <input type="checkbox" className={styles.checkbox}
-                        checked={isAdded || checked}
-                        disabled={isAdded || bulkImporting}
-                        onChange={() => setBulkChecked(prev => ({ ...prev, [name]: !checked }))} />
-                      <div className={styles.bulkMain}>
-                        <div className={styles.bulkName}>{name}</div>
-                        {isAdded ? (
-                          <div className={styles.bulkAddedNote}>✓ Adicionada ao concerto</div>
-                        ) : topResult ? (
-                          <div className={styles.bulkMatchInfo}>
-                            <span className={styles.bulkMatchTitle}>{topResult.title}</span>
-                            <span className={styles.bulkMatchArtist}> · {topResult.artist}</span>
-                            {topResult.has_sync && <span className={styles.syncBadge}>sync</span>}
-                            {(() => { const s = matchScore(name, topResult); return (
-                              <span className={`${styles.confBadge} ${s >= 80 ? styles.confHigh : s >= 50 ? styles.confMid : styles.confLow}`}>{s}%</span>
-                            )})()}
-                          </div>
-                        ) : results === undefined ? (
-                          <div className={styles.bulkLoading}>A carregar...</div>
-                        ) : results === null ? (
-                          <div className={styles.bulkNoResult}>Sem ligação — a pesquisa falhou; será adicionada sem letra</div>
-                        ) : (
-                          <div className={styles.bulkNoResult}>Sem resultado — será adicionada sem letra</div>
-                        )}
-                      </div>
-                      {!isAdded && !!results && results.length > 0 && (
-                        <button className={styles.bulkChangeBtn} type="button"
-                          aria-label={isExpanded ? 'Fechar alternativas' : 'Trocar correspondência'}
-                          onClick={() => setBulkExpanded(isExpanded ? null : name)}>
-                          {isExpanded ? '▲' : '▾'}
-                        </button>
-                      )}
-                    </label>
-                    {isExpanded && (
-                      <div className={styles.bulkExpandWrap}>
-                        {results?.slice(0, 6).map(r => {
-                          const rKey = `${r.source}-${r.external_id}`
-                          const tKey = topResult ? `${topResult.source}-${topResult.external_id}` : null
-                          const isActive = rKey === tKey
-                          return (
-                            <div key={rKey}
-                              className={`${styles.bulkExpandRow} ${isActive ? styles.bulkExpandRowActive : ''}`}
-                              onClick={() => { setBulkOverrides(prev => ({ ...prev, [name]: r })); setBulkExpanded(null) }}>
-                              <div className={styles.resultInfo}>
-                                <div className={styles.resultTitle}>{r.title}</div>
-                                <div className={styles.resultArtist}>{r.artist}</div>
-                              </div>
-                              {r.has_sync && <span className={styles.syncBadge}>sync</span>}
-                              {isActive && <span className={styles.bulkActiveIndicator}>✓</span>}
-                            </div>
-                          )
-                        })}
-                        <div className={styles.bulkSemLetraRow}
-                          onClick={() => { setBulkOverrides(prev => ({ ...prev, [name]: null })); setBulkExpanded(null) }}>
-                          + Sem letra (criar entrada vazia)
-                        </div>
-                      </div>
+                  <div className={styles.track}>
+                    <div className={styles.fill}
+                      style={{ width: `${Math.round(bulkProgress.done / bulkProgress.total * 100)}%` }} />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className={styles.stripRow}>
+                    <span>
+                      <b className={styles.stripNum}>{pad2(bulkSelected.length)}</b> de {pad2(missed.length)} selecionadas
+                    </span>
+                    {preloadTotal.current > 0 && (
+                      <span>
+                        {isPreloadingDone
+                          ? <><b className={styles.stripNum}>{pad2(withResultCount)}</b> com resultado</>
+                          : `A carregar · ${pad2(preloadDone)}/${pad2(preloadTotal.current)}`}
+                      </span>
                     )}
                   </div>
-                )
-              })}
+                  {preloadTotal.current > 0 && !isPreloadingDone && (
+                    <div className={`${styles.track} ${styles.stripTrack}`}>
+                      <div className={styles.fill}
+                        style={{ width: `${Math.round(preloadDone / preloadTotal.current * 100)}%` }} />
+                    </div>
+                  )}
+                </>
+              )}
             </div>
+
+            <div className={styles.scroll}>
+              <div className={styles.list}>
+                {missed.map((name, idx) => {
+                  const isAdded = bulkAdded.has(name)
+                  const checked = bulkChecked[name] !== false
+                  const results = preloaded[name]
+                  const topResult = getBulkResult(name)
+                  const isExpanded = bulkExpanded === name
+                  return (
+                    <div key={name}>
+                      <label className={`${styles.row} ${styles.bulkRow} ${!checked && !isAdded ? styles.rowOff : ''}`}>
+                        <input type="checkbox" className={styles.checkbox}
+                          checked={isAdded || checked}
+                          disabled={isAdded || bulkImporting}
+                          onChange={() => setBulkChecked(prev => ({ ...prev, [name]: !checked }))} />
+                        <span className={styles.num}>{pad2(idx + 1)}</span>
+                        <span className={styles.bulkMain}>
+                          <span className={styles.songName}>{name}</span>
+                          {isAdded ? (
+                            <span className={styles.bulkAdded}><IconCheck />Adicionada ao concerto</span>
+                          ) : topResult ? (
+                            <span className={styles.bulkMeta}>
+                              <span className={styles.bulkMatch}>
+                                {topResult.title}
+                                <span className={styles.bulkMatchArtist}> · {topResult.artist}</span>
+                              </span>
+                              {topResult.has_sync && <span className={`${styles.chip} ${styles.chipOk}`}>Sync</span>}
+                              {(() => {
+                                const s = matchScore(name, topResult)
+                                return <span className={`${styles.chip} ${confClass(s)}`}>{s}%</span>
+                              })()}
+                            </span>
+                          ) : results === undefined ? (
+                            <span className={styles.bulkNote}>A carregar…</span>
+                          ) : results === null ? (
+                            <span className={`${styles.bulkNote} ${styles.bulkNoteWarn}`}>
+                              Sem ligação — a pesquisa falhou; será adicionada sem letra
+                            </span>
+                          ) : (
+                            <span className={styles.bulkNote}>Sem resultado — será adicionada sem letra</span>
+                          )}
+                        </span>
+                        {!isAdded && !!results && results.length > 0 && (
+                          <button
+                            type="button"
+                            className={`${styles.iconBtn} ${isExpanded ? styles.iconBtnOn : ''}`}
+                            aria-label={isExpanded ? 'Fechar alternativas' : 'Trocar correspondência'}
+                            aria-expanded={isExpanded}
+                            onClick={() => setBulkExpanded(isExpanded ? null : name)}
+                          >
+                            <IconChevronDown className={`${styles.chev} ${isExpanded ? styles.chevUp : ''}`} />
+                          </button>
+                        )}
+                      </label>
+
+                      {isExpanded && (
+                        <div className={styles.alts}>
+                          <div className={styles.altsLabel}>Alternativas</div>
+                          {results?.slice(0, 6).map(r => {
+                            const rKey = `${r.source}-${r.external_id}`
+                            const tKey = topResult ? `${topResult.source}-${topResult.external_id}` : null
+                            const isActive = rKey === tKey
+                            return (
+                              <button
+                                type="button"
+                                key={rKey}
+                                className={`${styles.altRow} ${isActive ? styles.altRowActive : ''}`}
+                                aria-pressed={isActive}
+                                onClick={() => { setBulkOverrides(prev => ({ ...prev, [name]: r })); setBulkExpanded(null) }}
+                              >
+                                <span className={styles.resultInfo}>
+                                  <span className={styles.resultTitle}>{r.title}</span>
+                                  <span className={styles.resultMeta}>
+                                    <span className={styles.resultArtist}>{r.artist}</span>
+                                    {r.has_sync && <span className={`${styles.chip} ${styles.chipOk}`}>Sync</span>}
+                                  </span>
+                                </span>
+                                {isActive && <span className={styles.altCheck}><IconCheck size={18} /></span>}
+                              </button>
+                            )
+                          })}
+                          <button
+                            type="button"
+                            className={`${styles.altRow} ${styles.altEmpty}`}
+                            onClick={() => { setBulkOverrides(prev => ({ ...prev, [name]: null })); setBulkExpanded(null) }}
+                          >
+                            <IconPlus />
+                            Sem letra (criar entrada vazia)
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
             <div className={styles.footer}>
-              <button className={styles.cancelBtn} onClick={startSearch} disabled={bulkImporting}>Um a um →</button>
-              <button className={styles.importBtn}
+              <button type="button" className={styles.btnSecondary} onClick={startSearch} disabled={bulkImporting}>
+                Um a um
+                <IconArrowRight />
+              </button>
+              <button
+                type="button"
+                className={styles.btnPrimary}
                 disabled={bulkImporting || bulkSelected.length === 0}
-                onClick={handleBulkImport}>
+                onClick={handleBulkImport}
+              >
                 {bulkImporting
-                  ? 'A guardar...'
+                  ? 'A guardar…'
                   : `Importar ${bulkSelected.length} música${bulkSelected.length === 1 ? '' : 's'}`}
               </button>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>

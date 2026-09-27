@@ -20,8 +20,8 @@ export default defineConfig({
         name: 'Gigio',
         short_name: 'Gigio',
         description: 'Setlists e letras para músicos ao vivo',
-        theme_color: '#0E0E12',
-        background_color: '#0E0E12',
+        theme_color: '#0B0B0C',
+        background_color: '#0B0B0C',
         display: 'standalone',
         orientation: 'any',
         icons: [

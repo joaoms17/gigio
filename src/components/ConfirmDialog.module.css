@@ -1,89 +1,131 @@
+/* ConfirmDialog v2 — receita de modal: --surface, hairline, --radius-lg, --shadow-lg.
+   Rótulo mono + título condensado; ações num rodapé separado por hairline. */
 .overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 500;
+  z-index: 500;              /* acima de modais (--z-modal), abaixo de banner/toast */
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 24px 16px;
   animation: overlayIn 0.15s ease-out;
 }
 
 .dialog {
-  background: var(--bg);
-  border-radius: var(--radius-lg);
-  padding: 24px;
   width: 100%;
-  max-width: 360px;
+  max-width: 420px;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   animation: sheetIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.body {
+  padding: 22px 24px 20px;
+}
+
+/* Micro-rótulo "hardware" com LED de estado */
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.kickerLed {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--text3);
+  flex-shrink: 0;
+}
+.dialogDanger .kicker { color: var(--danger); }
+.dialogDanger .kickerLed { background: var(--danger); }
+
 .title {
-  font-size: 17px;
+  font-family: var(--font-display);
+  font-stretch: 75%;
   font-weight: 800;
-  letter-spacing: -0.2px;
-  margin-bottom: 8px;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: -0.005em;
   color: var(--text);
+  margin-bottom: 10px;
+  overflow-wrap: anywhere;
 }
 
 .message {
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: 15px;
+  line-height: 1.5;
   color: var(--text2);
-  margin-bottom: 22px;
+  overflow-wrap: anywhere;
 }
 
 .actions {
-  display: flex;
-  gap: 16px;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--border);
 }
 
-.cancelBtn {
-  min-height: 48px;
-  padding: 10px 18px;
-  border: 1.5px solid var(--border);
-  border-radius: 11px;
-  background: none;
-  color: var(--text2);
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: border-color 0.12s, color 0.12s;
-}
-.cancelBtn:hover { border-color: var(--border2); color: var(--text); }
-
-.confirmBtn {
-  min-height: 48px;
-  padding: 10px 18px;
-  border: none;
-  border-radius: 11px;
-  background: linear-gradient(135deg, var(--gig), var(--io));
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: opacity 0.12s;
-}
-.confirmBtn:hover { opacity: 0.88; }
-
+/* Base comum dos botões do diálogo */
+.cancelBtn,
+.confirmBtn,
 .dangerBtn {
-  min-height: 48px;
-  padding: 10px 18px;
-  border: none;
-  border-radius: 11px;
-  background: #ef4444;
-  color: #fff;
-  font-size: 14px;
+  min-height: var(--input-h);
+  padding: 0 18px;
+  border-radius: var(--radius-btn);
+  font-size: 15px;
   font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
   cursor: pointer;
-  transition: opacity 0.12s;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  -webkit-tap-highlight-color: transparent;
 }
-.dangerBtn:hover { opacity: 0.88; }
 
-@media (max-width: 480px) {
-  .actions { flex-direction: column-reverse; }
-  .cancelBtn, .confirmBtn, .dangerBtn { width: 100%; text-align: center; }
+/* Secundário */
+.cancelBtn {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  font-weight: 600;
+}
+.cancelBtn:hover { background: var(--surface-2); border-color: var(--text3); }
+.cancelBtn:active { background: var(--surface-3); }
+
+/* Primário — laranja de sinal, texto escuro */
+.confirmBtn {
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 1px solid var(--accent);
+}
+.confirmBtn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+/* Destrutivo — branco sobre --danger claro (5.7:1); no escuro o --danger é
+   mais claro e o branco falha, por isso passa a --on-accent (6.1:1) */
+.dangerBtn {
+  background: var(--danger);
+  color: #FFFFFF;
+  border: 1px solid var(--danger);
+}
+.dangerBtn:hover { filter: brightness(1.08); }
+:global([data-theme="dark"]) .dangerBtn { color: var(--on-accent); }
+:global([data-theme="dark"]) .dangerBtn:hover { filter: brightness(1.1); }
+
+/* Telemóvel estreito: empilha, ação principal em cima */
+@media (max-width: 380px) {
+  .actions { grid-template-columns: 1fr; }
+  .confirmBtn, .dangerBtn { order: -1; }
 }

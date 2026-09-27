@@ -1,58 +1,106 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { signOut } from '../lib/auth'
 import { useAuth } from '../hooks/useAuth'
 import { useConfirm } from './ConfirmDialog'
 import styles from './Layout.module.css'
+import Wordmark, { BrandMark } from './Wordmark'
 
 interface Props { children?: React.ReactNode }
 
-const PALETTE = ['#7C3AED', '#FF4D6D', '#2563EB', '#059669', '#D97706', '#DB2777', '#0891B2', '#9333EA']
-function colorFor(s: string) {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
-  return PALETTE[h % PALETTE.length]
-}
 function initials(name: string) {
   const p = name.trim().split(/\s+/)
   return ((p[0]?.[0] ?? '') + (p[1]?.[0] ?? '')).toUpperCase() || '?'
 }
 
+/* Ícones v2: traço 1.8, cantos secos (miter/square), sempre currentColor */
+const ICON_PROPS = {
+  width: 22,
+  height: 22,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.8,
+  strokeLinecap: 'square' as const,
+  strokeLinejoin: 'miter' as const,
+  'aria-hidden': true,
+}
+
 const ICONS = {
   palco: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M8 5v14l11-7z" />
+    <svg {...ICON_PROPS}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M10 8.5v7l6-3.5z" />
     </svg>
   ),
   concertos: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="5" width="18" height="16" rx="3" />
+    <svg {...ICON_PROPS}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
       <path d="M3 10h18M8 3v4M16 3v4" />
     </svg>
   ),
   repertorio: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg {...ICON_PROPS}>
       <circle cx="7" cy="18" r="3" />
       <path d="M10 18V5l9-2v12" />
       <circle cx="16" cy="15" r="3" />
     </svg>
   ),
   projetos: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg {...ICON_PROPS}>
       <circle cx="9" cy="8" r="4" />
       <path d="M2 21c0-3.9 3.1-7 7-7s7 3.1 7 7" />
       <path d="M17 4.5c1.8.8 3 2.6 3 4.5s-1.2 3.7-3 4.5M19.5 14.6c1.6 1.3 2.5 3.2 2.5 5.4" />
     </svg>
   ),
   sair: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3M16 17l5-5-5-5M21 12H9" />
+    <svg {...ICON_PROPS} width={20} height={20}>
+      <path d="M9 21H4V3h5M16 17l5-5-5-5M21 12H9" />
     </svg>
   ),
 }
 
+/* Um item de navegação acende em todas as rotas da sua secção:
+   prefixo terminado em "/" = qualquer subrota; sem "/" = a rota exata ou filhas. */
+function matchesSection(path: string, prefixes: string[]) {
+  return prefixes.some(p =>
+    p.endsWith('/') ? path.startsWith(p) : path === p || path.startsWith(p + '/'),
+  )
+}
+
+type SectionKey = 'palco' | 'concertos' | 'repertorio' | 'projetos'
+
+const NAV_ITEMS: { key: SectionKey; to: string; icon: React.ReactNode; label: string; match: string[] }[] = [
+  { key: 'palco', to: '/', icon: ICONS.palco, label: 'Palco', match: [] },
+  { key: 'concertos', to: '/setlists', icon: ICONS.concertos, label: 'Concertos', match: ['/setlists', '/setlist/', '/calendar'] },
+  { key: 'repertorio', to: '/library', icon: ICONS.repertorio, label: 'Repertório', match: ['/library', '/songs/', '/search'] },
+  { key: 'projetos', to: '/projects', icon: ICONS.projetos, label: 'Projetos', match: ['/projects'] },
+]
+
+/* Secção ativa da navegação. Música (/songs/:id) e Procurar (/search) são
+   sub-rotas partilhadas: herdam a secção de onde se veio (?setlist= → Concertos,
+   ?project= → Projetos), tal como a raiz das breadcrumbs dessas páginas — o item
+   aceso no rail/tab bar e a 1.ª breadcrumb dizem sempre o mesmo. */
+function activeSection(pathname: string, search: string): SectionKey | null {
+  if (pathname === '/') return 'palco'
+  if (pathname.startsWith('/songs/') || pathname === '/search') {
+    const q = new URLSearchParams(search)
+    if (q.get('setlist')) return 'concertos'
+    if (q.get('project')) return 'projetos'
+  }
+  return NAV_ITEMS.find(item => item.key !== 'palco' && matchesSection(pathname, item.match))?.key ?? null
+}
+
+/* Partilhado com as páginas via <Outlet context>: as Breadcrumbs alinham a raiz
+   com a secção ativa (sem exports extra neste módulo — fast refresh). */
+export interface LayoutOutletContext {
+  navSection: { label: string; to: string } | null
+  navLabels: string[]
+}
+
 export default function Layout({ children }: Props) {
   const navigate = useNavigate()
+  const { pathname, search } = useLocation()
   const { user } = useAuth()
   const confirmDialog = useConfirm()
   const [offline, setOffline] = useState(!navigator.onLine)
@@ -78,88 +126,99 @@ export default function Layout({ children }: Props) {
     navigate('/auth')
   }
 
-  const navItems = [
-    { to: '/', end: true, icon: ICONS.palco, label: 'Palco' },
-    { to: '/setlists', icon: ICONS.concertos, label: 'Concertos' },
-    { to: '/library', icon: ICONS.repertorio, label: 'Repertório' },
-    { to: '/projects', icon: ICONS.projetos, label: 'Projetos' },
-  ]
+  const sectionKey = activeSection(pathname, search)
+  const navItems = NAV_ITEMS.map(item => ({ ...item, active: item.key === sectionKey }))
+  const section = NAV_ITEMS.find(item => item.key === sectionKey)
+  const outletContext: LayoutOutletContext = {
+    navSection: section ? { label: section.label, to: section.to } : null,
+    navLabels: NAV_ITEMS.map(item => item.label),
+  }
+  const settingsActive = matchesSection(pathname, ['/settings'])
+  /* Música: página de altura fixa (scroll interno) que gere a própria margem
+     com os mesmos valores do contentor — fica fora da normalização */
+  const bleed = pathname.startsWith('/songs/')
 
   return (
     <div className={styles.shell}>
 
       {offline && (
-        <div className={styles.offlineBanner}>
-          ⚡ Sem ligação — as alterações podem não ser guardadas
+        <div className={styles.offlineBanner} role="status" aria-live="polite" data-offline-banner="">
+          <span className={styles.offlineLed} aria-hidden="true" />
+          <span className={styles.offlineLabel}>Sem ligação</span>
+          <span className={styles.offlineText}>As alterações podem não ser guardadas</span>
         </div>
       )}
 
-      {/* ── RAIL (desktop + tablet) ── */}
+      {/* ── RAIL (tablet + desktop) ── */}
+      {/* O <aside> estica a toda a altura (fundo + hairline contínuos);
+          o conteúdo interno fica colado ao viewport. */}
       <aside className={styles.rail}>
-        <div className={styles.logoMark} aria-hidden="true">g</div>
+        <div className={styles.railInner}>
+          <Link to="/" className={styles.brand} aria-label="gigio — Palco">
+            <BrandMark size={40} />
+          </Link>
 
-        <nav className={styles.railNav} aria-label="Navegação principal">
-          {navItems.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) => `${styles.railItem} ${isActive ? styles.railActive : ''}`}
+          <nav className={styles.railNav} aria-label="Navegação principal">
+            {navItems.map(item => (
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-current={item.active ? 'page' : undefined}
+                className={`${styles.railItem} ${item.active ? styles.railActive : ''}`}
+              >
+                <span className={styles.railIcon}>{item.icon}</span>
+                <span className={styles.railLabel}>{item.label}</span>
+              </Link>
+            ))}
+          </nav>
+
+          <div className={styles.railBottom}>
+            <Link
+              to="/settings"
+              aria-current={settingsActive ? 'page' : undefined}
+              className={`${styles.railItem} ${styles.railAvatarItem} ${settingsActive ? styles.railActive : ''}`}
+              title="Perfil e definições"
+              aria-label="Perfil e definições"
             >
-              <span className={styles.railIcon}>{item.icon}</span>
-              <span className={styles.railLabel}>{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className={styles.railBottom}>
-          <NavLink
-            to="/settings"
-            className={({ isActive }) => `${styles.railAvatar} ${isActive ? styles.railAvatarActive : ''}`}
-            style={{ background: colorFor(user?.id ?? '') }}
-            title="Perfil e definições"
-            aria-label="Perfil e definições"
-          >
-            {initials(displayName)}
-          </NavLink>
-          <button className={styles.signOutBtn} onClick={handleSignOut} title="Terminar sessão" aria-label="Terminar sessão">
-            {ICONS.sair}
-          </button>
+              <span className={styles.avatar}>{initials(displayName)}</span>
+            </Link>
+            <button className={styles.signOutBtn} onClick={handleSignOut} title="Terminar sessão" aria-label="Terminar sessão">
+              {ICONS.sair}
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* ── MOBILE TOP BAR ── */}
+      {/* ── TOP BAR (telemóvel) ── */}
       <header className={styles.topbar}>
-        <div className={styles.topLogo}>
-          <span className={styles.gig}>gig</span><span className={styles.io}>io</span>
-        </div>
+        <Wordmark size={27} />
         <button
-          className={styles.topUser}
+          className={`${styles.topUser} ${settingsActive ? styles.topUserActive : ''}`}
           onClick={() => navigate('/settings')}
-          style={{ background: colorFor(user?.id ?? '') }}
           aria-label="Perfil e definições"
+          aria-current={settingsActive ? 'page' : undefined}
         >
-          {initials(displayName)}
+          <span className={styles.avatar}>{initials(displayName)}</span>
         </button>
       </header>
 
-      {/* ── MAIN CONTENT ── */}
-      <main className={styles.main}>
-        {children ?? <Outlet />}
+      {/* ── CONTEÚDO ── */}
+      <main className={`${styles.main} ${bleed ? styles.mainBleed : ''}`}>
+        {children ?? <Outlet context={outletContext} />}
       </main>
 
-      {/* ── MOBILE BOTTOM TAB BAR ── */}
-      <nav className={styles.bottomNav}>
+      {/* ── TAB BAR (telemóvel) ── */}
+      <nav className={styles.bottomNav} aria-label="Navegação principal">
         {navItems.map(item => (
-          <NavLink
+          <Link
             key={item.to}
             to={item.to}
-            end={item.end}
-            className={({ isActive }) => `${styles.tabItem} ${isActive ? styles.tabActive : ''}`}
+            aria-current={item.active ? 'page' : undefined}
+            className={`${styles.tabItem} ${item.active ? styles.tabActive : ''}`}
           >
             <span className={styles.tabIcon}>{item.icon}</span>
             <span className={styles.tabLabel}>{item.label}</span>
-          </NavLink>
+          </Link>
         ))}
       </nav>
 

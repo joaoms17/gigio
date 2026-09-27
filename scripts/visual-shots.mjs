@@ -138,18 +138,30 @@ const PAGES = [
   ['concertos', '/setlists'],
   ['setlist', '/setlist/s1'],
   ['concerto-modo', '/setlist/s1/concert'],
+  // 2.ª música do fixture tem sync — mostra espera/transporte/± linha
+  ['concerto-sync', '/setlist/s1/concert', { session: { 'concert-pos-s1': '1' } }],
   ['repertorio', '/library'],
+  ['pesquisa', '/search'],
   ['calendario', '/calendar'],
   ['projetos', '/projects'],
   ['dashboard', '/projects/b1'],
   ['musica', '/songs/sg1'],
+  ['sync', '/songs/sg2/sync'],
   ['definicoes', '/settings'],
 ]
-const VIEWS = [
-  ['phone', { width: 390, height: 844 }],
-  ['tablet-land', { width: 1180, height: 820 }],
+// Páginas sem sessão (contexto próprio, sem token)
+const PUBLIC_PAGES = [
+  ['auth', '/auth'],
+  ['convite', '/join'],
 ]
+const ALL_VIEWS = {
+  'phone': { width: 390, height: 844 },
+  'tablet-port': { width: 820, height: 1180 },
+  'tablet-land': { width: 1180, height: 820 },
+}
+const VIEWS = Object.entries(ALL_VIEWS).filter(([k]) => (process.env.VIEWS ?? 'phone,tablet-port,tablet-land').split(',').includes(k))
 const THEMES = (process.env.THEMES ?? 'light,dark').split(',')
+const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null
 
 await mkdir(OUT, { recursive: true })
 await new Promise(r => server.listen(PORT, r))
@@ -166,15 +178,42 @@ for (const theme of THEMES) {
       localStorage.setItem('gigio-theme', '${theme}');
     `)
     const page = await ctx.newPage()
-    for (const [name, route] of PAGES) {
+    for (const [name, route, opts] of PAGES) {
+      if (ONLY && !ONLY.includes(name)) continue
       try {
+        if (opts?.session) {
+          await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded', timeout: 15000 })
+          await page.evaluate(s => { for (const [k, v] of Object.entries(s)) sessionStorage.setItem(k, v) }, opts.session)
+        }
         await page.goto(`http://localhost:${PORT}${route}`, { waitUntil: 'networkidle', timeout: 15000 })
         await page.waitForTimeout(700)
-        await page.screenshot({ path: path.join(OUT, `${name}--${vname}--${theme}.png`), fullPage: name !== 'concerto-modo' })
+        const fullPage = !name.startsWith('concerto-') && name !== 'sync'
+        // Numa captura de página inteira, barras position:fixed ficam desenhadas a meio
+        // da página — pô-las em fluxo normal para aparecerem no fim, como ao fazer scroll.
+        const unfix = fullPage ? await page.addStyleTag({ content: '[class*="bottomNav"]{position:static!important}' }) : null
+        await page.screenshot({ path: path.join(OUT, `${name}--${vname}--${theme}.png`), fullPage })
+        if (unfix) await unfix.evaluate(el => el.remove())
         console.log('ok', `${name}--${vname}--${theme}`)
       } catch (e) { console.log('FALHOU', name, vname, theme, String(e).split('\n')[0]) }
     }
     await ctx.close()
+
+    // Páginas públicas — sem sessão
+    const pub = await browser.newContext({ viewport, deviceScaleFactor: 2 })
+    await pub.route('**/rest/v1/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }))
+    await pub.route('**/auth/v1/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
+    await pub.addInitScript(`localStorage.setItem('gigio-theme', '${theme}');`)
+    const ppage = await pub.newPage()
+    for (const [name, route] of PUBLIC_PAGES) {
+      if (ONLY && !ONLY.includes(name)) continue
+      try {
+        await ppage.goto(`http://localhost:${PORT}${route}`, { waitUntil: 'networkidle', timeout: 15000 })
+        await ppage.waitForTimeout(700)
+        await ppage.screenshot({ path: path.join(OUT, `${name}--${vname}--${theme}.png`), fullPage: true })
+        console.log('ok', `${name}--${vname}--${theme}`)
+      } catch (e) { console.log('FALHOU', name, vname, theme, String(e).split('\n')[0]) }
+    }
+    await pub.close()
   }
 }
 await browser.close()

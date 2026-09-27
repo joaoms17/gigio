@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
 import styles from './ConfirmDialog.module.css'
 
 interface ConfirmOptions {
@@ -20,6 +20,8 @@ export function useConfirm() {
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const [opts, setOpts] = useState<ConfirmOptions | null>(null)
   const resolver = useRef<(v: boolean) => void>(() => {})
+  const messageId = useId()
+  const titleId = useId()
 
   const confirm = useCallback<ConfirmFn>(o => {
     setOpts(o)
@@ -53,19 +55,27 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
       {opts && (
         <div className={styles.overlay} onClick={() => close(false)}>
           <div
-            className={styles.dialog}
-            role="dialog"
+            className={`${styles.dialog} ${opts.danger ? styles.dialogDanger : ''}`}
+            role={opts.danger ? 'alertdialog' : 'dialog'}
             aria-modal="true"
-            aria-label={opts.title ?? opts.message}
+            aria-labelledby={opts.title ? titleId : messageId}
+            aria-describedby={opts.title ? messageId : undefined}
             onClick={e => e.stopPropagation()}
           >
-            {opts.title && <div className={styles.title}>{opts.title}</div>}
-            <div className={styles.message}>{opts.message}</div>
+            <div className={styles.body}>
+              <div className={styles.kicker} aria-hidden="true">
+                <span className={styles.kickerLed} />
+                {opts.danger ? 'Atenção' : 'Confirmar'}
+              </div>
+              {opts.title && <h2 id={titleId} className={styles.title}>{opts.title}</h2>}
+              <div id={messageId} className={styles.message}>{opts.message}</div>
+            </div>
             <div className={styles.actions}>
-              <button className={styles.cancelBtn} onClick={() => close(false)} autoFocus>
+              <button type="button" className={styles.cancelBtn} onClick={() => close(false)} autoFocus>
                 {opts.cancelLabel ?? 'Cancelar'}
               </button>
               <button
+                type="button"
                 className={opts.danger ? styles.dangerBtn : styles.confirmBtn}
                 onClick={() => close(true)}
               >

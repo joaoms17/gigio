@@ -1,296 +1,583 @@
-/* ── Definições — tema "palco" ── */
+/* ═══ Definições — v2 "hardware" ═══
+   Painéis --surface com hairlines, micro-rótulos mono por cima de cada
+   secção, mini-ecrã de palco para o tema de concerto. */
 
 .page {
-  padding: 28px 24px 56px;
-  max-width: 680px;
+  width: 100%;
+  max-width: 1120px;
   margin: 0 auto;
+  padding: 28px 28px 56px;
   animation: pageIn 0.25s ease both;
 }
 
-.title {
-  font-family: var(--font-display);
-  font-size: clamp(28px, 5vw, 34px);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  margin: 0 0 28px;
+/* ── Cabeçalho ── */
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 28px;
 }
 
-.section { margin-bottom: 32px; }
+.pageTitle {
+  font-family: var(--font-display);
+  font-stretch: 75%;
+  font-weight: 800;
+  font-size: clamp(34px, 6vw, 52px);
+  line-height: 0.95;
+  letter-spacing: -0.005em;
+  text-transform: uppercase;
+  color: var(--text);
+}
 
-.sectionTitle {
+.meta {
+  font-family: var(--font-mono);
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text3);
+}
+
+/* ── Grelha: 1 coluna; ≥1024 duas colunas com o palco à direita ── */
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+}
+
+.section { min-width: 0; }
+
+/* "PERFIL ────────" / "TEMA DE CONCERTO ──── GRAVAÇÃO AUTOMÁTICA":
+   o mesmo rótulo de grupo de Palco/Concertos/Calendário — micro-rótulo
+   mono, régua hairline até à direita e (opcional) estado mono no fim */
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 16px;
   margin-bottom: 12px;
 }
 
-.card {
-  background: var(--bg2);
+/* Micro-rótulo mono — a "voz hardware" (sobrepõe o h2 global) */
+.sectionLabel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-stretch: normal;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text2);
+  white-space: nowrap;
+}
+.sectionLabel::after {
+  content: '';
+  flex: 1;
+  min-width: 16px;
+  height: 1px;
+  background: var(--border2);
+}
+
+.saveState {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+.saveState[data-state="saving"] { color: var(--text2); }
+.saveState[data-state="saved"] { color: var(--success-fg); }
+
+/* ── Painel ── */
+
+.panel {
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: var(--radius);
   overflow: hidden;
-  margin-bottom: 12px;
 }
 
 .row {
   display: flex;
   align-items: center;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--border);
-  gap: 16px;
+  gap: 12px 20px;
   flex-wrap: wrap;
+  padding: 16px 18px;
+  border-top: 1px solid var(--border);
 }
-.row:last-child { border-bottom: none; }
-.rowLabel { flex: 1; min-width: 140px; }
-.label { font-size: 14px; font-weight: 600; color: var(--text); }
-.hint { font-size: 12px; color: var(--text3); margin-top: 3px; line-height: 1.4; }
+.row:first-child { border-top: none; }
+
+.rowText { flex: 1 1 200px; min-width: 0; }
+.rowTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+.rowHint {
+  font-size: 13px;
+  color: var(--text2);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.rowAction { flex-shrink: 0; }
 
 /* ── Perfil ── */
 
-.profileRow {
+.profile {
   display: flex;
   align-items: center;
   gap: 18px;
-  padding: 20px 18px;
+  padding: 18px;
 }
 
 .avatar {
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  color: #fff;
-  font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: 700;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  box-shadow: var(--shadow-sm);
+  background: var(--surface-3);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
 }
 
-.profileInfo { flex: 1; min-width: 0; }
+.profileMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
-.accountEmail {
-  font-size: 13px;
+.fieldLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--text3);
-  margin-top: 8px;
+}
+
+.fieldRow { display: flex; gap: 8px; min-width: 0; }
+
+.input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  min-height: var(--input-h);
+  padding: 0 14px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  color: var(--text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.input::placeholder { color: var(--text3); }
+.input:focus {
+  outline: none;
+  border-color: var(--text);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.email {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.fieldLabel {
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 6px;
-}
+/* ── Botões ── */
 
-.fieldInputRow { display: flex; gap: 8px; }
-
-.fieldInput {
-  flex: 1;
-  min-width: 0;
-  min-height: var(--input-h, 44px);
-  padding: 10px 14px;
-  border: 1.5px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg);
-  color: var(--text);
-  transition: border-color 0.15s ease;
-}
-.fieldInput:focus { outline: none; border-color: var(--gig); }
-.fieldInput::placeholder { color: var(--text3); }
-
-.saveSmall {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: var(--input-h, 44px);
-  padding: 0 16px;
-  border: none;
-  border-radius: 12px;
-  background: var(--gig);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: filter 0.15s ease, background 0.2s ease;
-}
-.saveSmall:hover:not(:disabled) { filter: brightness(1.08); }
-.saveSmall:disabled { opacity: 0.5; cursor: not-allowed; }
-.saveSmallDone { background: var(--success-fg); }
-
-/* ── Sair da conta (destrutivo) ── */
-
-.signOutBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  min-height: var(--btn-lg, 48px);
-  padding: 12px 20px;
-  border: 1.5px solid rgba(239, 68, 68, 0.45);
-  border-radius: 14px;
-  background: rgba(239, 68, 68, 0.07);
-  color: var(--danger);
-  font-size: 15px;
-  font-weight: 700;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-.signOutBtn:hover {
-  background: rgba(239, 68, 68, 0.14);
-  border-color: var(--danger);
-}
-.signOutBtn:active { background: rgba(239, 68, 68, 0.2); }
-
-/* ── Swatches — 32px visual, ≥44px hit-area via pseudo-elemento ── */
-
-.swatches { display: flex; gap: 12px; flex-wrap: wrap; }
-.swatch {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border2);
-  position: relative;
-  transition: transform 0.12s ease;
-}
-.swatch::before {
-  content: '';
-  position: absolute;
-  inset: -6px;
-  border-radius: 50%;
-}
-.swatch:hover { transform: scale(1.15); }
-.swatch:active { transform: scale(1.02); }
-/* Seleção com outline da marca — visível mesmo no swatch branco */
-.swatchSel { outline: 2.5px solid var(--gig); outline-offset: 2px; }
-
-/* ── Sliders ── */
-
-.sliderRow { display: flex; align-items: center; gap: 10px; min-height: 44px; }
-.slider { width: 120px; accent-color: var(--gig); cursor: pointer; }
-.sliderVal {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text3);
-  min-width: 38px;
-  font-variant-numeric: tabular-nums;
-}
-.sliderGlyphSm { font-size: 12px; color: var(--text3); }
-.sliderGlyphLg { font-size: 18px; font-weight: 700; color: var(--text3); }
-.sliderIcon { display: inline-flex; align-items: center; color: var(--text3); }
-
-/* ── Preview ao vivo ── */
-
-.preview {
-  border-radius: 18px;
-  border: 1px solid var(--border);
-  padding: 26px 28px;
-  margin-bottom: 10px;
-  position: relative;
-  overflow: hidden;
-}
-
-/* ── Estado de gravação automática ── */
-
-.autoSaveHint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text3);
-  padding: 4px 2px;
-  min-height: 22px;
-  transition: color 0.2s ease;
-}
-.autoSaveHint[data-state="saved"] { color: var(--success-fg); font-weight: 600; }
-
-/* ── Guia ── */
-
-.guideBtn {
+.btnSecondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: var(--input-h, 44px);
-  padding: 0 18px;
-  border: 1.5px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg);
-  color: var(--text2);
+  min-height: var(--btn);
+  padding: 0 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  font-family: var(--font-body);
   font-size: 14px;
   font-weight: 600;
-  text-decoration: none;
+  line-height: 1;
   white-space: nowrap;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.btnSecondary:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--text3);
+}
+.btnSecondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.saveBtn {
+  min-height: var(--input-h);
+  min-width: 104px;
   flex-shrink: 0;
-  transition: border-color 0.15s ease, color 0.15s ease;
 }
-.guideBtn:hover { border-color: var(--gig); color: var(--gig); }
-.guideBtn:active { transform: scale(0.98); }
-
-/* ── Segmented do tema da app — bg3 para se destacar do cartão (bg2) ── */
-
-.themeToggle {
-  display: flex;
-  gap: 4px;
-  background: var(--bg3);
-  padding: 4px;
-  border-radius: 999px;
+.saveBtn[data-state="saved"],
+.saveBtn[data-state="saved"]:disabled {
+  color: var(--success-fg);
+  border-color: var(--success-fg);
+  background: var(--success-soft);
+  opacity: 1;
 }
-.themeOption {
+
+.extIcon { display: inline-flex; color: var(--text3); margin-left: -2px; }
+
+/* Destrutivo (§3): fantasma — só tinta de perigo, sem contorno nem fundo;
+   o mesmo de "Apagar este concerto" na setlist. Confirmação sempre. */
+.btnDanger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--btn);
+  padding: 0 12px;
+  background: transparent;
+  color: var(--danger);
+  border: none;
+  border-radius: var(--radius-btn);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+.btnDanger:hover:not(:disabled),
+.btnDanger:active:not(:disabled) { background: var(--danger-soft); }
+/* À direita da linha: o texto alinha com a margem do painel */
+.btnDanger.rowAction { margin-right: -12px; }
+
+/* ── Segmented (tema da app) ── */
+
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-3);
+  border-radius: var(--radius-btn);
+  flex-shrink: 0;
+}
+
+.segOption {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px;
   border: none;
-  border-radius: 999px;
-  background: none;
-  color: var(--text3);
-  font-size: 13px;
-  font-weight: 700;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   white-space: nowrap;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.themeOption:hover { color: var(--text2); }
-.themeOptionActive { background: var(--bg); color: var(--text); box-shadow: var(--shadow-xs); }
-.themeOptionActive:hover { color: var(--text); }
-
-/* ── Responsivo ── */
-
-@media (max-width: 640px) {
-  .page { padding: 16px 16px 48px; }
-  .title { margin-bottom: 20px; }
-  .profileRow { gap: 14px; }
-  .avatar { width: 56px; height: 56px; font-size: 24px; }
-  .themeToggle { width: 100%; }
-  .themeOption { flex: 1; padding: 0 8px; }
-  .sliderRow { width: 100%; }
-  .slider { flex: 1; width: auto; }
+.segOption:hover { color: var(--text); }
+.segOption:focus-visible { outline-offset: -2px; }
+/* Opção ativa: --seg-active (publicado pelo Layout) é sempre MAIS CLARA do
+   que o trilho — também no escuro, onde --surface parecia um buraco */
+.segOptionActive,
+.segOptionActive:hover {
+  background: var(--seg-active, var(--surface));
+  color: var(--text);
+  font-weight: 700;
+  box-shadow: 0 0 0 1px var(--border);
 }
 
-/* Tablet+ — escala de tipografia e alvos primários */
-@media (min-width: 768px) {
-  .label { font-size: 15px; }
-  .hint { font-size: 13px; }
-  .accountEmail { font-size: 14px; }
+/* ── Swatches: chip 32px quadrado, alvo 44px ── */
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: -6px;
+}
+
+.swatch {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.swatchChip {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border2);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.swatch:hover .swatchChip { border-color: var(--text3); }
+
+/* Fundos de palco (quase pretos): no tema escuro a hairline normal some-se */
+:global([data-theme="dark"]) .swatchesOutlined .swatchChip { border-color: var(--text3); }
+
+/* Anel de seleção: 2px --text com 2px de afastamento (visível até no branco) */
+.swatchSel .swatchChip,
+.swatchSel:hover .swatchChip {
+  border-color: var(--border2);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text);
+}
+
+/* ── Sliders ── */
+
+/* Grelha fixa [menos · fader · mais · valor]: os dois faders ficam com o
+   mesmo comprimento e alinhados, seja qual for o glifo/ícone das pontas */
+.sliderRow {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 24px 52px;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  flex: 1 1 260px;
+  max-width: 380px;
+}
+
+.slider {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.sliderVal {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.glyphSm,
+.glyphLg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-stretch: 75%;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text3);
+}
+.glyphSm { font-size: 13px; }
+.glyphLg { font-size: 22px; }
+
+.sliderIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text3);
+}
+
+/* ── Mini-ecrã de palco (cores vêm do concert_theme, inline) ── */
+
+/* Bancada à volta do ecrã; a hairline de baixo vem da 1.ª .row */
+.stageWrap {
+  padding: 18px 18px 20px;
+  background: var(--surface-2);
+}
+
+.stage {
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border2);
+  overflow: hidden;
+  padding-bottom: 20px;
+}
+
+.stageBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid;
+}
+
+.stageCounter {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stageLive {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.stageLed {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.stageLyrics { padding-top: 14px; }
+
+.stageSection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 12px 0 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.stageSection::before,
+.stageSection::after {
+  content: '';
+  width: 22px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.stageLine {
+  padding: 2px 16px;
+  text-align: center;
+  font-size: var(--pv-size, 32px);
+  line-height: var(--pv-lh, 1.6);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+  transition: font-size 0.15s ease, line-height 0.15s ease;
+}
+.stageActive { font-weight: 800; }
+.stagePast { opacity: 0.35; }
+
+/* ── Telemóvel ── */
+
+@media (max-width: 640px) {
+  .page { padding: 20px 16px 48px; }
+  .header { margin-bottom: 22px; }
+  .grid { gap: 24px; }
+
+  .row { flex-direction: column; align-items: stretch; padding: 16px; }
+  .rowText { flex: none; }
+  .rowAction { width: 100%; min-height: var(--btn-lg); }
+  /* Fantasma destrutivo: não estica — alinha o texto à margem do título */
+  .btnDanger.rowAction {
+    width: auto;
+    min-height: var(--btn);
+    align-self: flex-start;
+    margin: -6px 0 -8px -12px;
+  }
+
+  .profile { padding: 16px; gap: 14px; align-items: flex-start; }
+  .saveBtn { min-width: 0; padding: 0 14px; }
+
+  .segmented { display: flex; width: 100%; }
+  .segOption { flex: 1; padding: 0 6px; gap: 6px; }
+
+  .sliderRow { flex: none; width: 100%; max-width: none; }
+
+  .stageWrap { padding: 14px; }
+}
+
+/* ── Tablet (retrato e paisagem) ── */
+
+@media (min-width: 641px) {
+  .sectionLabel,
+  .saveState,
   .fieldLabel { font-size: 12px; }
-  .swatch { width: 36px; height: 36px; }
-  .swatch::before { inset: -4px; }
-  .slider { width: 180px; }
-  .sliderVal { font-size: 13px; }
-  .themeOption { font-size: 14px; padding: 0 16px; min-height: 44px; }
-  .autoSaveHint { font-size: 13px; }
+  .rowTitle { font-size: 16px; }
+  .rowHint { font-size: 14px; }
+  .email { font-size: 14px; }
+  .row { padding: 18px 20px; min-height: 76px; }
+  .profile { padding: 20px; }
+  .stageWrap { padding: 20px; }
+}
+
+@media (min-width: 641px) and (max-width: 1023px) {
+  .grid { max-width: 760px; }
+}
+
+/* ── Paisagem / desktop: palco à direita, restantes secções à esquerda ── */
+
+@media (min-width: 1024px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-areas:
+      "profile stage"
+      "look    stage"
+      "help    stage"
+      "session stage";
+    grid-template-rows: auto auto auto 1fr;
+    align-items: start;
+    gap: 28px 32px;
+  }
+  .areaProfile { grid-area: profile; }
+  .areaLook    { grid-area: look; }
+  .areaStage   { grid-area: stage; }
+  .areaHelp    { grid-area: help; }
+  .areaSession { grid-area: session; }
+
+  /* Na coluna esquerda estreita a linha do tema empilha o segmented */
+  .areaLook .row { flex-direction: column; align-items: stretch; }
+  .areaLook .rowText { flex: none; }
+  .areaLook .segmented { display: flex; width: 100%; }
+  .areaLook .segOption { flex: 1; }
 }

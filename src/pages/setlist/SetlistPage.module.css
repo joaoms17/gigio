@@ -1,389 +1,1452 @@
-.page { padding: 28px 24px; max-width: 1000px; margin: 0 auto; animation: pageIn 0.25s ease-out; }
-@media (max-width: 640px) { .page { padding: 16px; } }
+/* ═══════════════════════════════════════════════════════════════
+   Concerto (alinhamento) — v2 "hardware / setlist impresso"
+   Painéis --surface com hairlines, numeração 01/02 em mono,
+   UM laranja de sinal (Iniciar concerto, linha selecionada, foco).
+   Tokens: src/index.css · Especificação: docs/DESIGN-v2.md
+═══════════════════════════════════════════════════════════════ */
+
+.page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 28px 28px 48px;
+  animation: pageIn 0.25s ease-out;
+}
+@media (max-width: 640px) { .page { padding: 16px 16px 32px; } }
 /* Duas colunas a partir de 1024px — a página alarga para acomodar o painel */
 @media (min-width: 1024px) { .page { max-width: 1320px; } }
 
+/* ── Aviso offline: painel com LED de aviso ── */
+.offlineBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  color: var(--text2);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.offlineLed {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--warn-fg);
+}
+.offlineTag {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--warn-fg);
+}
+.offlineText { min-width: 0; }
+
 /* ──────────────────────────────────────────
-   HEADER — compacto: título display, meta numa linha, ações à direita
+   HEADER — título condensado + linha mono; ações à direita em ≥1024px
 ────────────────────────────────────────── */
-.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 16px; }
-.headerLeft { flex: 1; min-width: 0; }
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+.headMain { flex: 1 1 auto; min-width: 0; }
+
+@media (min-width: 1024px) {
+  .header {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 32px;
+  }
+}
+
+/* Nome da entidade: Archivo condensado 800, sem maiúsculas forçadas */
 .title {
+  margin: 0;
+  min-width: 0;
   font-family: var(--font-display);
-  font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15;
-  cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  font-stretch: var(--display-stretch);
+  font-weight: 800;
+  font-size: clamp(28px, 4.5vw, 44px);
+  line-height: 1;
+  letter-spacing: -0.005em;
+  color: var(--text);
 }
-.editHint { font-size: 14px; color: var(--text3); font-weight: 400; font-family: var(--font-body); }
+.titleBtn {
+  display: inline-block;
+  max-width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 4px 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: text;
+  -webkit-tap-highlight-color: transparent;
+}
+.titleBtn:active:not(:disabled) { transform: none; }
+.titleText { vertical-align: middle; }
+.editHint {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 10px;
+  color: var(--text3);
+  transition: color 0.12s;
+}
+@media (hover: hover) { .titleBtn:hover .editHint { color: var(--text); } }
+.titleSkeleton {
+  display: block;
+  width: min(420px, 70%);
+  height: 0.85em;
+  margin: 10px 0 8px;
+}
+
+/* Edição do nome: mesmo tipo do título, hairline forte em baixo.
+   !important vence o 16px global anti-zoom do iOS (aqui é sempre ≥28px). */
 .nameInput {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 4px 2px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--text);
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  color: var(--text);
   font-family: var(--font-display);
-  font-size: 24px; font-weight: 800; border: none; border-bottom: 2px solid var(--gig);
-  outline: none; background: transparent; color: var(--text); width: 100%; max-width: 100%;
+  font-stretch: var(--display-stretch);
+  font-weight: 800;
+  font-size: clamp(28px, 4.5vw, 44px) !important;
+  line-height: 1.05;
+  letter-spacing: -0.005em;
+  outline: none;
+}
+.nameInput:focus { box-shadow: 0 0 0 3px var(--ring); }
+.nameInput:focus-visible { outline: none; }
+
+/* ── Linha de metadados mono (maiúsculas, 13px) — só texto e "·", sem ícones,
+      a mesma assinatura do Palco / Dashboard / Concertos:
+      SEG 28 SET 2026 · ANTES PERDIDA POR AQUI ALGURES · 12 MÚS · 40 MIN
+   641–1023 e ≥1360: uma só linha; o local encolhe com reticências.
+   ≤640 e 1024–1359 (coluna do título estreita): data · local na 1.ª linha,
+   contagem na 2.ª. ── */
+.metaRow {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0 4px;
+  min-width: 0;
+  margin: 8px 0 0 -4px;   /* o texto (dentro do padding de 4px) alinha com o título */
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 20px;
 }
 
-/* Meta numa linha só: contagem/duração + local + data (com wrap em ecrãs estreitos) */
-.metaRow { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-.metaRow .metaField { flex: 0 1 auto; min-width: 170px; }
-
-.songsChip {
-  display: inline-flex; align-items: center;
-  padding: 8px 14px; border-radius: 12px;
-  background: linear-gradient(135deg, #FF4D6D18, #7C3AED14);
-  color: var(--gig); font-size: 14px; font-weight: 800; white-space: nowrap;
+.metaSep {
+  flex-shrink: 0;
+  color: var(--text3);
+  font-weight: 700;
 }
 
+/* Campo inline: parece texto; hairline só em hover/focus.
+   O <label> é o alvo táctil (44px); a "caixa" interior é mais baixa
+   para a hairline ficar colada ao texto. */
 .metaField {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 8px 13px; border-radius: 12px;
-  border: 1px solid var(--border); background: var(--bg2);
-  transition: border-color 0.15s;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  cursor: text;
+  -webkit-tap-highlight-color: transparent;
 }
-.metaField:focus-within { border-color: var(--gig); }
-.metaIcon { display: inline-flex; align-items: center; color: var(--text3); flex-shrink: 0; }
-
-.venueWrap { position: relative; flex: 1 1 200px; min-width: 180px; }
-.venueWrap .metaField { display: flex; width: 100%; box-sizing: border-box; }
-.venueDrop { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--bg2); border: 1px solid var(--border2); border-radius: 12px; box-shadow: var(--shadow-lg); z-index: 200; overflow: hidden; }
-.venueDropItem { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border); }
-.venueDropItem:last-child { border-bottom: none; }
-.venueDropItem:hover { background: var(--bg3); }
-.venueDropName { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
-.venueDropDetail { display: block; font-size: 11px; color: var(--text3); margin-top: 1px; }
-
-.venueInput { flex: 1; width: 100%; min-width: 0; border: none; background: none; color: var(--text); font-size: 16px; font-weight: 600; font-family: inherit; outline: none; }
-.venueInput::placeholder { color: var(--text3); font-weight: 500; }
-.dateInput { border: none; background: none; color: var(--text); font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer; outline: none; }
-
-/* Ações: Iniciar Concerto em destaque; o resto secundário e compacto */
-.headerActions { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; width: 224px; }
-.concertBtn {
-  width: 100%; padding: 14px 18px; border: none; border-radius: var(--radius);
-  background: linear-gradient(135deg, var(--gig), var(--io)); color: white;
-  font-size: 16px; font-weight: 800; white-space: nowrap; cursor: pointer;
-  box-shadow: 0 4px 16px rgba(255,77,109,0.25); transition: opacity 0.15s;
+.metaBox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 4px;
+  border-bottom: 1px solid transparent;
+  border-radius: 2px 2px 0 0;
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
-.concertBtn:hover { opacity: 0.9; }
-.secondaryActions { display: flex; gap: 6px; flex-wrap: wrap; }
-.secondaryActions .dupBtn, .secondaryActions .deleteBtn { flex: 1 1 calc(50% - 3px); min-width: 0; font-size: 13px; padding: 8px 10px; }
-.dupBtn { flex: 1; min-height: 44px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
-.dupBtn:hover { border-color: var(--gig); color: var(--gig); }
-/* Perigo visível em repouso — não depende de hover (inútil em touch) */
-.deleteBtn { flex: 1; min-height: 44px; padding: 10px 14px; border: 1px solid var(--danger); border-radius: var(--radius); background: transparent; color: var(--danger); font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; }
-.deleteBtn:hover { background: rgba(220, 38, 38, 0.08); }
+@media (hover: hover) {
+  .metaField:hover .metaBox { border-bottom-color: var(--border2); }
+}
+.metaField:focus-within .metaBox {
+  border-bottom-color: var(--text);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.metaText {
+  min-width: 0;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.metaEmpty .metaText { color: var(--text3); }
+
+/* Data: texto formatado pt-PT; o input nativo fica invisível por cima
+   (o toque em qualquer ponto abre o seletor do sistema) */
+.dateField { flex-shrink: 0; cursor: pointer; }
+.dateInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  opacity: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.dateInput:focus-visible { outline: none; }
+.dateInput::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+
+/* Local: largura automática (espelho invisível do valor a 13px).
+   O input fica a 16px (sem auto-zoom do iOS) e é reduzido visualmente
+   para 13px com scale — igual ao resto da linha mono. */
+.venueWrap {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.venueBox {
+  position: relative;
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  height: 20px;
+  overflow: hidden;
+}
+.venueBox::before {
+  content: attr(data-value);
+  display: block;
+  height: 20px;
+  padding-right: 3px;   /* folga sub-pixel: o input nunca corta um valor que cabe */
+  overflow: hidden;
+  visibility: hidden;
+  white-space: pre;
+}
+.venueInput {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(100% / 0.8125);
+  height: calc(100% / 0.8125);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  transform: scale(0.8125);
+  transform-origin: 0 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.venueInput:focus-visible { outline: none; }
+.venueInput::placeholder { color: var(--text3); opacity: 1; text-transform: uppercase; }
+
+/* Contagem "12 MÚS · 40 MIN" */
+.metaCount {
+  flex-shrink: 0;
+  padding: 0 4px;
+  color: var(--text2);
+  white-space: nowrap;
+}
 
 @media (max-width: 640px) {
-  .header { flex-direction: column; align-items: stretch; }
-  .headerActions { width: 100%; min-width: 0; }
-  .title { font-size: 26px; }
+  .metaRow { position: relative; flex-wrap: wrap; }
+  /* Base 0 + crescer: o local fica sempre na 1.ª linha e encolhe com reticências */
+  .venueWrap { position: static; flex: 1 1 0; }
+  .metaSepCount { display: none; }
+  .metaCount { flex: 0 0 100%; padding: 0 4px 2px; }
 }
+/* 1024–1359: as ações ocupam a direita e a coluna do título fica com ~450px —
+   numa só linha o local era cortado ("ANTES PERDIDA …"). Data · local na 1.ª
+   linha (o local com a largura toda que sobra), contagem na 2.ª, alinhada
+   com a barra de ferramentas ao lado. ≥1360 (iPad Pro 12.9" deitado, desktop):
+   a coluna tem ≥600px e a linha volta a ser uma só. */
+@media (min-width: 1024px) and (max-width: 1359px) {
+  .metaRow { flex-wrap: wrap; }
+  .venueWrap { flex: 1 1 0; }
+  .metaSepCount { display: none; }
+  .metaCount { flex: 0 0 100%; padding: 0 4px 2px; }
+}
+
+/* Sugestões de local */
+.venueDrop {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 0;
+  z-index: 200;
+  width: min(380px, calc(100vw - 32px));
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+/* Telemóvel: o local começa a meio da linha — a lista ancora à linha inteira */
+@media (max-width: 640px) {
+  .venueDrop { top: 42px; left: 0; width: 100%; }
+}
+.venueDropItem {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background-color 0.12s;
+}
+.venueDropItem + .venueDropItem { border-top: 1px solid var(--border); }
+.venueDropItem:hover { background: var(--surface-2); }
+.venueDropItem:active { background: var(--surface-3); }
+.venueDropName { font-size: 15px; font-weight: 600; color: var(--text); }
+.venueDropDetail {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Ações: primário "Iniciar concerto" + barra de ferramentas ──
+   O primário tem SEMPRE a largura natural (ícone + padding) — o mesmo
+   tamanho do "Iniciar concerto" do Palco; nunca estica para acompanhar a barra.
+     telemóvel ≤640: coluna, ambos a toda a largura (alcance do polegar, como no Palco)
+     tablet 641–1023: [▶ INICIAR] e a barra lado a lado se couberem; senão a barra
+                      desce para a linha seguinte — ambos alinhados à esquerda
+                      (≤720: a barra passa a colunas iguais a toda a largura)
+     ≥1024: pilha à direita do título, alinhada à direita */
+.headActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .headActions { flex-direction: column; align-items: stretch; }
+}
+@media (min-width: 1024px) {
+  .headActions {
+    flex: 0 0 auto;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    max-width: 560px;
+  }
+}
+
+.concertBtn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: var(--btn-lg);
+  padding: 0 28px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: none;
+  border-radius: var(--radius-btn);
+  font-family: var(--font-body);
+  font-stretch: 85%;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: background-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.concertBtn svg { flex-shrink: 0; }
+.concertBtn:hover { background: var(--accent-hover); }
+.concertBtn:active:not(:disabled) { background: var(--accent-hover); }
+
+/* Barra de ferramentas: botões secundários SOLTOS (--surface + hairline
+   --border2), o mesmo tratamento das exportações do Repertório.
+   Sempre uma linha, sem scroll: 721–1023 cabem os 4 (~535px) ao lado/abaixo
+   do primário; ≤720 passam a colunas iguais (abaixo); ≥1024 alinham à direita. */
+.toolbar {
+  flex: 0 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.toolBtn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: var(--btn);
+  padding: 0 16px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.toolBtn svg { flex-shrink: 0; color: var(--text2); }
+@media (hover: hover) {
+  .toolBtn:hover { background: var(--surface-2); border-color: var(--text3); }
+}
+.toolBtn:active:not(:disabled) { background: var(--surface-3); }
+.toolLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* "PDF": parte do rótulo em ≥721px ("Lista PDF"); micro-etiqueta em colunas */
+.toolTag { font: inherit; letter-spacing: inherit; }
+
+@media (min-width: 1024px) {
+  .toolbar { justify-content: flex-end; }
+  .toolBtn { padding: 0 14px; }
+}
+
+/* Telemóvel e tablet estreito (split view): colunas iguais, ícone por cima
+   do rótulo — os 4 cabem numa linha em 320–720px (nunca 2×2).
+   Conteúdo encostado ao topo: ícones e rótulos alinham entre colunas;
+   o "PDF" mono por baixo não desalinha os vizinhos. */
+@media (max-width: 720px) {
+  .toolbar {
+    width: 100%;   /* 641–720: linha própria por baixo do primário */
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+  .toolBtn {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 6px;
+    min-height: 62px;
+    padding: 10px 4px 8px;
+    font-size: 13px;
+    line-height: 1.15;
+    text-align: center;
+  }
+  .toolBtn svg { width: 18px; height: 18px; }
+  .toolLabel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    max-width: 100%;
+  }
+  .toolTag {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.08em;
+    color: var(--text3);
+  }
+}
+
+/* ──────────────────────────────────────────
+   BOTÕES partilhados desta página
+────────────────────────────────────────── */
+.secondaryBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--btn);
+  padding: 0 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.secondaryBtn svg { flex-shrink: 0; color: var(--text2); }
+@media (hover: hover) {
+  .secondaryBtn:hover:not(:disabled) { background: var(--surface-2); border-color: var(--text3); }
+}
+.secondaryBtn:active:not(:disabled) { background: var(--surface-3); }
+.secondaryBtn:disabled { opacity: 0.55; cursor: default; }
+
+.primaryBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--btn-lg);
+  padding: 0 22px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: background-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.primaryBtn:hover:not(:disabled) { background: var(--accent-hover); }
+.primaryBtn:disabled { opacity: 0.6; cursor: default; }
+.primaryBtnWide { width: 100%; }
 
 /* ──────────────────────────────────────────
    COLUNAS — <1024px: coluna única (painel escondido);
-   ≥1024px: alinhamento ~460px + painel flexível
+   ≥1024px: alinhamento + painel de pré-visualização
 ────────────────────────────────────────── */
 .columns { display: block; }
-.previewPanel { display: none; }
 @media (min-width: 1024px) {
   .columns {
     display: grid;
-    grid-template-columns: 460px minmax(0, 1fr);
+    /* A lista é o principal: mais largura para os títulos (antes cortava
+       "Killing Me Softly With His So…" a 1180px); a letra cabe bem em ~450px */
+    grid-template-columns: minmax(440px, 1.15fr) minmax(0, 1fr);
     gap: 20px;
     align-items: start;
   }
-  .previewPanel { display: flex; }
 }
 
 /* ──────────────────────────────────────────
-   LISTA (cartão "palco": bg2, borda subtil, radius 18px)
+   LISTA — painel com hairlines entre linhas (sem cartão por linha)
 ────────────────────────────────────────── */
-.songList { background: var(--bg2); border: 1px solid var(--border); border-radius: 18px; padding: 16px; }
-.listHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.listTitle { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; }
-.addBtn { min-height: 44px; padding: 7px 16px; border: none; border-radius: 10px; background: var(--gig); color: white; font-size: 12px; font-weight: 700; }
-.addBtn:disabled { opacity: 0.6; cursor: default; }
+.songList {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.listHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 60px;
+  padding: 8px 8px 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.listLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+  white-space: nowrap;
+}
+.listLabelText { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.listCount { color: var(--text3); }
+.listHeadActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 
-/* Linhas placeholder durante o load (usa a .skeleton global de index.css) */
-.skeletonRow { height: 48px; margin-bottom: 8px; }
+/* "Editar / Concluir" — botão fantasma; só existe no telemóvel
+   (em ≥641px pega e ✕ estão sempre visíveis) */
+.editToggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: var(--btn);
+  padding: 0 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-btn);
+  color: var(--text2);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 0.12s, color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.editToggle:active:not(:disabled) { background: var(--surface-3); }
+.editToggleOn { color: var(--text); background: var(--surface-3); }
+@media (max-width: 640px) {
+  .listHeader { gap: 8px; padding: 8px 6px 8px 14px; }
+  .editToggle { display: inline-flex; padding: 0 10px; }
+  .listHeadActions .secondaryBtn { padding: 0 12px; }
+  /* A contagem já está na linha de metadados — liberta espaço ao cabeçalho */
+  .listCount { display: none; }
+}
+/* Cor do projeto: quadrado-LED, nunca círculo */
+.led {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+/* Skeleton (usa a .skeleton global de index.css) */
+.skeletonList { padding: 14px 16px; }
+.skeletonListFlush { padding: 0; }
+.skeletonRow { height: 44px; margin-bottom: 12px; }
 .skeletonRow:last-child { margin-bottom: 0; }
 
-.songRow { display: flex; align-items: center; gap: 6px; padding: 8px 4px; border-radius: 12px; background: transparent; transition: background 0.1s; cursor: pointer; }
-.songRow:active { background: var(--bg3); }
-.songRow:hover { background: var(--bg3); }
-/* Realce da música selecionada — só faz sentido quando o painel é visível */
+/* Empty state: ícone 28px, título condensado 22px, texto 15px, 1 CTA */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 44px 20px 48px;
+  text-align: center;
+}
+.emptyIcon { display: inline-flex; color: var(--text3); margin-bottom: 4px; }
+.emptyTitle {
+  font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
+  font-weight: 800;
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--text);
+}
+.emptyText {
+  max-width: 36ch;
+  margin-bottom: 8px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text2);
+}
+
+/* ── Linha do alinhamento ── */
+.rows { position: relative; min-width: 0; }
+.songRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 68px;
+  padding: 6px 4px 6px 2px;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.songRow + .songRow { border-top: 1px solid var(--border); }
+/* A última linha acompanha o canto do painel (hover/seleção não "furam" o raio) */
+.songRowLast { border-radius: 0 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px); }
+@media (hover: hover) { .songRow:hover { background: var(--surface-2); } }
+.songRow:active { background: var(--surface-2); }
+
+/* Selecionada (só com o painel visível): inset + barra de sinal 3px */
 @media (min-width: 1024px) {
   .songRowSelected,
   .songRowSelected:hover {
-    background: var(--bg3);
-    outline: 1px solid rgba(255, 77, 109, 0.45);
-    outline-offset: -1px;
+    background: var(--surface-2);
+    box-shadow: inset 3px 0 0 var(--accent);
   }
+  .songRowSelected .songNum { color: var(--accent-text); }
 }
-.metaIndicator { display: inline-flex; align-items: center; color: var(--text3); cursor: pointer; flex-shrink: 0; padding: 4px; margin: -4px 0; }
-.metaIndicator:hover { color: var(--io); }
-.dragging { box-shadow: 0 6px 16px rgba(0,0,0,0.35); z-index: 10; position: relative; background: var(--bg3); }
 
-.songNum { font-size: 11px; color: var(--text3); width: 18px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; font-weight: 600; }
-.songMain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.titleLine { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.songTitle { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.metaLine { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
-.songArtist { font-size: 12px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
-.songDur { font-size: 12px; color: var(--text3); flex-shrink: 0; font-variant-numeric: tabular-nums; margin-left: auto; }
-.songActions { display: flex; gap: 2px; flex-shrink: 0; }
-
-/* Chip de tom — --io translúcido, clicável (abre tom & notas) */
-.keyChip {
-  white-space: nowrap; flex-shrink: 0;
-  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px;
-  background: #7C3AED18; color: var(--io); border: none; cursor: pointer; line-height: 1.5;
+/* A arrastar: a linha levanta (sombra neutra), sem transparência */
+.dragging,
+.dragging:hover {
+  z-index: 10;
+  background: var(--surface);
+  border-radius: var(--radius-btn);
+  box-shadow: var(--shadow), inset 0 0 0 1px var(--border2);
 }
-.keyChip:hover { background: #7C3AED2e; }
-:global([data-theme="dark"]) .keyChip {
-  white-space: nowrap; flex-shrink: 0; background: #A78BFA1f; color: #A78BFA; }
-:global([data-theme="dark"]) .keyChip:hover { background: #A78BFA33; }
-/* Chip discreto que revela o atalho de tom/notas quando ainda não há overrides */
-.ghostChip {
-  display: none;
-  font-size: 10px; font-weight: 600; color: var(--text3);
-  border: 1px dashed var(--border2); border-radius: 6px;
-  background: none; padding: 2px 7px; cursor: pointer;
-  white-space: nowrap; flex-shrink: 0; font-family: inherit;
-}
-@media (min-width: 1024px) { .ghostChip { display: inline-block; } }
-.songRow:hover .ghostChip, .ghostChip:hover { border-color: var(--io); color: var(--io); }
+.dragging .dragHandle { color: var(--accent-text); }
 
 .dragHandle {
-  cursor: grab; color: var(--text3); background: none; border: none;
-  touch-action: none; flex-shrink: 0;
-  /* alvo táctil ≥44px mantendo o glifo compacto */
-  min-width: 44px; min-height: 44px; padding: 0;
-  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-btn);
+  color: var(--text3);
+  cursor: grab;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 }
-.dragHandle:active { cursor: grabbing; color: var(--gig); }
-.dragHandle:hover { color: var(--gig); }
+@media (hover: hover) { .dragHandle:hover { color: var(--text); background: var(--surface-3); } }
+.dragHandle:active:not(:disabled) { transform: none; cursor: grabbing; color: var(--text); }
 
+/* Número de setlist — a assinatura: mono, grande, 2 dígitos */
+.songNum {
+  flex-shrink: 0;
+  min-width: 30px;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+}
+
+.songMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px 0 10px;
+}
+.songTitle {
+  display: block;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.metaLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 20px;
+  overflow: hidden;
+}
+.songArtist {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Chip de tom — OUTLINED, mono, valor sem maiúsculas forçadas */
+.keyChip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-xs);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+@media (hover: hover) { .keyChip:hover { border-color: var(--text); } }
+.keyChip:active:not(:disabled) { transform: none; background: var(--surface-3); }
+
+/* Chip SYNC — sucesso */
+.syncChip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  background: var(--success-soft);
+  color: var(--success-fg);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Indicadores de notas / intro-final */
+.metaIndicator {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  color: var(--text3);
+  cursor: pointer;
+  transition: color 0.12s;
+}
+@media (hover: hover) { .metaIndicator:hover { color: var(--text); } }
+
+/* Atalho "+ TOM · NOTAS" — só ≥1024px, na linha selecionada ou em hover */
+.ghostChip {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 6px;
+  background: transparent;
+  border: 1px dashed var(--border2);
+  border-radius: var(--radius-xs);
+  color: var(--text3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.ghostChip:hover { color: var(--text); border-color: var(--text3); }
+.ghostChip:active:not(:disabled) { transform: none; }
+@media (min-width: 1024px) {
+  .songRowSelected .ghostChip { display: inline-flex; }
+}
+@media (min-width: 1024px) and (hover: hover) {
+  .songRow:hover .ghostChip { display: inline-flex; }
+}
+
+/* Duração — coluna mono à direita (todas as larguras) */
+.songDur {
+  flex-shrink: 0;
+  min-width: 44px;
+  padding-right: 4px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text2);
+  font-variant-numeric: tabular-nums;
+}
+
+.songActions { display: flex; flex-shrink: 0; }
 .iconBtn {
-  background: none; border: none; color: var(--text3); font-size: 13px; border-radius: 10px;
-  /* alvo táctil ≥44px mantendo o glifo compacto */
-  min-width: 44px; min-height: 44px; padding: 0;
-  display: inline-flex; align-items: center; justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-btn);
+  color: var(--text3);
+  transition: background-color 0.12s, color 0.12s;
+  -webkit-tap-highlight-color: transparent;
 }
-.iconBtn:hover { background: var(--bg3); color: var(--gig); }
-.iconBtn:disabled { opacity: 0.2; }
+@media (hover: hover) { .iconBtn:hover { background: var(--surface-3); color: var(--text); } }
+.iconBtn:active:not(:disabled) { background: var(--surface-3); color: var(--text); }
+@media (hover: hover) { .iconBtnDanger:hover { color: var(--danger); } }
+.iconBtnDanger:active:not(:disabled) { color: var(--danger); }
 
-.syncBadge { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: #10b98120; color: #065f46; white-space: nowrap; flex-shrink: 0; letter-spacing: 0.03em; }
-:global([data-theme="dark"]) .syncBadge { background: #34d39918; color: #34d399; }
+/* ── Telemóvel: a linha é só  01 · título/artista · 4:02  (toque abre tom/notas).
+   ✎ nunca aparece (atalho no modal); pega + ✕ só no modo "Editar". ── */
+@media (max-width: 640px) {
+  .songRow {
+    gap: 0;
+    min-height: 64px;
+    padding: 8px 10px 8px 14px;
+  }
+  .songNum { min-width: 26px; font-size: 15px; }
+  .songMain { padding: 0 10px 0 8px; }
+  .songDur { min-width: 40px; padding-right: 2px; font-size: 13px; }
+  .iconBtnEdit { display: none; }
+  .rows:not(.rowsEdit) .dragHandle,
+  .rows:not(.rowsEdit) .iconBtnDanger { display: none; }
 
-.empty { text-align: center; padding: 32px 16px; color: var(--text3); font-size: 13px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
-
-/* Tablet / larger screens — bigger rows and controls */
-@media (min-width: 768px) {
-  .listTitle { font-size: 13px; }
-  .addBtn { font-size: 14px; padding: 10px 18px; }
-  .songRow { gap: 8px; padding: 10px 6px; }
-  .songNum { font-size: 12px; width: 22px; }
-  .songTitle { font-size: 16px; }
-  .songArtist { font-size: 13px; }
-  .metaLine { gap: 8px; }
-  .songDur { font-size: 13px; }
-  .keyChip {
-  white-space: nowrap; flex-shrink: 0; font-size: 11px; padding: 2px 8px; }
-  .ghostChip { font-size: 11px; padding: 3px 9px; }
-  .syncBadge { font-size: 11px; padding: 2px 7px; }
-  .libraryRow { padding: 14px 10px; }
+  /* Modo editar: pega à esquerda, ✕ à direita; a duração sai para dar largura */
+  .rowsEdit .songRow { padding: 6px 2px 6px 0; }
+  .rowsEdit .songDur { display: none; }
+  .rowsEdit .iconBtnDanger { color: var(--text2); }
 }
 
 /* ──────────────────────────────────────────
    PAINEL DIREITO — pré-visualização da música selecionada (só leitura)
 ────────────────────────────────────────── */
-.previewPanel {
-  flex-direction: column;
-  background: var(--bg2); border: 1px solid var(--border); border-radius: 18px;
-  padding: 20px 20px 8px;
-  position: sticky; top: 20px;
-  max-height: calc(100dvh - 40px);
-  min-height: 280px;
-  overflow: hidden;
+.previewPanel { display: none; }
+@media (min-width: 1024px) {
+  .previewPanel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 320px;
+    max-height: calc(100vh - 40px);
+    max-height: calc(100dvh - 40px);
+    position: sticky;
+    top: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
 }
-.previewHeader { border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 4px; flex-shrink: 0; }
-.previewHeadText { min-width: 0; }
+.previewHeader {
+  flex-shrink: 0;
+  padding: 18px 22px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.previewKicker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+/* Posição: tinta, não laranja (o sinal fica só na linha selecionada da lista) */
+.previewKickerNum {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
 .previewSongTitle {
+  margin: 0;
   font-family: var(--font-display);
-  font-size: 22px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.2;
+  font-stretch: var(--display-stretch);
+  font-weight: 800;
+  font-size: clamp(26px, 2.6vw, 34px);
+  line-height: 1;
+  letter-spacing: -0.005em;
+  color: var(--text);
   overflow-wrap: anywhere;
 }
-.previewArtist { font-size: 14px; color: var(--text2); margin-top: 2px; }
-/* Resumo dos overrides deste concerto ("tom neste concerto: G · intro: ...") */
-.previewOverridesLine { font-size: 12.5px; font-weight: 600; color: var(--io); margin-top: 8px; line-height: 1.5; }
-:global([data-theme="dark"]) .previewOverridesLine { color: #A78BFA; }
-.previewActions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-.previewActionBtn {
-  min-height: 44px; padding: 10px 16px;
-  border: 1px solid var(--border); border-radius: 12px;
-  background: var(--bg3); color: var(--text2);
-  font-size: 13px; font-weight: 700; cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+.previewArtist { margin-top: 6px; font-size: 15px; color: var(--text2); }
+
+/* Resumo dos overrides deste concerto: pares rótulo/valor em mono */
+.ovSummary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  margin-top: 14px;
+  font-family: var(--font-mono);
 }
-.previewActionBtn:hover { border-color: var(--gig); color: var(--gig); }
+.ovSummaryLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.ovSummaryItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.ovSummaryKey {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.ovSummaryVal {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.previewActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 
 /* Corpo: letra com scroll próprio */
 .previewBody {
-  flex: 1; overflow-y: auto; min-height: 0;
-  padding: 14px 4px 20px 0;
-  font-size: 16px; line-height: 1.7; color: var(--text2);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 22px 32px;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--text);
 }
-@media (min-width: 1280px) { .previewBody { font-size: 17px; } }
 .previewLine { overflow-wrap: anywhere; }
-.previewBreak { height: 14px; flex-shrink: 0; }
-.previewSectionRow { margin: 16px 0 6px; }
-.previewSectionRow:first-child { margin-top: 2px; }
-/* Etiqueta de secção [X] — --io claro translúcido */
+.previewBreak { height: 0.85em; flex-shrink: 0; }
+/* Secção [X]: micro-rótulo mono NEUTRO (--text3) + hairline até à margem —
+   igual ao editor de sincronização. O laranja fica para o modo palco, onde
+   vem do tema de concerto do utilizador (spec §4: laranja só em ação/estado vivo) */
+.previewSectionRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 20px 0 4px;
+}
+.previewSectionRow:first-child { margin-top: 0; }
+.previewSectionRow::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
 .sectionTag {
-  display: inline-block; font-size: 10.5px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.08em;
-  padding: 3px 9px; border-radius: 6px;
-  background: #7C3AED18; color: var(--io);
-}
-:global([data-theme="dark"]) .sectionTag { background: #A78BFA1f; color: #A78BFA; }
-
-.previewEmpty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text3); font-size: 13px; gap: 10px; padding: 32px 16px 40px; text-align: center; }
-.previewEmptyIcon { font-size: 32px; }
-
-/* ──────────────────────────────────────────
-   MODAIS
-────────────────────────────────────────── */
-.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 200; display: flex; align-items: flex-end; justify-content: center; padding: 16px; }
-@media (min-width: 600px) { .overlay { align-items: center; } }
-.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 20px 20px 16px 16px; width: 100%; max-width: 480px; max-height: 70dvh; overflow-y: auto; padding: 20px; }
-@media (min-width: 600px) { .modal { border-radius: 20px; } }
-.modalHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.modalTitle { font-family: var(--font-display); font-size: 17px; font-weight: 800; }
-/* Círculo 44px — alvo táctil confortável nos modais desta página */
-.closeBtn {
-  background: var(--bg3); border: none; font-size: 18px; color: var(--text3);
-  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
-  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
-}
-.closeBtn:hover { background: var(--border2); color: var(--text); }
-.modalEmpty { text-align: center; padding: 24px; color: var(--text3); font-size: 13px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
-
-.librarySearch { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--bg); color: var(--text); font-size: 16px; margin-bottom: 12px; font-family: inherit; transition: border-color 0.15s; box-sizing: border-box; }
-.librarySearch:focus { outline: none; border-color: var(--gig); }
-.libraryRow { display: flex; align-items: center; min-height: 48px; padding: 10px 6px; border-radius: 10px; cursor: pointer; gap: 10px; transition: background 0.1s; }
-.libraryRow:hover { background: var(--bg3); }
-.libraryRowSelected { background: #7C3AED14; outline: 2px solid var(--io); outline-offset: -2px; }
-.selIcon { font-size: 18px; color: var(--text3); flex-shrink: 0; width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
-.selIconChecked { font-size: 16px; font-weight: 800; color: var(--io); flex-shrink: 0; width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
-
-.searchNewBtn {
-  width: 100%; margin-bottom: 10px; min-height: 44px; padding: 11px; border-radius: 10px;
-  border: 1.5px dashed var(--border2); background: none;
-  color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-}
-.searchNewBtn:hover { border-color: var(--gig); color: var(--gig); }
-
-.modalAddBar {
-  position: sticky;
-  bottom: 0;
-  padding: 12px 0 4px;
-  background: var(--bg2);
-}
-.addSelectedBtn {
-  width: 100%;
-  padding: 13px;
-  border-radius: 12px;
-  border: none;
-  background: linear-gradient(135deg, var(--gig), var(--io));
-  color: white;
-  font-size: 14px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
   font-weight: 700;
-  cursor: pointer;
-  transition: opacity 0.15s;
+  line-height: 1.4;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text3);
 }
-.addSelectedBtn:hover { opacity: 0.88; }
 
-.overlay { animation: overlayIn 0.18s ease-out; }
-.modal { animation: sheetIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
-
-/* Per-setlist overrides modal */
-.ovSubtitle { font-size: 11.5px; color: var(--text3); margin-top: 3px; }
-.ovField { margin-bottom: 14px; }
-.ovLabel {
-  display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.06em; color: var(--text3); margin-bottom: 6px;
-}
-.ovInput {
-  width: 100%; padding: 11px 13px; border: 1.5px solid var(--border);
-  border-radius: 10px; background: var(--bg); color: var(--text); font-size: 16px;
-}
-.ovInput:focus { outline: none; border-color: var(--gig); }
-.ovTextarea {
-  width: 100%; padding: 11px 13px; border: 1.5px solid var(--border);
-  border-radius: 10px; background: var(--bg); color: var(--text); font-size: 16px;
-  resize: vertical; font-family: inherit;
-}
-.ovTextarea:focus { outline: none; border-color: var(--gig); }
-.ovSaveBtn {
-  width: 100%; padding: 13px; background: linear-gradient(135deg, var(--gig), var(--io));
-  color: #fff; border: none; border-radius: 12px; font-size: 15px; font-weight: 700;
-  cursor: pointer; margin-top: 4px;
-}
-.ovSaveBtn:hover { opacity: 0.9; }
-.ovSaveBtn:disabled { opacity: 0.5; }
-
-.offlineBanner {
-  background: rgba(255, 160, 0, 0.12);
-  border: 1px solid rgba(255, 160, 0, 0.35);
-  color: #b36f00;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 8px 16px;
-  border-radius: 10px;
-  margin-bottom: 12px;
+.previewEmpty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 24px 44px;
   text-align: center;
 }
-:global([data-theme="dark"]) .offlineBanner { color: #ffba5a; background: rgba(255,160,0,0.08); }
 
-/* Snackbar "Música removida · Anular" */
+/* ── Apagar: link destrutivo discreto, fora do caminho ── */
+.deleteLink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 32px auto 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-btn);
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.12s;
+}
+.deleteLink:hover { background: var(--danger-soft); }
+.deleteLink:active:not(:disabled) { background: var(--danger-soft); }
+
+/* ──────────────────────────────────────────
+   MODAIS — receita v2: --surface, hairline, --radius-lg, --shadow-lg
+────────────────────────────────────────── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: rgba(0, 0, 0, 0.5);
+  animation: overlayIn 0.18s ease-out;
+}
+@media (min-width: 641px) { .overlay { align-items: center; padding: 32px; } }
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 520px;
+  max-height: 86vh;
+  max-height: 86dvh;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: sheetIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* Biblioteca: altura estável enquanto se filtra */
+.modalTall {
+  height: 86vh;
+  height: 86dvh;
+  max-height: 720px;
+}
+
+.modalHeader {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 12px 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.modalHeadText { flex: 1; min-width: 0; padding-top: 4px; }
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.kickerLed {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--text3);
+}
+.modalTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
+  font-weight: 800;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.modalSub { margin-top: 8px; font-size: 14px; line-height: 1.4; color: var(--text2); }
+
+.closeBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-btn);
+  color: var(--text2);
+  transition: background-color 0.12s, color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) { .closeBtn:hover { background: var(--surface-2); color: var(--text); } }
+.closeBtn:active:not(:disabled) { background: var(--surface-3); color: var(--text); }
+
+.modalTools {
+  flex-shrink: 0;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.modalBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 24px 24px;
+}
+.modalFooter {
+  flex-shrink: 0;
+  padding: 14px 24px 18px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.modalFooterSplit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 640px) {
+  .modalHeader { padding: 16px 8px 14px 20px; }
+  .modalTools { padding: 12px 20px; }
+  .modalBody { padding: 18px 20px 20px; }
+  .modalFooter { padding: 12px 20px 16px; }
+}
+
+.modalEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 8px;
+  text-align: center;
+}
+
+/* Inputs v2: --surface + hairline; foco em tinta + anel */
+.input {
+  display: block;
+  width: 100%;
+  min-height: var(--input-h);
+  padding: 0 14px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  font-family: inherit;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.input::placeholder { color: var(--text3); opacity: 1; }
+.input:focus { border-color: var(--text); box-shadow: 0 0 0 3px var(--ring); }
+.input:focus-visible { outline: none; }
+.inputMono { font-family: var(--font-mono); font-weight: 600; }
+.textarea {
+  min-height: 96px;
+  padding: 12px 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+/* Overrides */
+.ovField { margin-bottom: 16px; }
+.ovField:last-child { margin-bottom: 0; }
+.ovLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+/* Atalho "Editar letra e música" — linha fantasma com hairline por cima */
+.ovSongLink {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--btn);
+  margin-top: 6px;   /* soma aos 16px do último .ovField */
+  padding: 0 4px;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text2);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  transition: color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.ovSongLink svg { flex-shrink: 0; color: var(--text3); }
+.ovSongLinkLabel { flex: 1; min-width: 0; }
+@media (hover: hover) { .ovSongLink:hover:not(:disabled) { color: var(--text); } }
+.ovSongLink:active:not(:disabled) { transform: none; color: var(--text); }
+.ovSongLink:disabled { opacity: 0.55; cursor: default; }
+.ovSongLink:focus-visible { outline-offset: -2px; }
+
+/* Biblioteca */
+.searchField { position: relative; }
+.searchIcon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  color: var(--text3);
+  pointer-events: none;
+}
+.searchInput { padding-left: 44px; }
+
+.searchNewBtn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  margin-bottom: 14px;
+  padding: 0 14px 0 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  transition: background-color 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.searchNewBtn svg { flex-shrink: 0; color: var(--text2); }
+@media (hover: hover) { .searchNewBtn:hover { background: var(--surface-2); border-color: var(--text3); } }
+.searchNewBtn:active:not(:disabled) { background: var(--surface-3); }
+.searchNewLabel { flex: 1; min-width: 0; }
+
+.libList {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.libraryRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 60px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.libraryRow + .libraryRow { border-top: 1px solid var(--border); }
+@media (hover: hover) { .libraryRow:hover { background: var(--surface-2); } }
+.libraryRow:active { background: var(--surface-3); }
+.libraryRow:focus-visible { outline-offset: -2px; }
+.libraryRowSelected,
+.libraryRowSelected:hover { background: var(--surface-2); }
+
+/* Caixa de seleção seca: vazia = hairline; marcada = tinta */
+.check {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: var(--surface);
+  border: 1.5px solid var(--border2);
+  border-radius: var(--radius-xs);
+  color: var(--surface);
+  transition: background-color 0.12s, border-color 0.12s;
+}
+.checkOn { background: var(--text); border-color: var(--text); }
+
+.libInfo { flex: 1; min-width: 0; }
+.libTitle {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.libMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 3px;
+}
+.libArtist {
+  min-width: 0;
+  font-size: 14px;
+  color: var(--text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.libNoMatch {
+  padding: 24px 8px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--text2);
+  overflow-wrap: anywhere;
+}
+
+/* ──────────────────────────────────────────
+   SNACKBAR "Música removida · ANULAR" — invertido como o toast
+────────────────────────────────────────── */
 .undoSnackbar {
   position: fixed;
-  left: 50%; transform: translateX(-50%);
+  left: 50%;
   bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   z-index: 600;
-  display: flex; align-items: center; gap: 12px;
-  padding: 6px 8px 6px 18px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 52px;
   max-width: calc(100vw - 32px);
-  background: var(--bg3); color: var(--text);
-  border: 1px solid var(--border2);
-  border-radius: 12px;
+  padding: 4px 6px 4px 18px;
+  background: var(--text);
+  color: var(--bg);
+  border: none;
+  border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
-  animation: sheetIn 0.2s ease-out;
+  transform: translateX(-50%);
+  animation: snackIn 0.2s ease-out;
 }
-@media (max-width: 768px) {
+/* Escuro: "LCD" em --surface-3 com hairline (igual ao toast) */
+:global([data-theme="dark"]) .undoSnackbar {
+  background: var(--surface-3);
+  color: var(--text);
+  border: 1px solid var(--border2);
+}
+@media (max-width: 640px) {
   .undoSnackbar { bottom: calc(var(--bottomnav-h) + 12px + env(safe-area-inset-bottom, 0px)); }
 }
-.undoText { font-size: 14px; font-weight: 600; white-space: nowrap; }
+@keyframes snackIn {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.undoText { font-size: 15px; font-weight: 500; white-space: nowrap; }
 .undoBtn {
-  background: none; border: none; border-radius: 8px;
-  min-height: 44px; padding: 10px 14px;
-  color: var(--gig); font-size: 14px; font-weight: 800;
-  white-space: nowrap;
-}
-.undoBtn:hover { background: var(--bg2); }
-
-/* Apagar — fora do caminho, no fundo da página */
-.deleteLink {
-  display: block;
-  margin: 26px auto 8px;
-  padding: 12px 22px;
   min-height: 44px;
+  padding: 0 14px;
+  background: transparent;
   border: none;
-  background: none;
-  color: var(--danger);
-  font-size: 13.5px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  border-radius: 10px;
+  border-radius: var(--radius-btn);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: background-color 0.12s;
 }
-.deleteLink:hover { background: rgba(239, 68, 68, 0.08); }
+.undoBtn:hover { background: var(--accent-soft); }

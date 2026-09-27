@@ -1,233 +1,909 @@
+/* ═══════════════════════════════════════════════════════════════
+   Editor de sincronização — v2 "gravador"
+   Header --surface · deck em alumínio com botões-tecla · scrubber de
+   trilho fino + fader · TAP primário · lista de linhas com hairlines.
+   Tokens: src/index.css · Especificação: docs/DESIGN-v2.md
+   Breakpoints: ≤640 telemóvel · 641–1023 tablet retrato · ≥1024 paisagem
+═══════════════════════════════════════════════════════════════ */
+
 .root {
+  --pad: 28px;
+  --maxw: 1120px;
   display: flex;
   flex-direction: column;
+  height: 100vh;
   height: 100dvh;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: inherit;
-  overflow: hidden;
+  font-family: var(--font-body);
 }
 
-/* ── Top bar ── */
+/* Contentor de largura: a faixa ocupa o ecrã, o conteúdo fica centrado */
+.bar {
+  padding-left: max(var(--pad), calc((100% - var(--maxw)) / 2));
+  padding-right: max(var(--pad), calc((100% - var(--maxw)) / 2));
+}
+
+/* Separador "·" das linhas mono */
+.sep {
+  color: var(--text3);
+  margin: 0 8px;
+}
+
+/* ──────────────────────────────────────────
+   HEADER
+────────────────────────────────────────── */
 .topBar {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.topBar .bar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg2);
-  flex-shrink: 0;
+  min-height: 76px;
+  padding-top: 14px;            /* kicker mono não cola à aresta de cima */
+  padding-bottom: 14px;
 }
+
+/* Voltar — botão fantasma */
 .back {
-  background: none; border: none; cursor: pointer;
-  color: var(--text2); font-size: 15px; font-weight: 600;
-  white-space: nowrap;
-  min-height: 44px; padding: 0 12px; margin-left: -12px;
-  border-radius: 10px;
-  display: inline-flex; align-items: center;
-}
-.back:hover { color: var(--text); background: var(--bg3, var(--bg)); }
-.songInfo { flex: 1; min-width: 0; }
-.songTitle { font-weight: 800; font-size: 15px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.songArtist { font-size: 12px; color: var(--text3); }
-.topRight { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.prog { font-size: 12px; color: var(--text3); font-variant-numeric: tabular-nums; }
-.saveBtn {
-  min-height: 44px;
-  padding: 8px 18px; border: none; border-radius: 10px;
-  background: var(--gig); color: white; font-size: 13px; font-weight: 700;
-  cursor: pointer; transition: background 0.2s;
-}
-.saveBtn:disabled { opacity: 0.5; cursor: not-allowed; }
-.saveBtnOk { background: #10b981; }
-
-/* ── Player wrapper ── */
-.playerWrap {
-  background: var(--bg2);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.playerBar {
-  display: flex; align-items: center;
-  padding: 12px 16px;
-}
-.uploadLabel {
-  display: flex; align-items: center; gap: 8px;
-  padding: 12px 20px; border: 1.5px dashed var(--border);
-  border-radius: 12px; cursor: pointer; font-size: 14px; font-weight: 600;
-  color: var(--text2); transition: border-color 0.15s, color 0.15s;
-  margin: 0 auto;
-}
-.uploadLabel:hover { border-color: var(--gig); color: var(--gig); }
-
-/* Scrubber row */
-.scrubRow {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 16px 4px;
-}
-.timeLabel { font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 52px; }
-.durLabel { font-size: 12px; color: var(--text3); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 52px; }
-.scrubber {
-  flex: 1; min-width: 60px;
-  height: 44px;
-  accent-color: var(--gig);
-  -webkit-appearance: none;
-  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: var(--btn);
+  min-height: var(--btn);
+  padding: 0 12px 0 10px;
+  margin-left: -10px;
+  border: none;
+  border-radius: var(--radius-btn);
   background: transparent;
+  color: var(--text2);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
-  margin: 0;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+  -webkit-tap-highlight-color: transparent;
 }
-.scrubber::-webkit-slider-runnable-track {
-  height: 6px; border-radius: 3px; background: var(--border);
-}
-.scrubber::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none;
-  width: 26px; height: 26px; border-radius: 50%;
-  background: var(--gig); border: none;
-  margin-top: -10px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-}
-.scrubber::-moz-range-track {
-  height: 6px; border-radius: 3px; background: var(--border);
-}
-.scrubber::-moz-range-thumb {
-  width: 26px; height: 26px; border-radius: 50%;
-  background: var(--gig); border: none;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-}
-.speedGroup { display: flex; gap: 8px; flex-shrink: 0; }
-.speedBtn {
-  min-width: 44px; min-height: 44px;
-  padding: 0 10px; border: 1.5px solid var(--border); border-radius: 10px;
-  background: none; color: var(--text3); font-size: 12px; font-weight: 700; cursor: pointer;
-}
-.speedActive { background: var(--gig); border-color: var(--gig); color: white; }
-.changeAudio {
-  min-width: 44px; min-height: 44px;
-  display: flex; align-items: center; justify-content: center;
-  border: 1.5px solid var(--border); border-radius: 10px;
-  cursor: pointer; font-size: 14px; color: var(--text3); flex-shrink: 0;
-}
+.back:active { background: var(--surface-3); color: var(--text); }
 
-/* Transport row */
-.transportRow {
-  display: flex; align-items: center; justify-content: center;
-  gap: 10px; padding: 8px 16px 12px;
+.songInfo {
+  flex: 1;
+  min-width: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
 }
-.playBig {
-  width: 56px; height: 56px; border-radius: 50%; border: none;
-  background: var(--gig); color: white; font-size: 22px;
-  cursor: pointer; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 14px rgba(255, 77, 109, 0.35);
-  transition: transform 0.1s;
-}
-.playBig:active { transform: scale(0.93); }
-.seekBig {
-  display: flex; align-items: center; gap: 3px;
-  padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 12px;
-  background: var(--bg); color: var(--text2);
-  font-size: 14px; font-weight: 700; cursor: pointer;
-  transition: border-color 0.12s, color 0.12s;
-}
-.seekBig:hover { border-color: var(--gig); color: var(--gig); }
-.seekBig:active { background: var(--bg2); }
-.seekArrow { font-size: 16px; font-weight: 900; line-height: 1; }
-.seekLabel { font-size: 12px; font-weight: 800; }
-
-/* ── Tap row ── */
-.tapRow {
+.kicker {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.kickerMode { display: inline-flex; align-items: center; }
+.prog {
+  color: var(--text2);
+  font-variant-numeric: tabular-nums;
+}
+.dirtyTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 14px;
+  color: var(--warn-fg);
+}
+.dirtyLed {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--warn-fg);
   flex-shrink: 0;
 }
-/* Os 3 botões da tapRow partilham a mesma altura e radius */
+
+.songTitle {
+  margin-top: 5px;
+  font-family: var(--font-display);
+  font-stretch: 75%;
+  font-weight: 800;
+  font-size: clamp(24px, 3.2vw, 32px);
+  line-height: 1.02;
+  letter-spacing: -0.005em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.songArtist {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Guardar — primário */
+.saveBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  min-width: 124px;
+  padding: 0 22px;
+  border: none;
+  border-radius: var(--radius-btn);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.saveBtn:disabled { opacity: 0.6; cursor: default; }
+.saveBtnOk,
+.saveBtnOk:disabled {
+  background: var(--success-soft);
+  color: var(--success-fg);
+  opacity: 1;
+}
+
+/* ──────────────────────────────────────────
+   DECK — leitor (alumínio)
+────────────────────────────────────────── */
+.deck {
+  flex-shrink: 0;
+}
+.deck > .bar:only-child { padding-top: 16px; padding-bottom: 16px; }
+
+/* Sem áudio: zona de carregamento */
+.uploadLabel {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 76px;
+  padding: 12px 18px;
+  background: var(--surface);
+  border: 1px dashed var(--border2);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.uploadLabel:active { background: var(--surface-2); }
+/* Ícone num quadrado de hairline (sem bloco cinzento cheio) */
+.uploadIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  background: transparent;
+  color: var(--text2);
+}
+.uploadText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+/* "Escolher ficheiro" — aparência de botão secundário (toda a zona é clicável) */
+.uploadCta {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--btn);
+  margin-left: auto;
+  padding: 0 16px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+.uploadTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.uploadFormats {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+/* Com áudio: grelha do deck (reorganiza por breakpoint) */
+.deckGrid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  grid-template-areas:
+    "time scrub dur speed file"
+    "transport transport transport transport transport";
+  align-items: center;
+  gap: 12px;
+  padding-top: 14px;
+  padding-bottom: 12px;
+}
+
+.transport {
+  grid-area: transport;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Botão-tecla — keycap --surface com hairline forte */
+.key {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 56px;
+  height: var(--btn-lg);
+  padding: 0 12px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  box-shadow: inset 0 -2px 0 var(--border);
+  color: var(--text);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.key:active:not(:disabled) {
+  transform: translateY(1px);
+  background: var(--surface-3);
+  box-shadow: none;
+}
+.keyLabel {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text2);
+}
+
+/* Play — tecla maior com LED de "a tocar" */
+.playKey {
+  min-width: 80px;
+}
+.playLed {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 1.5px;
+  background: var(--border2);
+}
+.playKeyOn .playLed {
+  background: var(--accent);
+  animation: livePulse 1.6s infinite;
+}
+
+/* Contadores mono */
+.timeLabel {
+  grid-area: time;
+  min-width: 7ch;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.durLabel {
+  grid-area: dur;
+  min-width: 7ch;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Scrubber — trilho fino (div) + range transparente com thumb-fader */
+.scrubWrap {
+  grid-area: scrub;
+  position: relative;
+  height: 44px;
+  min-width: 80px;
+}
+.scrubTrack {
+  position: absolute;
+  left: 7px;                    /* metade da largura do fader: o fim do */
+  right: 7px;                   /* preenchimento coincide com o centro dele */
+  top: 50%;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 2px;
+  background: var(--border2);
+  overflow: hidden;
+  pointer-events: none;
+}
+.scrubFill {
+  height: 100%;
+  background: var(--text2);
+}
+.scrubPlaying .scrubFill { background: var(--accent); }
+
+.scrubber {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.scrubber::-webkit-slider-runnable-track {
+  height: 44px;
+  background: transparent;
+  border: none;
+}
+.scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 30px;
+  margin-top: 7px;
+  border: none;
+  border-radius: 3px;
+  background: var(--text);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.scrubber::-moz-range-track {
+  height: 44px;
+  background: transparent;
+  border: none;
+}
+.scrubber::-moz-range-progress { background: transparent; }
+.scrubber::-moz-range-thumb {
+  width: 14px;
+  height: 30px;
+  border: none;
+  border-radius: 3px;
+  background: var(--text);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.scrubber:focus-visible { outline-offset: 0; }
+
+/* Velocidade — segmented mono */
+.speedGroup {
+  grid-area: speed;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  height: var(--btn);
+  padding: 3px;
+  background: var(--surface-3);
+  border-radius: var(--radius-btn);
+}
+.speedBtn {
+  position: relative;
+  flex: 1;
+  min-width: 52px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.speedBtn::after {
+  content: '';
+  position: absolute;
+  inset: -3px 0;
+}
+.speedBtn:focus-visible { outline-offset: -2px; }
+/* --seg-active (Layout): sempre mais claro do que o trilho, também no escuro */
+.speedActive {
+  background: var(--seg-active, var(--surface));
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* Mudar ficheiro — ícone fantasma */
+.changeAudio {
+  grid-area: file;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--btn);
+  height: var(--btn);
+  border-radius: var(--radius-btn);
+  color: var(--text2);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.changeAudio:active { background: var(--surface-3); color: var(--text); }
+
+/* ──────────────────────────────────────────
+   TAP
+────────────────────────────────────────── */
+.tapDeck {
+  flex-shrink: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.tapRow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* TAP gigante — primário --accent / --on-accent, rótulo mono */
 .tapBtn {
   flex: 1;
-  min-height: 56px;
-  padding: 6px 10px; border: none; border-radius: 12px;
-  background: var(--gig); color: white;
-  font-size: 18px; font-weight: 900; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  transition: transform 0.08s;
-  box-shadow: 0 3px 10px rgba(255, 77, 109, 0.35);
+  min-width: 0;
+  min-height: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--on-accent);
+  cursor: pointer;
+  transition: background 0.08s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.tapBtn:active { transform: scale(0.96); }
-.tapSub { font-size: 10px; font-weight: 600; opacity: 0.8; }
+.tapBtn:active:not(:disabled) { background: var(--accent-hover); }
+.tapLabel {
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  padding-left: 0.18em;          /* compensa o tracking para centrar */
+}
+.tapSub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
 /* O atalho de teclado é inútil num tablet sem teclado */
 @media (pointer: coarse) {
   .spaceHint { display: none; }
 }
-.lineNavBtn {
-  min-height: 56px;
-  padding: 0 14px; border: 1.5px solid var(--border); border-radius: 12px;
-  background: var(--bg2); color: var(--text2);
-  font-size: 13px; font-weight: 700; cursor: pointer;
-  white-space: nowrap; transition: border-color 0.12s, color 0.12s;
-}
-.lineNavBtn:hover:not(:disabled) { border-color: var(--gig); color: var(--gig); }
-.lineNavBtn:disabled { opacity: 0.3; cursor: not-allowed; }
-.undoBtn {
-  min-height: 56px; min-width: 48px;
-  padding: 0 14px; border: 1.5px solid var(--border); border-radius: 12px;
-  background: none; color: var(--text2); font-size: 16px;
-  cursor: pointer; flex-shrink: 0;
-}
-.undoBtn:hover { border-color: var(--text2); }
 
-/* ── Lines list ── */
+/* Anterior / Próxima / Desfazer — secundários */
+.lineNavBtn,
+.undoBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 76px;
+  padding: 0 18px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.lineNavBtn svg,
+.undoBtn svg { color: var(--text2); flex-shrink: 0; }
+.lineNavBtn:active:not(:disabled),
+.undoBtn:active { background: var(--surface-3); }
+.lineNavBtn:disabled { opacity: 0.4; cursor: default; }
+.undoBtn { min-width: 60px; padding: 0 14px; }
+
+/* Atalhos de teclado — só com rato/teclado */
+.kbdHints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 20px;
+  padding-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  margin-right: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-xs);
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+@media (pointer: coarse) {
+  .kbdHints { display: none; }
+}
+
+/* ──────────────────────────────────────────
+   LINHAS DA LETRA — lista com hairlines numa folha --surface
+────────────────────────────────────────── */
 .linesList {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 8px 0;
+  background: var(--surface);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
+/* Colunas partilhadas pelo cabeçalho e pelas linhas:
+   nº+LED · letra · tempo [· ▶ só com áudio] */
+.linesInner {
+  --cols: 40px minmax(0, 1fr) 104px;
+  --col-gap: 12px;
+  max-width: calc(var(--maxw) + 2 * var(--pad));
+  margin: 0 auto;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+.linesWithAudio {
+  --cols: 40px minmax(0, 1fr) 104px 44px;
+}
+
+.listHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  column-gap: var(--col-gap);
+  min-height: 40px;
+  padding: 0 var(--pad);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+  white-space: nowrap;
+}
+.listHeadLabel {
+  grid-column: 1 / 3;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Alinhado à direita com o texto dos tempos (padding do input: 4px) */
+.listHeadTime {
+  grid-column: 3;
+  text-align: right;
+  padding-right: 4px;
+}
+
 .lineRow {
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  column-gap: var(--col-gap);
+  min-height: 56px;
+  padding: 4px var(--pad);
+  cursor: pointer;
+  transition: background 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.lineRow + .lineRow { border-top: 1px solid var(--border); }
+.lineRow:active { background: var(--surface-2); }
+
+/* Linha ativa — fundo --surface-2 + barra de sinal à esquerda */
+.lineActive,
+.lineActive:active {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* Nº de linha (.num da spec: sempre --text3; só a ativa ganha o acento)
+   + LED de estado: vazio = por marcar, cheio verde = sincronizada */
+.lineNum {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+}
+.lineActive .lineNum { color: var(--accent-text); }
+
+.syncLed {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border: 1px solid var(--border2);
+  border-radius: 1.5px;
+  background: transparent;
+}
+.lineDone .syncLed {
+  border-color: var(--success-fg);
+  background: var(--success-fg);
+}
+
+.lineText {
+  min-width: 0;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+.lineActive .lineText { font-weight: 600; }
+
+/* [Verso 1] / [Refrão] — rótulo de secção mono (voz "hardware") */
+.lineSection .lineText {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+.lineSection.lineActive .lineText { color: var(--text); }
+
+/* Tempo — input sem caixa, hairline no focus */
+.timeInput {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 4px;
+  margin: 0;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 16px;               /* ≥16px para o iPad não fazer auto-zoom */
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.timeInput::placeholder { color: var(--text3); font-weight: 400; }
+.timeInput:focus,
+.timeInput:focus-visible {
+  outline: none;
+  border-bottom-color: var(--accent);
+  box-shadow: 0 1px 0 var(--accent);
+}
+
+/* ▶ ouvir a partir da linha — fantasma */
+.jumpBtn {
+  grid-column: 4;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 16px;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-btn);
+  background: transparent;
+  color: var(--text2);
   cursor: pointer;
-  border-left: 3px solid transparent;
-  transition: background 0.1s;
+  transition: background 0.12s, color 0.12s;
+  -webkit-tap-highlight-color: transparent;
 }
-.lineRow:hover { background: var(--bg2); }
-.lineActive {
-  background: rgba(255, 77, 109, 0.08);
-  border-left-color: var(--gig);
-}
-.lineDone .lineNum { color: #10b981; }
-.lineNum { font-size: 11px; color: var(--text3); min-width: 22px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
-.lineText { flex: 1; font-size: 14px; line-height: 1.4; }
-.lineActive .lineText { font-weight: 700; }
-.timeInput {
-  width: 100px; padding: 8px 4px; border: 1.5px solid var(--border);
-  border-radius: 8px; background: var(--bg2); color: var(--text);
-  /* ≥16px so o iPad não faz auto-zoom ao focar */
-  font-size: 16px; font-family: monospace; text-align: center;
-  flex-shrink: 0;
-}
-.timeInput:focus { outline: none; border-color: var(--gig); }
-.jumpBtn {
-  width: 44px; height: 44px; border: none; border-radius: 10px;
-  background: var(--bg3, var(--bg2)); color: var(--text3);
-  cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.jumpBtn:hover { background: var(--gig); color: white; }
+.jumpBtn:active { background: var(--surface-3); color: var(--text); }
 
-.empty { padding: 40px 24px; text-align: center; color: var(--text3); font-size: 14px; }
+@media (hover: hover) {
+  .back:hover { background: var(--surface-2); color: var(--text); }
+  .saveBtn:hover:not(:disabled):not(.saveBtnOk) { background: var(--accent-hover); }
+  .uploadLabel:hover { background: var(--surface-2); border-color: var(--text3); }
+  .uploadLabel:hover .uploadCta { border-color: var(--text3); }
+  .key:hover { background: var(--surface-2); border-color: var(--text3); }
+  .speedBtn:not(.speedActive):hover { color: var(--text); }
+  .changeAudio:hover { background: var(--surface-2); color: var(--text); }
+  .tapBtn:hover { background: var(--accent-hover); }
+  .lineNavBtn:hover:not(:disabled),
+  .undoBtn:hover { background: var(--surface-2); border-color: var(--text3); }
+  .lineRow:not(.lineActive):hover { background: var(--surface-2); }
+  .timeInput:hover:not(:focus) { border-bottom-color: var(--border2); }
+  .jumpBtn:hover { background: var(--surface-3); color: var(--text); }
+}
+
+/* ──────────────────────────────────────────
+   ESTADOS — vazio / a carregar
+────────────────────────────────────────── */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 56px var(--pad);
+  text-align: center;
+}
+.emptyIcon {
+  display: inline-flex;
+  color: var(--text3);
+}
+.emptyTitle {
+  font-size: 22px;
+  color: var(--text);
+}
+.emptyText {
+  max-width: 36ch;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text2);
+  margin-bottom: 8px;
+}
+.emptyBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--btn);
+  padding: 0 16px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.emptyBtn svg { color: var(--text2); }
+.emptyBtn:active { background: var(--surface-3); }
 
 /* Skeleton enquanto a letra carrega (usa a classe global .skeleton) */
 .skeletonList {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px;
+  gap: 18px;
+  padding: 20px var(--pad);
 }
 .skeletonLine { height: 20px; }
 .skeletonLine:nth-child(2n) { width: 85%; }
 .skeletonLine:nth-child(3n) { width: 70%; }
+
+/* ──────────────────────────────────────────
+   RESPONSIVO
+────────────────────────────────────────── */
+
+/* Tablet retrato: letra maior */
+@media (min-width: 641px) {
+  .lineText { font-size: 17px; }
+}
+
+/* Tablet paisagem / desktop: deck numa só linha */
+@media (min-width: 1024px) {
+  .root { --pad: 32px; }
+  .deckGrid {
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
+    grid-template-areas: "transport time scrub dur speed file";
+    column-gap: 14px;
+  }
+  .transport {
+    justify-content: flex-start;
+    padding-right: 10px;
+    border-right: 1px solid var(--border2);
+  }
+}
+
+/* Telemóvel */
+@media (max-width: 640px) {
+  .root { --pad: 16px; }
+
+  .topBar .bar { min-height: 64px; gap: 10px; padding-top: 8px; padding-bottom: 8px; }
+  .back { padding: 0; margin-left: -6px; }
+  .backLabel { display: none; }
+  .songInfo { padding-left: 10px; }
+  .kickerMode { display: none; }
+  .dirtyTag { margin-left: 10px; }
+  .songTitle { font-size: 22px; margin-top: 4px; }
+  .songArtist { display: none; }
+  .saveBtn { min-height: var(--btn); min-width: 0; padding: 0 16px; font-size: 15px; }
+
+  .deckGrid {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "time scrub dur"
+      "transport transport transport"
+      "speed speed file";
+    gap: 10px;
+  }
+  .timeLabel { font-size: 17px; }
+  .durLabel { font-size: 12px; }
+  .transport { gap: 6px; justify-content: space-between; }
+  .key { min-width: 0; flex: 1; height: 48px; padding: 0 6px; }
+  .playKey { flex: 1.4; }
+  .speedGroup { display: flex; }
+
+  .tapDeck { padding-bottom: 12px; }
+  .tapBtn { min-height: 64px; }
+  .tapLabel { font-size: 26px; }
+  .lineNavBtn,
+  .undoBtn { min-height: 64px; min-width: 52px; padding: 0 12px; }
+  .lineNavLabel { display: none; }
+
+  /* Sem áudio não há coluna ▶ — a letra fica com a largura toda */
+  .uploadCta { display: none; }
+  .linesInner { --cols: 34px minmax(0, 1fr) 88px; --col-gap: 8px; }
+  .linesWithAudio { --cols: 34px minmax(0, 1fr) 88px 44px; }
+  .lineRow { min-height: 52px; }
+  .lineNum { font-size: 12px; gap: 5px; }
+}

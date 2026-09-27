@@ -6,6 +6,7 @@ import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { exportSongsPdf } from '../../lib/pdfExport'
 import { uploadProjectImage } from '../../lib/uploadImage'
+import { STATUS_LABELS } from '../../lib/setlistStatus'
 import { useAuth } from '../../hooks/useAuth'
 import {
   type Project,
@@ -19,6 +20,7 @@ import {
 } from '../../types'
 import { cacheProjectDashboard, getCachedProjectDashboard } from '../../lib/concertCache'
 import styles from './ProjectDashboardPage.module.css'
+import { mapLegacyProjectColor } from '../../lib/projectColor'
 
 type Tab = 'overview' | 'repertoire' | 'setlists' | 'members' | 'settings'
 
@@ -39,46 +41,94 @@ interface SongCard {
   tags: string[] | null
   performance_key: string | null
   bpm: number | null
+  duration_sec?: number | null
   has_sync: boolean
   is_user_edited: boolean
   source_provider: string | null
   updated_at: string | null
 }
 
-const PALETTE = ['#7C3AED', '#FF4D6D', '#2563EB', '#059669', '#D97706', '#DB2777', '#0891B2', '#9333EA']
-function colorFor(s: string) {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
-  return PALETTE[h % PALETTE.length]
-}
 function initials(name: string) {
   const p = name.trim().split(/\s+/)
   return ((p[0]?.[0] ?? '') + (p[1]?.[0] ?? '')).toUpperCase() || '?'
 }
 
-/* ── Ícones SVG inline ── */
+/** Posições, contagens e minutos sempre com 2 dígitos: 01, 02… (assinatura v2) */
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
 
-function IconX({ size = 15 }: { size?: number }) {
+
+function mapColor(c: string): string {
+  return mapLegacyProjectColor(c)
+}
+
+/** Amostras do seletor de cor (paleta v2, sem duplicados) */
+const SWATCHES: string[] = Array.from(new Set(PROJECT_COLORS.map(mapColor)))
+
+/** Cor do projeto pronta a mostrar (LED do quadrado de identidade, modal, PDF) */
+function projectColorOf(c: string | null | undefined): string {
+  return c ? mapColor(c) : SWATCHES[0]
+}
+
+/** "2026-09-28" → Date local (sem desvio de fuso) */
+function parseDay(dateStr: string): Date {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number)
+  return new Date(y, (m || 1) - 1, d || 1)
+}
+
+/** Dia do mês com 2 dígitos, como na agenda (Concertos, Palco, Calendário): "04", "28" */
+function dayNumber(dateStr: string): string {
+  return pad2(parseDay(dateStr).getDate())
+}
+
+/** "set" — e "set 25" quando o ano não é o corrente. Maiúsculas via CSS. */
+function monthShort(dateStr: string): string {
+  const date = parseDay(dateStr)
+  const label = date.toLocaleDateString('pt-PT', { month: 'short' }).replace('.', '').trim()
+  return date.getFullYear() === new Date().getFullYear()
+    ? label
+    : `${label} ${String(date.getFullYear()).slice(2)}`
+}
+
+function formatDuration(sec: number | null | undefined): string {
+  if (!sec || sec <= 0) return '—'
+  const s = Math.round(sec)
+  return `${Math.floor(s / 60)}:${pad2(s % 60)}`
+}
+
+/* ── Ícones SVG inline (stroke, currentColor) ── */
+
+const ICON = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+}
+
+function IconX({ size = 18 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
       <line x1="6" y1="6" x2="18" y2="18" />
       <line x1="18" y1="6" x2="6" y2="18" />
     </svg>
   )
 }
 
-function IconPlus({ size = 16 }: { size?: number }) {
+function IconPlus({ size = 18 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
   )
 }
 
-function IconCheck({ size = 14 }: { size?: number }) {
+function IconCheck({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON} strokeWidth={2.5}>
       <polyline points="20 6 9 17 4 12" />
     </svg>
   )
@@ -86,34 +136,60 @@ function IconCheck({ size = 14 }: { size?: number }) {
 
 function IconArrowLeft({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
       <line x1="20" y1="12" x2="4" y2="12" />
       <path d="m10 6-6 6 6 6" />
     </svg>
   )
 }
 
+function IconArrowRight({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <path d="m14 6 6 6-6 6" />
+    </svg>
+  )
+}
+
+/** ▶ igual ao da agenda (Concertos) — atalho para o modo concerto */
+function IconPlay({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" focusable="false">
+      <path d="M8 5.5v13a1 1 0 0 0 1.53.85l10.2-6.5a1 1 0 0 0 0-1.7L9.53 4.65A1 1 0 0 0 8 5.5Z" />
+    </svg>
+  )
+}
+
+function IconChevronDown({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  )
+}
+
 function IconCamera({ size = 20 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
       <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
       <circle cx="12" cy="13" r="4" />
     </svg>
   )
 }
 
-function IconSearch({ size = 16 }: { size?: number }) {
+function IconSearch({ size = 18 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
       <circle cx="11" cy="11" r="7" />
       <line x1="21" y1="21" x2="16.5" y2="16.5" />
     </svg>
   )
 }
 
-function IconMusic({ size = 32 }: { size?: number }) {
+function IconMusic({ size = 28 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON} strokeWidth={1.75}>
       <path d="M9 18V5l12-2v13" />
       <circle cx="6" cy="18" r="3" />
       <circle cx="18" cy="16" r="3" />
@@ -121,10 +197,10 @@ function IconMusic({ size = 32 }: { size?: number }) {
   )
 }
 
-function IconCalendar({ size = 32 }: { size?: number }) {
+function IconCalendar({ size = 28 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="18" rx="3" />
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON} strokeWidth={1.75}>
+      <rect x="3" y="4" width="18" height="18" rx="2" />
       <line x1="16" y1="2" x2="16" y2="6" />
       <line x1="8" y1="2" x2="8" y2="6" />
       <line x1="3" y1="10" x2="21" y2="10" />
@@ -132,9 +208,9 @@ function IconCalendar({ size = 32 }: { size?: number }) {
   )
 }
 
-function IconDownload({ size = 15 }: { size?: number }) {
+function IconDownload({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
@@ -142,13 +218,52 @@ function IconDownload({ size = 15 }: { size?: number }) {
   )
 }
 
-function IconFileText({ size = 15 }: { size?: number }) {
+function IconFileText({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />
       <line x1="16" y1="13" x2="8" y2="13" />
       <line x1="16" y1="17" x2="8" y2="17" />
+    </svg>
+  )
+}
+
+function IconTrash({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
+  )
+}
+
+function IconCopy({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  )
+}
+
+function IconLink({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </svg>
+  )
+}
+
+function IconPencil({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
     </svg>
   )
 }
@@ -189,7 +304,7 @@ export default function ProjectDashboardPage() {
   const [settingsName, setSettingsName] = useState('')
   const [settingsDesc, setSettingsDesc] = useState('')
   const [settingsType, setSettingsType] = useState<ProjectType>('band')
-  const [settingsColor, setSettingsColor] = useState(PROJECT_COLORS[0])
+  const [settingsColor, setSettingsColor] = useState(SWATCHES[0])
   const [settingsImagePos, setSettingsImagePos] = useState(50)
   const [savingSettings, setSavingSettings] = useState(false)
   const [settingsSaved, setSettingsSaved] = useState(false)
@@ -259,7 +374,7 @@ export default function ProjectDashboardPage() {
     setSettingsName(proj.name)
     setSettingsDesc(proj.description ?? '')
     setSettingsType((proj.type as ProjectType) ?? 'band')
-    setSettingsColor(proj.color ?? PROJECT_COLORS[0])
+    setSettingsColor(projectColorOf(proj.color))
     setSettingsImagePos((proj as any).image_position ?? 50)
 
     const [membersRes, setlistsRes, songsRes, invitesRes] = await Promise.all([
@@ -274,7 +389,7 @@ export default function ProjectDashboardPage() {
         .order('date', { ascending: true }),
       supabase
         .from('songs')
-        .select('id, title, artist, tags, performance_key, bpm, has_sync, is_user_edited, source_provider, updated_at')
+        .select('id, title, artist, tags, performance_key, bpm, duration_sec, has_sync, is_user_edited, source_provider, updated_at')
         .eq('project_id', projectId)
         .order('updated_at', { ascending: false })
         .limit(200),
@@ -327,20 +442,34 @@ export default function ProjectDashboardPage() {
     load(true)
   }, [activeTab])
 
-  // Segmented control: mede a posição da tab ativa para o deslize do "thumb"
-  const tabsRef = useRef<HTMLDivElement | null>(null)
-  const [tabThumb, setTabThumb] = useState<{ left: number; width: number } | null>(null)
+  // Segmented: no telemóvel o trilho faz scroll — manter a tab ativa à vista
+  const tabsWrapRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
-    const measure = () => {
-      const el = tabsRef.current?.querySelector<HTMLElement>('[data-active]')
-      if (el) setTabThumb({ left: el.offsetLeft, width: el.offsetWidth })
-    }
-    measure()
-    window.addEventListener('resize', measure)
-    let cancelled = false
-    document.fonts?.ready.then(() => { if (!cancelled) measure() }).catch(() => {})
-    return () => { cancelled = true; window.removeEventListener('resize', measure) }
+    const wrap = tabsWrapRef.current
+    const el = wrap?.querySelector<HTMLElement>('[data-active]')
+    if (!wrap || !el || wrap.scrollWidth <= wrap.clientWidth) return
+    const left = el.offsetLeft - (wrap.clientWidth - el.offsetWidth) / 2
+    wrap.scrollTo({ left: Math.max(0, left), behavior: 'smooth' })
   }, [activeTab, loading])
+
+  // Fade nas pontas do trilho quando há separadores escondidos (indica que faz scroll)
+  useEffect(() => {
+    const wrap = tabsWrapRef.current
+    if (!wrap) return
+    const update = () => {
+      const max = wrap.scrollWidth - wrap.clientWidth
+      const l = wrap.scrollLeft > 2
+      const r = wrap.scrollLeft < max - 2
+      wrap.dataset.fade = l && r ? 'both' : l ? 'left' : r ? 'right' : 'none'
+    }
+    update()
+    wrap.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      wrap.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [loading, error, project?.id])
 
   async function saveSettings() {
     if (!project || !settingsName.trim()) return
@@ -473,7 +602,7 @@ export default function ProjectDashboardPage() {
     }
     const ok = exportSongsPdf(items, {
       title: project.name,
-      accent: project.color ?? PROJECT_COLORS[0],
+      accent: projectColorOf(project.color),
       logoUrl: project.image_url ?? null,
       logoInitial: project.name,
       withLyrics,
@@ -534,64 +663,197 @@ export default function ProjectDashboardPage() {
   if (loading) {
     return (
       <div className={styles.page} aria-busy="true">
+        <div className="skeleton" style={{ height: 12, width: 160 }} />
         <div className={styles.heroSkeleton}>
-          <div className="skeleton" style={{ width: 84, height: 84, borderRadius: 20, flexShrink: 0 }} />
+          <div className={`skeleton ${styles.tileSkeleton}`} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="skeleton" style={{ height: 30, width: '55%', marginBottom: 12 }} />
-            <div className="skeleton" style={{ height: 14, width: '35%' }} />
+            <div className="skeleton" style={{ height: 11, width: '22%', marginBottom: 12 }} />
+            <div className="skeleton" style={{ height: 34, width: '55%', marginBottom: 12 }} />
+            <div className="skeleton" style={{ height: 12, width: '38%' }} />
           </div>
         </div>
-        <div className="skeleton" style={{ height: 52, borderRadius: 999, marginBottom: 26 }} />
-        <div className="skeleton" style={{ height: 110, borderRadius: 18, marginBottom: 12 }} />
-        <div className="skeleton" style={{ height: 110, borderRadius: 18 }} />
+        <div className="skeleton" style={{ height: 50, borderRadius: 8 }} />
+        <div className={styles.panel}>
+          {[0, 1, 2].map(i => (
+            <div key={i} className={styles.rowSkeleton}>
+              <div className="skeleton" style={{ width: 40, height: 40, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="skeleton" style={{ height: 15, width: '50%', marginBottom: 8 }} />
+                <div className="skeleton" style={{ height: 11, width: '30%' }} />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
 
   if (error || !project) {
     return (
-      <div className={styles.errorState}>
-        <p>{error ?? 'Projeto não encontrado.'}</p>
-        <button className={styles.backLink} onClick={() => navigate('/')}>
-          <IconArrowLeft /> Voltar
+      <div className={styles.page}>
+        <div className={styles.emptyPanel}>
+          <p className={styles.emptySub}>{error ?? 'Projeto não encontrado.'}</p>
+          <button className={styles.secondaryBtn} onClick={() => navigate('/')}>
+            <IconArrowLeft /> Voltar
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const projectColor = projectColorOf(project.color)
+  const typeLabel = PROJECT_TYPE_LABELS[project.type as ProjectType] ?? project.type
+  const imagePos = (project as any).image_position ?? 50
+
+  const visibleSongs = songs.filter(
+    s => !songSearch || `${s.title} ${s.artist}`.toLowerCase().includes(songSearch.toLowerCase())
+  )
+
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+  /* Contagem do cabeçalho de secção, à direita da régua: "CONCERTOS ──────── 03" */
+  const headCount = (n: number) => (
+    <span className={styles.headCount}>{pad2(n)}</span>
+  )
+
+  // Resumo: os próximos (e sem data); se não houver, os passados mais recentes
+  const todayStart = new Date()
+  todayStart.setHours(0, 0, 0, 0)
+  const upcomingGigs = setlists.filter(s => !s.date || parseDay(s.date) >= todayStart)
+  const pastGigs = setlists.filter(s => !!s.date && parseDay(s.date) < todayStart).reverse()
+  const overviewGigs = (upcomingGigs.length > 0 ? upcomingGigs : pastGigs).slice(0, 3)
+
+  /* Avatar circular de membro: foto do perfil ou iniciais em tinta */
+  const memberAvatar = (m: ProjectMember, name: string, small = false) => (
+    <div className={`${styles.memberAvatar} ${small ? styles.memberAvatarSm : ''}`} aria-hidden="true">
+      {m.profiles?.avatar_url
+        ? <img src={m.profiles.avatar_url} alt="" className={styles.avatarImg} />
+        : initials(name)
+      }
+    </div>
+  )
+
+  /* Linha de concerto — a mesma da agenda (Concertos / Palco / Calendário): bloco de data
+     "04 / OUT", nome + meta mono (local · músicas), chips de estado e partilha, ▶ fantasma
+     para o modo concerto. Sem LED: todos os concertos aqui são deste projeto. */
+  const renderSetlistRow = (s: SetlistCard) => {
+    const count = s.setlist_songs?.[0]?.count ?? 0
+    const statusLabel = s.status ? (STATUS_LABELS[s.status] ?? s.status) : undefined
+    const hasChips = !!statusLabel || s.is_shared
+    const meta = [s.venue, `${count} mús`].filter(Boolean).join(' · ')
+    const open = () => navigate(`/setlist/${s.id}`)
+    const day = s.date ? parseDay(s.date) : null
+    const isPast = !!day && day < todayStart
+    const isToday = !!day && day.getTime() === todayStart.getTime()
+    return (
+      <div
+        key={s.id}
+        className={[
+          styles.gigRow,
+          !hasChips && styles.gigRowNoChip,
+          isPast && styles.gigRowPast,
+          isToday && styles.gigRowToday,
+        ].filter(Boolean).join(' ')}
+        role="button"
+        tabIndex={0}
+        aria-label={`Abrir ${s.name}`}
+        onClick={open}
+        onKeyDown={e => {
+          if (e.target !== e.currentTarget) return
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() }
+        }}
+      >
+        <div className={styles.dateBlock}>
+          {s.date ? (
+            <>
+              <span className={`${styles.dateDay} ${isToday ? styles.dateToday : ''}`}>{dayNumber(s.date)}</span>
+              <span className={`${styles.dateMonth} ${isToday ? styles.dateToday : ''}`}>
+                {isToday ? 'Hoje' : monthShort(s.date)}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className={`${styles.dateDay} ${styles.dateDayEmpty}`} aria-hidden="true">--</span>
+              <span className={styles.dateMonth}>s/d</span>
+            </>
+          )}
+        </div>
+        <div className={styles.gigInfo}>
+          <div className={styles.gigName}>{s.name}</div>
+          <div className={styles.gigSub}>{meta}</div>
+        </div>
+        {hasChips && (
+          <div className={styles.gigChips}>
+            {statusLabel && (
+              <span className={styles.statusChip} data-status={s.status ?? undefined}>{statusLabel}</span>
+            )}
+            {s.is_shared && <span className={styles.statusChip}>partilhada</span>}
+          </div>
+        )}
+        <button
+          type="button"
+          className={styles.playBtn}
+          aria-label={`Iniciar concerto ${s.name}`}
+          title="Iniciar concerto"
+          onClick={e => { e.stopPropagation(); navigate(`/setlist/${s.id}/concert`) }}
+        >
+          <IconPlay />
         </button>
       </div>
     )
   }
 
-  const projectColor = project.color ?? PROJECT_COLORS[0]
-
   return (
     <>
       <div className={styles.page}>
         {isOffline && (
-          <div className={styles.offlineBanner}>
+          <div className={styles.offlineBanner} role="status">
+            <span className={styles.offlineLed} aria-hidden="true" />
             Sem ligação — a mostrar dados em cache
           </div>
         )}
-        {/* Header — mini-herói do projeto */}
-        <div className={styles.header}>
+
+        {/* Header — o mesmo padrão das outras páginas de entidade (Setlist, Música):
+            breadcrumb, micro-rótulo, entityTitle e linha mono diretamente sobre o fundo */}
+        <header className={styles.header}>
           <Breadcrumbs items={[
             { label: 'Projetos', to: '/' },
             { label: project.name },
           ]} />
-          <div className={styles.hero} style={{ '--project-tint': `${projectColor}24` } as React.CSSProperties}>
+          <div className={styles.hero}>
+            {/* Quadrado de identidade neutro (inicial em tinta ou a imagem) + LED da cor do projeto */}
             <label
               className={`${styles.projectAvatar} ${canManage ? styles.avatarEditable : ''}`}
-              style={{ background: projectColor }}
               title={canManage ? 'Alterar imagem do projeto' : undefined}
             >
-              {project.image_url
-                ? <img src={project.image_url} alt={project.name} className={styles.avatarImg} />
-                : initials(project.name)
-              }
+              <span className={styles.tileFace}>
+                {project.image_url
+                  ? (
+                    <img
+                      src={project.image_url}
+                      alt={project.name}
+                      className={styles.avatarImg}
+                      style={{ objectPosition: `50% ${imagePos}%` }}
+                    />
+                  )
+                  : <span aria-hidden="true">{initials(project.name)}</span>
+                }
+                {canManage && (
+                  <span className={styles.avatarEditOverlay} aria-hidden="true">
+                    {uploadingImage ? <span className={styles.avatarUploading}>A carregar…</span> : <IconCamera />}
+                  </span>
+                )}
+              </span>
+              <span className={styles.tileLed} style={{ background: projectColor }} aria-hidden="true" />
               {canManage && (
                 <>
-                  <span className={styles.avatarEditIcon}><IconCamera /></span>
+                  {/* Selo da câmara encostado por FORA do canto — nunca tapa a inicial */}
+                  <span className={styles.avatarEditBadge} aria-hidden="true"><IconCamera size={13} /></span>
                   <input
                     type="file"
                     accept="image/*"
-                    style={{ display: 'none' }}
+                    className={styles.visuallyHidden}
+                    aria-label="Alterar imagem do projeto"
                     disabled={uploadingImage}
                     onChange={async e => {
                       const file = e.target.files?.[0]
@@ -613,34 +875,27 @@ export default function ProjectDashboardPage() {
               )}
             </label>
             <div className={styles.heroInfo}>
+              {/* Micro-rótulo: tipo · o teu papel */}
+              <div className={styles.heroKicker}>
+                <span className={styles.heroKickerText}>{typeLabel}</span>
+                <span className={styles.chip}>{ROLE_LABELS[myRole] ?? myRole}</span>
+              </div>
               <h1 className={styles.projectName}>{project.name}</h1>
-              <div className={styles.projectMeta}>
-                <span className={styles.typeBadge}>{PROJECT_TYPE_LABELS[project.type as ProjectType] ?? project.type}</span>
-                <span className={styles.metaDot} aria-hidden="true">·</span>
-                <span className={styles.metaText}>{members.length} membro{members.length !== 1 ? 's' : ''}</span>
-                <span className={styles.metaDot} aria-hidden="true">·</span>
-                <span className={styles.metaText}>{setlists.length} concerto{setlists.length !== 1 ? 's' : ''}</span>
+              {/* Linha de metadados mono — cada item inteiro; no telemóvel ocupa a largura toda */}
+              <div className={styles.heroMeta}>
+                <div className={styles.heroMetaList}>
+                  <span className={styles.metaItem}>{plural(members.length, 'membro', 'membros')}</span>
+                  <span className={styles.metaItem}>{plural(songs.length, 'música', 'músicas')}</span>
+                  <span className={styles.metaItem}>{plural(setlists.length, 'concerto', 'concertos')}</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </header>
 
-        {/* Tabs — segmented control pill */}
-        <div className={styles.tabsWrap}>
-          <div
-            className={styles.tabs}
-            ref={tabsRef}
-            role="tablist"
-            aria-label="Secções do projeto"
-            style={{ '--tab-ring': `${projectColor}59` } as React.CSSProperties}
-          >
-            <span
-              className={styles.tabThumb}
-              aria-hidden="true"
-              style={tabThumb
-                ? { width: tabThumb.width, transform: `translateX(${tabThumb.left}px)`, opacity: 1 }
-                : undefined}
-            />
+        {/* Tabs — segmented mono */}
+        <div className={styles.tabsWrap} ref={tabsWrapRef}>
+          <div className={styles.tabs} role="tablist" aria-label="Secções do projeto">
             {TABS.map(([id, label]) => (
               <button
                 key={id}
@@ -649,7 +904,6 @@ export default function ProjectDashboardPage() {
                 data-active={activeTab === id || undefined}
                 className={`${styles.tab} ${activeTab === id ? styles.tabActive : ''}`}
                 onClick={() => setTab(id)}
-                style={activeTab === id ? { color: projectColor } : undefined}
               >
                 {label}
               </button>
@@ -658,193 +912,216 @@ export default function ProjectDashboardPage() {
         </div>
 
         <div className={styles.content}>
-          {/* ── OVERVIEW ── */}
+          {/* ── RESUMO ── */}
           {activeTab === 'overview' && (
-            <div className={styles.overviewGrid}>
-              {/* Stats */}
-              <div className={styles.statsRow}>
-                <div className={styles.statCard}>
-                  <div className={styles.statNum}>{members.length}</div>
-                  <div className={styles.statLabel}>Membros</div>
-                </div>
-                <div className={styles.statCard}>
-                  <div className={styles.statNum}>{songs.length}</div>
-                  <div className={styles.statLabel}>Músicas</div>
-                </div>
-                <div className={styles.statCard}>
-                  <div className={styles.statNum}>{setlists.length}</div>
-                  <div className={styles.statLabel}>Concertos</div>
-                </div>
+            <div className={styles.overview}>
+              {/* Leituras — contadores mono */}
+              <div className={styles.stats}>
+                {([
+                  ['members', 'Membros', members.length],
+                  ['repertoire', 'Músicas', songs.length],
+                  ['setlists', 'Concertos', setlists.length],
+                ] as [Tab, string, number][]).map(([tab, label, n]) => (
+                  <button key={tab} className={styles.stat} onClick={() => setTab(tab)}>
+                    <span className={styles.label}>{label}</span>
+                    <span className={styles.statNum}>{pad2(n)}</span>
+                  </button>
+                ))}
               </div>
 
-              {/* Recent setlists */}
-              {setlists.length > 0 && (
-                <div className={styles.section}>
-                  <div className={styles.sectionHeader}>
-                    <div className={styles.sectionTitle}>CONCERTOS RECENTES</div>
-                    <button className={styles.seeAll} onClick={() => setTab('setlists')}>ver todos</button>
+              <div className={styles.overviewCols}>
+                {/* Concertos recentes */}
+                <section className={styles.section} aria-labelledby="ov-gigs">
+                  <div className={styles.sectionHead}>
+                    <h2 id="ov-gigs" className={styles.label}>
+                      {upcomingGigs.length > 0 ? 'A seguir' : setlists.length > 0 ? 'Concertos recentes' : 'Concertos'}
+                    </h2>
+                    <span className={styles.rule} aria-hidden="true" />
+                    {setlists.length > 0 && headCount(upcomingGigs.length > 0 ? upcomingGigs.length : setlists.length)}
+                    {setlists.length > 0 && (
+                      <button className={styles.seeAll} onClick={() => setTab('setlists')}>
+                        Ver todos <IconArrowRight />
+                      </button>
+                    )}
                   </div>
-                  <div className={styles.recentList}>
-                    {setlists.slice(0, 3).map(s => (
-                      <div
-                        key={s.id}
-                        className={styles.recentItem}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => navigate(`/setlist/${s.id}`)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/setlist/${s.id}`) }
-                        }}
-                      >
-                        <div className={styles.recentInfo}>
-                          <div className={styles.recentName}>{s.name}</div>
-                          <div className={styles.recentSub}>
-                            {s.date ? new Date(s.date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
-                            {s.venue ? `${s.date ? ' · ' : ''}${s.venue}` : ''}
-                          </div>
-                        </div>
-                        <span className={styles.recentCount}>{s.setlist_songs?.[0]?.count ?? 0} músicas</span>
+                  <div className={styles.panel}>
+                    {setlists.length > 0 ? (
+                      overviewGigs.map(renderSetlistRow)
+                    ) : (
+                      <div className={styles.panelEmpty}>
+                        <p>Ainda não existem concertos neste projeto.</p>
+                        {canEdit && (
+                          <button className={styles.secondaryBtn} onClick={createSetlist}>
+                            <IconPlus size={16} /> Novo concerto
+                          </button>
+                        )}
                       </div>
-                    ))}
+                    )}
                   </div>
-                </div>
-              )}
+                </section>
 
-              {/* Members preview */}
-              <div className={styles.section}>
-                <div className={styles.sectionHeader}>
-                  <div className={styles.sectionTitle}>MEMBROS</div>
-                  <button className={styles.seeAll} onClick={() => setTab('members')}>ver todos</button>
-                </div>
-                <div className={styles.memberPreview}>
-                  {members.slice(0, 5).map(m => {
-                    const name = m.profiles?.display_name ?? 'Utilizador'
-                    return (
-                      <div key={m.user_id} className={styles.memberChip}>
-                        <div className={styles.memberAvatar} style={{ background: colorFor(m.user_id) }}>
-                          {initials(name)}
-                        </div>
-                        <span className={styles.memberChipName}>{name.split(' ')[0]}</span>
-                      </div>
-                    )
-                  })}
-                  {members.length > 5 && (
-                    <div className={styles.memberChip}>
-                      <div className={styles.memberAvatarMore}>+{members.length - 5}</div>
+                <div className={styles.sideCol}>
+                  {/* Membros */}
+                  <section className={styles.section} aria-labelledby="ov-members">
+                    <div className={styles.sectionHead}>
+                      <h2 id="ov-members" className={styles.label}>Membros</h2>
+                      <span className={styles.rule} aria-hidden="true" />
+                      {headCount(members.length)}
+                      <button className={styles.seeAll} onClick={() => setTab('members')}>
+                        Ver todos <IconArrowRight />
+                      </button>
                     </div>
+                    <div className={styles.panel}>
+                      {members.slice(0, 5).map(m => {
+                        const name = m.profiles?.display_name ?? 'Utilizador'
+                        return (
+                          <div key={m.user_id} className={styles.miniMemberRow}>
+                            {memberAvatar(m, name, true)}
+                            <span className={styles.miniMemberName}>{name}</span>
+                            <span className={styles.chip}>{ROLE_LABELS[m.role] ?? m.role}</span>
+                          </div>
+                        )
+                      })}
+                      {members.length > 5 && (
+                        <button className={styles.addRow} onClick={() => setTab('members')}>
+                          <span className={styles.addRowIcon} aria-hidden="true">+{members.length - 5}</span>
+                          <span>Mais {members.length - 5} membro{members.length - 5 !== 1 ? 's' : ''}</span>
+                        </button>
+                      )}
+                      {members.length === 0 && (
+                        <div className={styles.panelEmpty}><p>Sem membros para mostrar.</p></div>
+                      )}
+                    </div>
+                  </section>
+
+                  {project.description && (
+                    <section className={styles.section} aria-labelledby="ov-about">
+                      <div className={styles.sectionHead}>
+                        <h2 id="ov-about" className={styles.label}>Sobre o projeto</h2>
+                        <span className={styles.rule} aria-hidden="true" />
+                      </div>
+                      <div className={`${styles.panel} ${styles.panelPad}`}>
+                        <p className={styles.description}>{project.description}</p>
+                      </div>
+                    </section>
                   )}
                 </div>
               </div>
-
-              {project.description && (
-                <div className={styles.section}>
-                  <div className={styles.sectionTitle}>SOBRE O PROJETO</div>
-                  <p className={styles.description}>{project.description}</p>
-                </div>
-              )}
             </div>
           )}
 
           {/* ── REPERTÓRIO ── */}
           {activeTab === 'repertoire' && (
-            <div>
-              <div className={styles.tabHeader}>
-                <div>
-                  <h2 className={styles.tabTitle}>Repertório</h2>
-                  <p className={styles.tabSub}>{songs.length} música{songs.length !== 1 ? 's' : ''} no projeto</p>
-                </div>
-                <div className={styles.tabActions}>
-                  {songs.length > 0 && (
-                    <>
-                      <button className={styles.exportBtn} onClick={() => exportRepertoirePdf(false)} disabled={exporting}>
-                        <IconDownload /> Exportar lista
-                      </button>
-                      <button className={styles.exportBtn} onClick={() => exportRepertoirePdf(true)} disabled={exporting}>
-                        <IconFileText /> {exporting ? 'A preparar…' : 'Exportar repertório'}
-                      </button>
-                    </>
-                  )}
-                  {canEdit && (
-                    <button className={styles.addBtn} style={{ background: projectColor }} onClick={() => navigate(`/search?project=${project.id}`)}>
-                      <IconPlus /> Pesquisar letra
-                    </button>
-                  )}
-                </div>
+            <div className={styles.tabPane}>
+              <div className={styles.sectionHead}>
+                <h2 className={styles.label}>Repertório</h2>
+                <span className={styles.rule} aria-hidden="true" />
+                {headCount(songs.length)}
+                {canEdit && songs.length > 0 && (
+                  <button
+                    className={`${styles.primaryBtn} ${styles.headPrimary}`}
+                    onClick={() => navigate(`/search?project=${project.id}`)}
+                  >
+                    <IconPlus /> Adicionar música
+                  </button>
+                )}
               </div>
 
               {songs.length === 0 ? (
-                <div className={styles.emptyTab}>
-                  <div className={styles.emptyTabIcon}><IconMusic /></div>
-                  <h3 className={styles.emptyTabTitle}>Este projeto ainda não tem músicas</h3>
-                  <p className={styles.emptyTabSub}>Adiciona a primeira música ao repertório.</p>
+                <div className={styles.emptyPanel}>
+                  <span className={styles.emptyIcon}><IconMusic /></span>
+                  <h3 className={styles.emptyTitle}>Este projeto ainda não tem músicas</h3>
+                  <p className={styles.emptySub}>Pesquisa a letra da primeira música para a juntar ao repertório.</p>
                   {canEdit && (
                     <button
-                      className={styles.emptyTabBtn}
-                      style={{ background: projectColor }}
+                      className={styles.primaryBtn}
                       onClick={() => navigate(`/search?project=${project.id}`)}
                     >
-                      Pesquisar letra
+                      <IconSearch size={18} /> Pesquisar letra
                     </button>
                   )}
                 </div>
               ) : (
                 <>
-                  <div className={styles.songSearchWrap}>
-                    <span className={styles.songSearchIcon}><IconSearch /></span>
-                    <input
-                      className={styles.songSearchInput}
-                      placeholder="Filtrar por título ou artista..."
-                      value={songSearch}
-                      onChange={e => setSongSearch(e.target.value)}
-                    />
+                  <div className={styles.toolbar}>
+                    <div className={styles.searchWrap}>
+                      <span className={styles.searchIcon}><IconSearch /></span>
+                      <input
+                        className={`${styles.searchInput} ${songSearch ? styles.searchInputCount : ''}`}
+                        placeholder="Filtrar por título ou artista..."
+                        value={songSearch}
+                        onChange={e => setSongSearch(e.target.value)}
+                        aria-label="Filtrar repertório"
+                      />
+                      {songSearch && (
+                        <span className={styles.searchCount} aria-live="polite">
+                          {pad2(visibleSongs.length)} / {pad2(songs.length)}
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.toolbarActions}>
+                      <button className={styles.secondaryBtn} onClick={() => exportRepertoirePdf(false)} disabled={exporting}>
+                        <IconDownload /> Exportar lista
+                      </button>
+                      <button className={styles.secondaryBtn} onClick={() => exportRepertoirePdf(true)} disabled={exporting}>
+                        <IconFileText /> {exporting ? 'A preparar…' : 'Exportar com letras'}
+                      </button>
+                    </div>
                   </div>
-                  <div className={styles.songList}>
-                    {songs
-                      .filter(s => !songSearch || `${s.title} ${s.artist}`.toLowerCase().includes(songSearch.toLowerCase()))
-                      .map(s => (
+
+                  <div className={styles.panel}>
+                    {visibleSongs.map((s, i) => {
+                      const plays = songPlayCounts[s.id] ?? 0
+                      const open = () => navigate(`/songs/${s.id}?project=${project.id}`)
+                      return (
                         <div
                           key={s.id}
-                          className={styles.songRow}
+                          className={`${styles.songRow} ${canEdit ? styles.songRowEditable : ''}`}
                           role="button"
                           tabIndex={0}
-                          onClick={() => navigate(`/songs/${s.id}?project=${project.id}`)}
+                          aria-label={`Abrir ${s.title} — ${s.artist}`}
+                          onClick={open}
                           onKeyDown={e => {
-                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/songs/${s.id}?project=${project.id}`) }
+                            if (e.target !== e.currentTarget) return
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() }
                           }}
                         >
+                          <span className={styles.songNum}>{pad2(i + 1)}</span>
                           <div className={styles.songInfo}>
                             <div className={styles.songTitle}>{s.title}</div>
                             <div className={styles.songArtist}>{s.artist}</div>
                           </div>
                           <div className={styles.songMeta}>
-                            {songPlayCounts[s.id] > 0 && (
-                              <span className={styles.playCountBadge} title="Vezes em setlists">
-                                {songPlayCounts[s.id]}×
-                              </span>
+                            {plays > 0 && (
+                              <span className={styles.metaMono} title="Vezes em setlists">{plays}×</span>
                             )}
-                            {s.performance_key && <span className={styles.keyBadge}>{s.performance_key}</span>}
-                            {s.bpm && <span className={styles.bpmBadge}>{s.bpm} bpm</span>}
-                            {s.has_sync && <span className={styles.syncBadge2}>sync</span>}
-                            {s.is_user_edited && <span className={styles.editedBadge}>editada</span>}
+                            {s.performance_key && <span className={styles.keyChip}>{s.performance_key}</span>}
+                            {s.bpm ? <span className={styles.metaMono}>{s.bpm} bpm</span> : null}
+                            {s.has_sync && <span className={`${styles.chip} ${styles.chipSuccess}`}>sync</span>}
+                            {s.is_user_edited && <span className={`${styles.chip} ${styles.chipWarn}`}>editada</span>}
                             {(s.tags ?? []).slice(0, 2).map(tag => (
-                              <span key={tag} className={styles.tagBadge}>{tag}</span>
+                              <span key={tag} className={`${styles.chip} ${styles.chipNeutral}`}>{tag}</span>
                             ))}
                           </div>
+                          <span className={styles.songDur}>{formatDuration(s.duration_sec)}</span>
                           {canEdit && (
                             <button
                               className={styles.songDeleteBtn}
                               onClick={e => { e.stopPropagation(); deleteSong(s.id, s.title) }}
                               disabled={deletingSong === s.id}
                               title="Remover do repertório"
+                              aria-label={`Remover ${s.title} do repertório`}
                             >
-                              {deletingSong === s.id ? '…' : <IconX />}
+                              {deletingSong === s.id ? <span aria-hidden="true">…</span> : <IconTrash />}
                             </button>
                           )}
                         </div>
-                      ))
-                    }
-                    {songs.filter(s => !songSearch || `${s.title} ${s.artist}`.toLowerCase().includes(songSearch.toLowerCase())).length === 0 && (
-                      <p className={styles.noSongsFilter}>Nenhuma música corresponde a "{songSearch}"</p>
+                      )
+                    })}
+                    {visibleSongs.length === 0 && (
+                      <div className={styles.panelEmpty}>
+                        <p>Nenhuma música corresponde a "{songSearch}"</p>
+                      </div>
                     )}
                   </div>
                 </>
@@ -852,69 +1129,34 @@ export default function ProjectDashboardPage() {
             </div>
           )}
 
-          {/* ── SETLISTS ── */}
+          {/* ── CONCERTOS ── */}
           {activeTab === 'setlists' && (
-            <div>
-              <div className={styles.tabHeader}>
-                <div>
-                  <h2 className={styles.tabTitle}>Concertos</h2>
-                  <p className={styles.tabSub}>{setlists.length} concerto{setlists.length !== 1 ? 's' : ''}</p>
-                </div>
-                {canEdit && (
-                  <button className={styles.addBtn} style={{ background: projectColor }} onClick={createSetlist}>
+            <div className={styles.tabPane}>
+              <div className={styles.sectionHead}>
+                <h2 className={styles.label}>Concertos</h2>
+                <span className={styles.rule} aria-hidden="true" />
+                {headCount(setlists.length)}
+                {canEdit && setlists.length > 0 && (
+                  <button className={`${styles.primaryBtn} ${styles.headPrimary}`} onClick={createSetlist}>
                     <IconPlus /> Novo concerto
                   </button>
                 )}
               </div>
 
               {setlists.length === 0 ? (
-                <div className={styles.emptyTab}>
-                  <div className={styles.emptyTabIcon}><IconCalendar /></div>
-                  <h3 className={styles.emptyTabTitle}>Ainda não existem concertos neste projeto</h3>
-                  <p className={styles.emptyTabSub}>Cria o primeiro concerto para ensaio ou apresentação.</p>
+                <div className={styles.emptyPanel}>
+                  <span className={styles.emptyIcon}><IconCalendar /></span>
+                  <h3 className={styles.emptyTitle}>Ainda não existem concertos neste projeto</h3>
+                  <p className={styles.emptySub}>Cria o primeiro concerto para ensaio ou apresentação.</p>
                   {canEdit && (
-                    <button
-                      className={styles.emptyTabBtn}
-                      style={{ background: projectColor }}
-                      onClick={createSetlist}
-                    >
-                      Criar concerto
+                    <button className={styles.primaryBtn} onClick={createSetlist}>
+                      <IconPlus /> Criar concerto
                     </button>
                   )}
                 </div>
               ) : (
-                <div className={styles.setlistGrid}>
-                  {setlists.map(s => (
-                    <div
-                      key={s.id}
-                      className={styles.setlistCard}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => navigate(`/setlist/${s.id}`)}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/setlist/${s.id}`) }
-                      }}
-                    >
-                      <div className={styles.setlistAccent} style={{ background: projectColor }} />
-                      <div className={styles.setlistBody}>
-                        <div className={styles.setlistName}>{s.name}</div>
-                        <div className={styles.setlistMeta}>
-                          {s.date ? new Date(s.date).toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}
-                          {s.venue ? `${s.date ? ' · ' : ''}${s.venue}` : ''}
-                        </div>
-                        <div className={styles.setlistTags}>
-                          <span className={styles.setlistCount}>{s.setlist_songs?.[0]?.count ?? 0} músicas</span>
-                          {s.is_shared && <span className={styles.sharedBadge}>partilhada</span>}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {canEdit && (
-                    <button className={styles.newSetlistCard} onClick={createSetlist}>
-                      <IconPlus size={20} />
-                      <span>Novo concerto</span>
-                    </button>
-                  )}
+                <div className={styles.panel}>
+                  {setlists.map(renderSetlistRow)}
                 </div>
               )}
             </div>
@@ -922,15 +1164,14 @@ export default function ProjectDashboardPage() {
 
           {/* ── MEMBROS ── */}
           {activeTab === 'members' && (
-            <div>
-              <div className={styles.tabHeader}>
-                <div>
-                  <h2 className={styles.tabTitle}>Membros</h2>
-                  <p className={styles.tabSub}>{members.length} membro{members.length !== 1 ? 's' : ''} ativos</p>
-                </div>
+            <div className={styles.tabPane}>
+              <div className={styles.sectionHead}>
+                <h2 className={styles.label}>Membros</h2>
+                <span className={styles.rule} aria-hidden="true" />
+                {headCount(members.length)}
               </div>
 
-              <div className={styles.memberList}>
+              <div className={styles.panel}>
                 {members.map(m => {
                   const name = m.profiles?.display_name ?? 'Utilizador'
                   const isSelf = m.user_id === user?.id
@@ -939,13 +1180,11 @@ export default function ProjectDashboardPage() {
 
                   return (
                     <div key={m.user_id} className={styles.memberRow}>
-                      <div className={styles.memberAvatar2} style={{ background: colorFor(m.user_id) }}>
-                        {initials(name)}
-                      </div>
+                      {memberAvatar(m, name)}
                       <div className={styles.memberInfo}>
                         <div className={styles.memberName}>
-                          {name}
-                          {isSelf && <span className={styles.youBadge}>tu</span>}
+                          <span className={styles.memberNameText}>{name}</span>
+                          {isSelf && <span className={`${styles.chip} ${styles.chipNeutral}`}>tu</span>}
                         </div>
                         {isSelf && editingInstrument ? (
                           <input
@@ -955,43 +1194,50 @@ export default function ProjectDashboardPage() {
                             onBlur={saveInstrument}
                             onKeyDown={e => e.key === 'Enter' && saveInstrument()}
                             placeholder="o teu instrumento"
+                            aria-label="O teu instrumento"
                             autoFocus
                           />
-                        ) : (
-                          <div
-                            className={`${styles.memberSub} ${isSelf ? styles.editable : ''}`}
-                            onClick={() => {
-                              if (isSelf) { setInstrumentInput(m.instrument ?? ''); setEditingInstrument(true) }
-                            }}
+                        ) : isSelf ? (
+                          <button
+                            className={styles.instrumentBtn}
+                            onClick={() => { setInstrumentInput(m.instrument ?? ''); setEditingInstrument(true) }}
+                            aria-label={m.instrument ? `Instrumento: ${m.instrument} — editar` : 'Adicionar instrumento'}
                           >
-                            {m.instrument ?? (isSelf ? 'Clica para adicionar instrumento' : '—')}
-                          </div>
+                            <span className={m.instrument ? undefined : styles.instrumentPlaceholder}>
+                              {m.instrument ?? 'Adicionar instrumento'}
+                            </span>
+                            <IconPencil />
+                          </button>
+                        ) : (
+                          <div className={styles.memberSub}>{m.instrument ?? '—'}</div>
                         )}
                       </div>
                       <div className={styles.memberActions}>
                         {canChangeRole ? (
-                          <select
-                            className={styles.roleSelect}
-                            value={m.role}
-                            onChange={e => changeRole(m.user_id, e.target.value as ProjectRole)}
-                          >
-                            <option value="admin">{ROLE_LABELS.admin}</option>
-                            <option value="editor">{ROLE_LABELS.editor}</option>
-                            <option value="viewer">{ROLE_LABELS.viewer}</option>
-                          </select>
+                          <div className={styles.selectWrap}>
+                            <select
+                              className={`${styles.select} ${styles.roleSelect}`}
+                              value={m.role}
+                              onChange={e => changeRole(m.user_id, e.target.value as ProjectRole)}
+                              aria-label={`Papel de ${name}`}
+                            >
+                              <option value="admin">{ROLE_LABELS.admin}</option>
+                              <option value="editor">{ROLE_LABELS.editor}</option>
+                              <option value="viewer">{ROLE_LABELS.viewer}</option>
+                            </select>
+                            <span className={styles.selectIcon}><IconChevronDown /></span>
+                          </div>
                         ) : (
-                          <span className={styles.roleBadge} data-role={m.role}>
-                            {ROLE_LABELS[m.role] ?? m.role}
-                          </span>
+                          <span className={styles.chip}>{ROLE_LABELS[m.role] ?? m.role}</span>
                         )}
                         {canRemove && (
                           <button
-                            className={styles.removeBtn}
+                            className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
                             onClick={() => removeMember(m.user_id, name)}
                             title={`Remover ${name}`}
                             aria-label={`Remover ${name}`}
                           >
-                            <IconX size={14} />
+                            <IconX size={16} />
                           </button>
                         )}
                       </div>
@@ -1000,194 +1246,256 @@ export default function ProjectDashboardPage() {
                 })}
               </div>
 
-              {/* Pending invites */}
+              {/* Convites pendentes */}
               {canManage && invites.length > 0 && (
-                <div className={styles.inviteSection}>
-                  <div className={styles.sectionTitle}>CONVITES PENDENTES</div>
-                  {invites.map(inv => (
-                    <div key={inv.id} className={styles.inviteRow}>
-                      <div className={styles.inviteEmail}>{inv.email}</div>
-                      <span className={styles.inviteRoleBadge}>{ROLE_LABELS[inv.role] ?? inv.role}</span>
-                      <button className={styles.revokeBtn} onClick={() => revokeInvite(inv.id)}>Revogar</button>
-                    </div>
-                  ))}
-                </div>
+                <section className={styles.section} aria-labelledby="pending-invites">
+                  <div className={styles.sectionHead}>
+                    <h3 id="pending-invites" className={styles.label}>Convites pendentes</h3>
+                    <span className={styles.rule} aria-hidden="true" />
+                    {headCount(invites.length)}
+                  </div>
+                  <div className={styles.panel}>
+                    {invites.map(inv => (
+                      <div key={inv.id} className={styles.inviteRow}>
+                        <div className={styles.inviteEmail}>{inv.email}</div>
+                        <span className={`${styles.chip} ${styles.chipNeutral}`}>{ROLE_LABELS[inv.role] ?? inv.role}</span>
+                        <button className={styles.ghostDangerBtn} onClick={() => revokeInvite(inv.id)}>Revogar</button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               )}
 
-              {/* Invite form */}
+              {/* Convidar */}
               {canManage && (
-                <div className={styles.inviteForm}>
-                  <div className={styles.sectionTitle}>CONVIDAR MEMBRO</div>
-                  <div className={styles.inviteInputRow}>
-                    <input
-                      className={styles.inviteEmailInput}
-                      type="email"
-                      placeholder="email do membro"
-                      value={inviteEmail}
-                      onChange={e => setInviteEmail(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && sendInvite()}
-                    />
-                    <select
-                      className={styles.inviteRoleSelect}
-                      value={inviteRole}
-                      onChange={e => setInviteRole(e.target.value as typeof inviteRole)}
-                    >
-                      <option value="admin">{ROLE_LABELS.admin}</option>
-                      <option value="editor">{ROLE_LABELS.editor}</option>
-                      <option value="viewer">{ROLE_LABELS.viewer}</option>
-                    </select>
-                    <button
-                      className={styles.inviteBtn}
-                      style={{ background: projectColor }}
-                      onClick={sendInvite}
-                      disabled={inviting || !inviteEmail.trim()}
-                    >
-                      {inviting ? '...' : 'Convidar'}
-                    </button>
+                <section className={styles.section} aria-labelledby="invite-member">
+                  <div className={styles.sectionHead}>
+                    <h3 id="invite-member" className={styles.label}>Convidar membro</h3>
+                    <span className={styles.rule} aria-hidden="true" />
                   </div>
-                  <p className={styles.inviteHint}>
-                    O membro receberá um convite por email para entrar no projeto.
-                  </p>
-
-                  <div className={styles.codeBox}>
-                    <div className={styles.codeLabel}>Código de convite rápido</div>
-                    <div className={styles.codeRow}>
-                      <code className={styles.inviteCode}>{project.invite_code}</code>
-                      <button className={styles.copyCodeBtn} onClick={copyInviteCode}>
-                        {inviteCopied === 'code' ? <><IconCheck /> Copiado</> : 'Copiar código'}
-                      </button>
-                      <button className={styles.copyCodeBtn} onClick={copyJoinLink}>
-                        {inviteCopied === 'link' ? <><IconCheck /> Link copiado</> : 'Copiar link'}
+                  <div className={`${styles.panel} ${styles.panelPad}`}>
+                    <div className={styles.inviteInputRow}>
+                      <input
+                        className={`${styles.input} ${styles.inviteEmailInput}`}
+                        type="email"
+                        placeholder="email do membro"
+                        value={inviteEmail}
+                        onChange={e => setInviteEmail(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && sendInvite()}
+                        aria-label="Email do membro"
+                      />
+                      <div className={`${styles.selectWrap} ${styles.inviteRoleWrap}`}>
+                        <select
+                          className={styles.select}
+                          value={inviteRole}
+                          onChange={e => setInviteRole(e.target.value as typeof inviteRole)}
+                          aria-label="Papel do convidado"
+                        >
+                          <option value="admin">{ROLE_LABELS.admin}</option>
+                          <option value="editor">{ROLE_LABELS.editor}</option>
+                          <option value="viewer">{ROLE_LABELS.viewer}</option>
+                        </select>
+                        <span className={styles.selectIcon}><IconChevronDown /></span>
+                      </div>
+                      <button
+                        className={`${styles.primaryBtn} ${styles.inviteBtn}`}
+                        onClick={sendInvite}
+                        disabled={inviting || !inviteEmail.trim()}
+                      >
+                        {inviting ? 'A convidar…' : 'Convidar'}
                       </button>
                     </div>
+                    <p className={styles.hint}>
+                      O membro receberá um convite por email para entrar no projeto.
+                    </p>
+
+                    <div className={styles.codeBox}>
+                      <span className={styles.label}>Código de convite rápido</span>
+                      <div className={styles.codeRow}>
+                        <code className={styles.inviteCode}>{project.invite_code}</code>
+                        <div className={styles.codeActions} aria-live="polite">
+                          <button
+                            className={`${styles.secondaryBtn} ${inviteCopied === 'code' ? styles.copied : ''}`}
+                            onClick={copyInviteCode}
+                          >
+                            {inviteCopied === 'code' ? <><IconCheck /> Copiado</> : <><IconCopy /> Copiar código</>}
+                          </button>
+                          <button
+                            className={`${styles.secondaryBtn} ${inviteCopied === 'link' ? styles.copied : ''}`}
+                            onClick={copyJoinLink}
+                          >
+                            {inviteCopied === 'link' ? <><IconCheck /> Link copiado</> : <><IconLink /> Copiar link</>}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </section>
               )}
             </div>
           )}
 
           {/* ── DEFINIÇÕES ── */}
           {activeTab === 'settings' && (
-            <div className={styles.settingsPage}>
-              <h2 className={styles.tabTitle}>Definições do projeto</h2>
-
-              <div className={styles.settingsCard}>
-              {canManage ? (
-                <>
-                  <div className={styles.field}>
-                    <label className={styles.fieldLabel}>Nome do projeto</label>
-                    <input
-                      className={styles.fieldInput}
-                      value={settingsName}
-                      onChange={e => setSettingsName(e.target.value)}
-                      placeholder="Nome do projeto"
-                    />
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.fieldLabel}>Tipo</label>
-                    <select
-                      className={styles.fieldSelect}
-                      value={settingsType}
-                      onChange={e => setSettingsType(e.target.value as ProjectType)}
-                    >
-                      {Object.entries(PROJECT_TYPE_LABELS).map(([v, l]) => (
-                        <option key={v} value={v}>{l}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.fieldLabel}>Descrição</label>
-                    <textarea
-                      className={styles.fieldTextarea}
-                      value={settingsDesc}
-                      onChange={e => setSettingsDesc(e.target.value)}
-                      placeholder="Descrição do projeto..."
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.fieldLabel}>Cor do projeto</label>
-                    <div className={styles.colorGrid}>
-                      {PROJECT_COLORS.map(c => (
-                        <button
-                          key={c}
-                          className={`${styles.colorSwatch} ${settingsColor === c ? styles.colorActive : ''}`}
-                          style={{ background: c }}
-                          onClick={() => setSettingsColor(c)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  {project.image_url && (
-                    <div className={styles.field}>
-                      <label className={styles.fieldLabel}>Enquadramento da imagem</label>
-                      <div className={styles.imagePosPreview}>
-                        <img
-                          src={project.image_url}
-                          alt=""
-                          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `50% ${settingsImagePos}%` }}
-                        />
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={settingsImagePos}
-                        onChange={e => setSettingsImagePos(Number(e.target.value))}
-                        className={styles.imagePosSlider}
-                      />
-                      <div className={styles.imagePosHint}>Arrasta para escolher que parte da imagem aparece no cartão</div>
-                    </div>
-                  )}
-
-                  <button
-                    className={styles.saveBtn}
-                    style={{ background: settingsColor }}
-                    onClick={saveSettings}
-                    disabled={savingSettings || !settingsName.trim()}
-                  >
-                    {savingSettings ? 'A guardar...' : settingsSaved ? <><IconCheck /> Guardado</> : 'Guardar alterações'}
-                  </button>
-                </>
-              ) : (
-                <p className={styles.noPermNote}>Só o owner ou admin podem alterar as definições do projeto.</p>
-              )}
+            <div className={`${styles.tabPane} ${styles.settingsPane}`}>
+              <div className={styles.sectionHead}>
+                <h2 className={styles.label}>Definições do projeto</h2>
+                <span className={styles.rule} aria-hidden="true" />
               </div>
 
-              <div className={styles.dangerZone}>
-                <div className={styles.dangerTitle}>ZONA DE PERIGO</div>
-                {isOwner ? (
-                  <button className={styles.dangerBtn} onClick={deleteProject}>
-                    Eliminar projeto permanentemente
-                  </button>
+              <div className={`${styles.panel} ${styles.panelPad}`}>
+                {canManage ? (
+                  <>
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel} htmlFor="settings-name">Nome do projeto</label>
+                      <input
+                        id="settings-name"
+                        className={styles.input}
+                        value={settingsName}
+                        onChange={e => setSettingsName(e.target.value)}
+                        placeholder="Nome do projeto"
+                      />
+                    </div>
+
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel} htmlFor="settings-type">Tipo</label>
+                      <div className={styles.selectWrap}>
+                        <select
+                          id="settings-type"
+                          className={styles.select}
+                          value={settingsType}
+                          onChange={e => setSettingsType(e.target.value as ProjectType)}
+                        >
+                          {Object.entries(PROJECT_TYPE_LABELS).map(([v, l]) => (
+                            <option key={v} value={v}>{l}</option>
+                          ))}
+                        </select>
+                        <span className={styles.selectIcon}><IconChevronDown /></span>
+                      </div>
+                    </div>
+
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel} htmlFor="settings-desc">Descrição</label>
+                      <textarea
+                        id="settings-desc"
+                        className={styles.textarea}
+                        value={settingsDesc}
+                        onChange={e => setSettingsDesc(e.target.value)}
+                        placeholder="Descrição do projeto..."
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className={styles.field}>
+                      <span className={styles.fieldLabel} id="settings-color">Cor do projeto</span>
+                      <div className={styles.colorGrid} role="group" aria-labelledby="settings-color">
+                        {SWATCHES.map(c => (
+                          <button
+                            key={c}
+                            type="button"
+                            className={`${styles.colorSwatch} ${settingsColor === c ? styles.colorActive : ''}`}
+                            style={{ background: c }}
+                            onClick={() => setSettingsColor(c)}
+                            aria-label={`Cor ${c}`}
+                            aria-pressed={settingsColor === c}
+                            title={c}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {project.image_url && (
+                      <div className={styles.field}>
+                        <label className={styles.fieldLabel} htmlFor="settings-imgpos">Enquadramento da imagem</label>
+                        <div className={styles.imagePosPreview}>
+                          <img
+                            src={project.image_url}
+                            alt=""
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: `50% ${settingsImagePos}%` }}
+                          />
+                        </div>
+                        <input
+                          id="settings-imgpos"
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={settingsImagePos}
+                          onChange={e => setSettingsImagePos(Number(e.target.value))}
+                          className={styles.imagePosSlider}
+                        />
+                        <div className={styles.hint}>Arrasta para escolher que parte da imagem aparece no cartão</div>
+                      </div>
+                    )}
+
+                    <div className={styles.settingsFooter}>
+                      <button
+                        className={styles.primaryBtn}
+                        onClick={saveSettings}
+                        disabled={savingSettings || !settingsName.trim()}
+                      >
+                        {savingSettings ? 'A guardar...' : settingsSaved ? <><IconCheck /> Guardado</> : 'Guardar alterações'}
+                      </button>
+                    </div>
+                  </>
                 ) : (
-                  <button className={styles.dangerBtn} onClick={leaveProject}>
-                    Sair do projeto
-                  </button>
+                  <p className={styles.noPermNote}>Só o owner ou admin podem alterar as definições do projeto.</p>
                 )}
               </div>
+
+              <section className={styles.dangerZone} aria-labelledby="danger-zone">
+                <h3 id="danger-zone" className={styles.dangerLabel}>Zona de perigo</h3>
+                <div className={styles.dangerBody}>
+                  <div className={styles.dangerText}>
+                    <div className={styles.dangerTitle}>{isOwner ? 'Eliminar projeto' : 'Sair do projeto'}</div>
+                    <p className={styles.dangerSub}>
+                      {isOwner
+                        ? 'Elimina o projeto para todos os membros. Esta ação é irreversível.'
+                        : 'Deixas de ter acesso ao repertório e aos concertos deste projeto.'}
+                    </p>
+                  </div>
+                  {isOwner ? (
+                    <button className={styles.dangerBtn} onClick={deleteProject}>
+                      <IconTrash size={16} /> Eliminar projeto permanentemente
+                    </button>
+                  ) : (
+                    <button className={styles.dangerBtn} onClick={leaveProject}>
+                      Sair do projeto
+                    </button>
+                  )}
+                </div>
+              </section>
             </div>
           )}
         </div>
       </div>
+
       {showCreateSetlist && (
         <div className={styles.modalOverlay} onClick={() => setShowCreateSetlist(false)}>
-          <div className={styles.createModal} onClick={e => e.stopPropagation()}>
+          <div
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-gig-title"
+            onClick={e => e.stopPropagation()}
+          >
             <div className={styles.modalHeader}>
-              <div className={styles.modalTitle}>Novo concerto</div>
-              <button className={styles.modalClose} onClick={() => setShowCreateSetlist(false)} aria-label="Fechar">
+              <div className={styles.modalHeadText}>
+                <span className={styles.modalKicker}>
+                  <span className={styles.led} style={{ background: projectColor }} aria-hidden="true" />
+                  {project.name}
+                </span>
+                <h2 id="new-gig-title" className={styles.modalTitle}>Novo concerto</h2>
+              </div>
+              <button className={styles.iconBtn} onClick={() => setShowCreateSetlist(false)} aria-label="Fechar">
                 <IconX />
               </button>
             </div>
             <div className={styles.modalBody}>
-              <div className={styles.modalField}>
-                <label className={styles.modalLabel}>Nome *</label>
+              <div className={styles.field}>
+                <label className={styles.fieldLabel} htmlFor="new-gig-name">Nome *</label>
                 <input
-                  className={styles.modalInput}
+                  id="new-gig-name"
+                  className={styles.input}
                   placeholder="Nome do concerto..."
                   value={newSetlistName}
                   onChange={e => setNewSetlistName(e.target.value)}
@@ -1195,10 +1503,11 @@ export default function ProjectDashboardPage() {
                   autoFocus
                 />
               </div>
-              <div className={styles.modalField} style={{ position: 'relative' }}>
-                <label className={styles.modalLabel}>Local (opcional)</label>
+              <div className={styles.field} style={{ position: 'relative' }}>
+                <label className={styles.fieldLabel} htmlFor="new-gig-venue">Local (opcional)</label>
                 <input
-                  className={styles.modalInput}
+                  id="new-gig-venue"
+                  className={styles.input}
                   placeholder="Ex: Hard Club, Porto..."
                   value={newSetlistVenue}
                   onChange={e => onVenueInput(e.target.value)}
@@ -1224,10 +1533,9 @@ export default function ProjectDashboardPage() {
               </div>
             </div>
             <div className={styles.modalFooter}>
-              <button className={styles.modalCancel} onClick={() => setShowCreateSetlist(false)}>Cancelar</button>
+              <button className={styles.secondaryBtn} onClick={() => setShowCreateSetlist(false)}>Cancelar</button>
               <button
-                className={styles.modalConfirm}
-                style={{ background: projectColor }}
+                className={styles.primaryBtn}
                 onClick={doCreateSetlist}
                 disabled={creatingSetlist || !newSetlistName.trim()}
               >
