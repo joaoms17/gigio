@@ -56,15 +56,23 @@ function SAMPLE_LYRICS(title) {
 
 const BAND = { id: 'b1', name: 'Casamentos', color: '#7C3AED', image_url: null, owner_id: 'u1', invite_code: 'ABCD1234', created_at: '2026-01-01T00:00:00Z', member_count: 3, type: 'band' }
 
+// Estados pela data: HOJE (s4), AMANHÃ (s1), EM N DIAS / SEM (s2, s3), pessoal futuro (s7)
+// e dois REALIZADOS (s5, s6). O s1 continua a ser o concerto das outras capturas.
 const SETLISTS = [
   { id: 's1', name: 'Jantar', date: d(1), venue: 'Antes Perdida por Aqui Algures', status: 'preparing' },
   { id: 's2', name: 'Festa da Vila', date: d(7), venue: 'Largo do Rossio', status: 'draft' },
   { id: 's3', name: 'Bar do Cais — acústico', date: d(14), venue: 'Cascais', status: 'final' },
+  { id: 's4', name: 'Ensaio geral', date: d(0), venue: 'Estúdio 2', status: 'draft' },
+  { id: 's5', name: 'Aniversário do Rui', date: d(-12), venue: 'Quinta do Lago', status: 'final' },
+  { id: 's6', name: 'Festa de Natal', date: d(-40), venue: 'Clube Recreativo', status: 'draft' },
+  // Pessoal (sem projeto)
+  { id: 's7', name: 'Jam de sexta', date: d(30), venue: 'Sabotage Club', status: 'draft', band_id: null, is_shared: false, band: null, bands: null },
 ].map(s => ({
-  ...s, owner_id: 'u1', band_id: 'b1', is_shared: true, created_at: '2026-01-01T00:00:00Z',
+  owner_id: 'u1', band_id: 'b1', is_shared: true, created_at: '2026-01-01T00:00:00Z',
   band: { name: BAND.name, color: BAND.color },
   bands: { name: BAND.name, image_url: null, color: BAND.color, owner_id: 'u1' },
   setlist_songs: [{ count: s.id === 's1' ? SONGS.length : 8 }],
+  ...s,
 }))
 
 const SETLIST_SONGS = SONGS.map((song, i) => ({

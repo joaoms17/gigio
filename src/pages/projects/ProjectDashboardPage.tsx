@@ -7,7 +7,7 @@ import { supabase } from '../../lib/supabase'
 import ExportPdfSheet from '../../components/ExportPdfSheet'
 import type { PdfData, PdfKind } from '../../lib/pdfExport'
 import { uploadProjectImage } from '../../lib/uploadImage'
-import { STATUS_LABELS } from '../../lib/setlistStatus'
+import { concertWhen, isUpcoming, compareUpcoming, comparePast, type ConcertWhen } from '../../lib/concertWhen'
 import { useAuth } from '../../hooks/useAuth'
 import {
   type Project,
@@ -25,13 +25,22 @@ import { mapLegacyProjectColor } from '../../lib/projectColor'
 
 type Tab = 'overview' | 'repertoire' | 'setlists' | 'members' | 'settings'
 
+/** Secção "Passados" aberta/fechada — a mesma preferência local de Concertos (recolhida por defeito). */
+const PAST_OPEN_KEY = 'gigio-past-open'
+
+function readPastOpen(): boolean {
+  try { return localStorage.getItem(PAST_OPEN_KEY) === '1' } catch { return false }
+}
+
+function writePastOpen(open: boolean) {
+  try { localStorage.setItem(PAST_OPEN_KEY, open ? '1' : '0') } catch { /* modo privado / bloqueado */ }
+}
+
 interface SetlistCard {
   id: string
   name: string
   date: string | null
   venue: string | null
-  status: string | null
-  is_shared: boolean
   setlist_songs: { count: number }[]
 }
 
@@ -159,6 +168,26 @@ function IconPlay({ size = 16 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" focusable="false">
       <path d="M8 5.5v13a1 1 0 0 0 1.53.85l10.2-6.5a1 1 0 0 0 0-1.7L9.53 4.65A1 1 0 0 0 8 5.5Z" />
     </svg>
+  )
+}
+
+/** ▸ da secção "Passados" — roda para ▾ quando aberta */
+function IconChevronRight({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON} strokeWidth={2.25} className={styles.pastChevron}>
+      <path d="m9 6 6 6-6 6" />
+    </svg>
+  )
+}
+
+/** Chip do estado que a DATA diz: HOJE (acento cheio + LED a piscar) · AMANHÃ / EM N DIAS (acento suave) · REALIZADO (neutro). */
+function WhenChip({ when }: { when: ConcertWhen }) {
+  if (!when.label) return null
+  return (
+    <span className={styles.whenChip} data-when={when.kind}>
+      {when.kind === 'today' && <span className={styles.liveLed} aria-hidden="true" />}
+      {when.label}
+    </span>
   )
 }
 
@@ -300,6 +329,7 @@ export default function ProjectDashboardPage() {
   const [deletingSong, setDeletingSong] = useState<string | null>(null)
   const [songPlayCounts, setSongPlayCounts] = useState<Record<string, number>>({})
   const [pdfKind, setPdfKind] = useState<PdfKind | null>(null)
+  const [pastOpen, setPastOpen] = useState(readPastOpen)
 
   // Settings form
   const [settingsName, setSettingsName] = useState('')
@@ -374,7 +404,7 @@ export default function ProjectDashboardPage() {
         .eq('band_id', projectId),
       supabase
         .from('setlists')
-        .select('id, name, date, venue, status, is_shared, setlist_songs(count)')
+        .select('id, name, date, venue, setlist_songs(count)')
         .eq('band_id', projectId)
         .order('date', { ascending: true }),
       supabase
@@ -688,12 +718,19 @@ export default function ProjectDashboardPage() {
     <span className={styles.headCount}>{pad2(n)}</span>
   )
 
-  // Resumo: os próximos (e sem data); se não houver, os passados mais recentes
-  const todayStart = new Date()
-  todayStart.setHours(0, 0, 0, 0)
-  const upcomingGigs = setlists.filter(s => !s.date || parseDay(s.date) >= todayStart)
-  const pastGigs = setlists.filter(s => !!s.date && parseDay(s.date) < todayStart).reverse()
+  // Estado pela DATA: próximos (hoje primeiro, por data; sem data no fim) e passados (mais recente primeiro)
+  const now = new Date()
+  const upcomingGigs = setlists.filter(s => isUpcoming(s.date, now)).sort(compareUpcoming)
+  const pastGigs = setlists.filter(s => !isUpcoming(s.date, now)).sort(comparePast)
+  // Resumo: os próximos; se não houver, os passados mais recentes
   const overviewGigs = (upcomingGigs.length > 0 ? upcomingGigs : pastGigs).slice(0, 3)
+
+  function togglePast() {
+    setPastOpen(open => {
+      writePastOpen(!open)
+      return !open
+    })
+  }
 
   /* Avatar circular de membro: foto do perfil ou iniciais em tinta */
   const memberAvatar = (m: ProjectMember, name: string, small = false) => (
@@ -706,17 +743,16 @@ export default function ProjectDashboardPage() {
   )
 
   /* Linha de concerto — a mesma da agenda (Concertos / Palco / Calendário): bloco de data
-     "04 / OUT", nome + meta mono (local · músicas), chips de estado e partilha, ▶ fantasma
+     "04 / OUT", nome + meta mono (local · músicas), chip do estado pela data, ▶ fantasma
      para o modo concerto. Sem LED: todos os concertos aqui são deste projeto. */
   const renderSetlistRow = (s: SetlistCard) => {
     const count = s.setlist_songs?.[0]?.count ?? 0
-    const statusLabel = s.status ? (STATUS_LABELS[s.status] ?? s.status) : undefined
-    const hasChips = !!statusLabel || s.is_shared
+    const when = concertWhen(s.date, now)
+    const hasChips = !!when.label
     const meta = [s.venue, `${count} mús`].filter(Boolean).join(' · ')
     const open = () => navigate(`/setlist/${s.id}`)
-    const day = s.date ? parseDay(s.date) : null
-    const isPast = !!day && day < todayStart
-    const isToday = !!day && day.getTime() === todayStart.getTime()
+    const isPast = when.kind === 'past'
+    const isToday = when.kind === 'today'
     return (
       <div
         key={s.id}
@@ -739,9 +775,7 @@ export default function ProjectDashboardPage() {
           {s.date ? (
             <>
               <span className={`${styles.dateDay} ${isToday ? styles.dateToday : ''}`}>{dayNumber(s.date)}</span>
-              <span className={`${styles.dateMonth} ${isToday ? styles.dateToday : ''}`}>
-                {isToday ? 'Hoje' : monthShort(s.date)}
-              </span>
+              <span className={styles.dateMonth}>{monthShort(s.date)}</span>
             </>
           ) : (
             <>
@@ -756,10 +790,7 @@ export default function ProjectDashboardPage() {
         </div>
         {hasChips && (
           <div className={styles.gigChips}>
-            {statusLabel && (
-              <span className={styles.statusChip} data-status={s.status ?? undefined}>{statusLabel}</span>
-            )}
-            {s.is_shared && <span className={styles.statusChip}>partilhada</span>}
+            <WhenChip when={when} />
           </div>
         )}
         <button
@@ -1105,9 +1136,10 @@ export default function ProjectDashboardPage() {
           {activeTab === 'setlists' && (
             <div className={styles.tabPane}>
               <div className={styles.sectionHead}>
-                <h2 className={styles.label}>Concertos</h2>
+                {/* Com concertos: "PRÓXIMOS ──── 03" (os passados ficam recolhidos por baixo) */}
+                <h2 className={styles.label}>{setlists.length > 0 ? 'Próximos' : 'Concertos'}</h2>
                 <span className={styles.rule} aria-hidden="true" />
-                {headCount(setlists.length)}
+                {headCount(setlists.length > 0 ? upcomingGigs.length : 0)}
                 {canEdit && setlists.length > 0 && (
                   <button className={`${styles.primaryBtn} ${styles.headPrimary}`} onClick={createSetlist}>
                     <IconPlus /> Novo concerto
@@ -1127,9 +1159,46 @@ export default function ProjectDashboardPage() {
                   )}
                 </div>
               ) : (
-                <div className={styles.panel}>
-                  {setlists.map(renderSetlistRow)}
-                </div>
+                <>
+                  {/* Próximos: hoje primeiro, por data; sem data no fim */}
+                  <div className={styles.panel}>
+                    {upcomingGigs.length > 0 ? (
+                      upcomingGigs.map(renderSetlistRow)
+                    ) : (
+                      /* Só a frase: o CTA "Novo concerto" já está na régua "Próximos", logo acima */
+                      <div className={styles.panelEmpty}>
+                        <p>Nenhum concerto marcado.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Passados: recolhidos por defeito, mais recente primeiro */}
+                  {pastGigs.length > 0 && (
+                    <section className={styles.pastSection} aria-labelledby="project-past">
+                      <h3 className={styles.pastHead}>
+                        <button
+                          type="button"
+                          id="project-past"
+                          className={styles.pastToggle}
+                          aria-expanded={pastOpen}
+                          aria-controls="project-past-list"
+                          onClick={togglePast}
+                        >
+                          <IconChevronRight />
+                          <span className={styles.pastLabel}>
+                            Passados<span className={styles.pastCount}> · {pad2(pastGigs.length)}</span>
+                          </span>
+                          <span className={styles.pastHint} aria-hidden="true">{pastOpen ? 'Esconder' : 'Mostrar'}</span>
+                        </button>
+                      </h3>
+                      {pastOpen && (
+                        <div id="project-past-list" className={styles.panel}>
+                          {pastGigs.map(renderSetlistRow)}
+                        </div>
+                      )}
+                    </section>
+                  )}
+                </>
               )}
             </div>
           )}

@@ -4,16 +4,15 @@ import Breadcrumbs from '../../components/Breadcrumbs'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './CalendarPage.module.css'
-import { STATUS_LABELS } from '../../lib/setlistStatus'
 import { mapLegacyProjectColor } from '../../lib/projectColor'
+import { concertWhen, type ConcertWhen } from '../../lib/concertWhen'
 
 interface Setlist {
   id: string
   name: string
   date: string
   venue: string | null
-  status: string | null
-  is_shared?: boolean | null
+  band_id?: string | null
   band: { name: string; color: string } | null
   setlist_songs?: { count: number }[]
 }
@@ -52,6 +51,11 @@ function monthShort(dateStr: string) {
 
 function weekdayShort(dateStr: string) {
   return WEEKDAYS_SHORT[parseLocal(dateStr).getDay()] ?? ''
+}
+
+/** Concerto pessoal = sem projeto (band_id null). Sem a coluna, vale a ausência do projeto. */
+function isPersonal(ev: Setlist): boolean {
+  return ev.band_id === undefined ? !ev.band : ev.band_id === null
 }
 
 /** LED do projeto: quadrado na cor v2, ou contorno para concertos pessoais. */
@@ -124,14 +128,14 @@ function IconPlay({ size = 16 }: { size?: number }) {
   )
 }
 
-/** "Partilhada" em linhas estreitas: o chip encolhe a este ícone (projeto = pessoas). */
-function IconShared() {
+/** Chip do estado que a DATA diz: HOJE (acento cheio + LED a piscar) · AMANHÃ / EM N DIAS (acento suave) · REALIZADO (neutro). */
+function WhenChip({ when }: { when: ConcertWhen }) {
+  if (!when.label) return null
   return (
-    <svg className={styles.sharedIcon} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-      <circle cx="9" cy="8" r="3.5" />
-      <path d="M2.5 20.5c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5" />
-      <path d="M15.5 4.8a3.5 3.5 0 0 1 0 6.4M18 14.4c2.1.9 3.5 3.1 3.5 5.6" />
-    </svg>
+    <span className={styles.chip} data-when={when.kind}>
+      {when.kind === 'today' && <span className={styles.liveLed} aria-hidden="true" />}
+      {when.label}
+    </span>
   )
 }
 
@@ -172,7 +176,7 @@ export default function CalendarPage() {
 
     let query = supabase
       .from('setlists')
-      .select('id, name, date, venue, status, is_shared, band:bands(name, color), setlist_songs(count)')
+      .select('id, name, date, venue, band_id, band:bands(name, color), setlist_songs(count)')
       .not('date', 'is', null)
       .order('date', { ascending: true })
 
@@ -201,8 +205,11 @@ export default function CalendarPage() {
   const selectedEvents = selected ? (eventsByDate[selected] ?? []) : []
 
   const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`
+  /* Ordem cronológica garantida no cliente (não depender só do ORDER BY da query) */
   const monthEvents = useMemo(
-    () => events.filter(ev => ev.date.startsWith(monthStr)),
+    () => events
+      .filter(ev => ev.date.startsWith(monthStr))
+      .sort((a, b) => a.date.localeCompare(b.date)),
     [events, monthStr]
   )
 
@@ -233,10 +240,11 @@ export default function CalendarPage() {
   /* Linha de concerto unificada (igual a Concertos / Palco / Dashboard):
      data "26 / SÁB" | LED + nome / meta | chips | ▶ fantasma */
   function renderRow(ev: Setlist) {
-    const isToday = ev.date === todayStr
-    const isPast = ev.date < todayStr
-    const statusLabel = ev.status ? (STATUS_LABELS[ev.status] ?? ev.status) : undefined
-    const hasChips = !!statusLabel || !!ev.is_shared
+    const when = concertWhen(ev.date, now)
+    const personal = isPersonal(ev)
+    const isToday = when.kind === 'today'
+    const isPast = when.kind === 'past'
+    const hasChips = !!when.label || personal
     const songCount = ev.setlist_songs?.[0]?.count
     /* Campos curtos antes do local: a elipse corta o local, nunca a contagem */
     const rest = [songCount != null ? `${songCount} mús` : null, ev.venue].filter(Boolean).join(' · ')
@@ -262,34 +270,23 @@ export default function CalendarPage() {
           <span className={`${styles.dateDay} ${isToday ? styles.dateToday : ''}`}>
             {ev.date.slice(8, 10)}
           </span>
-          <span className={`${styles.dateWeekday} ${isToday ? styles.dateToday : ''}`}>
-            {isToday ? 'Hoje' : weekdayShort(ev.date)}
-          </span>
+          <span className={styles.dateWeekday}>{weekdayShort(ev.date)}</span>
         </div>
 
         <div className={styles.info}>
           <Led band={ev.band} className={styles.led} />
           <div className={styles.name}>{ev.name}</div>
-          {/* No telemóvel e na coluna lateral o LED já identifica o projeto */}
+          {/* No telemóvel e na coluna lateral o LED já identifica o projeto; pessoal → chip PESSOAL */}
           <div className={styles.meta}>
-            <span className={styles.metaBand}>{ev.band?.name ?? 'Pessoal'}{rest ? ' · ' : ''}</span>
+            {ev.band && <span className={styles.metaBand}>{ev.band.name}{rest ? ' · ' : ''}</span>}
             {rest}
           </div>
         </div>
 
         {hasChips && (
           <div className={styles.chips}>
-            {statusLabel && (
-              <span className={styles.chip} data-status={ev.status ?? undefined}>
-                {statusLabel}
-              </span>
-            )}
-            {ev.is_shared && (
-              <span className={`${styles.chip} ${styles.chipShared}`} title="Partilhada">
-                <IconShared />
-                <span className={styles.sharedText}>partilhada</span>
-              </span>
-            )}
+            <WhenChip when={when} />
+            {personal && <span className={styles.chip}>Pessoal</span>}
           </div>
         )}
 
@@ -360,6 +357,7 @@ export default function CalendarPage() {
                 const dateStr = toYMD(date)
                 const isCurrentMonth = date.getMonth() === month
                 const isToday = dateStr === todayStr
+                const isPast = dateStr < todayStr
                 const isSelected = dateStr === selected
                 const dayEvents = eventsByDate[dateStr] ?? []
                 const hasEvent = dayEvents.length > 0
@@ -372,6 +370,7 @@ export default function CalendarPage() {
                       styles.cell,
                       !isCurrentMonth && styles.cellOtherMonth,
                       isToday && styles.cellToday,
+                      isPast && hasEvent && styles.cellPast,
                       isSelected && styles.cellSelected,
                     ].filter(Boolean).join(' ')}
                     role="button"
