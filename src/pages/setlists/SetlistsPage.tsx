@@ -1,20 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import ProjectPickerModal from '../../components/ProjectPickerModal'
-import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './SetlistsPage.module.css'
-import { STATUS_LABELS } from '../../lib/setlistStatus'
 import { mapLegacyProjectColor } from '../../lib/projectColor'
+import { concertWhen, isUpcoming, compareUpcoming, comparePast, type ConcertWhen } from '../../lib/concertWhen'
 
 interface Row {
   id: string
   name: string
   date: string | null
   venue: string | null
-  status: string | null
-  is_shared: boolean
+  band_id?: string | null
   band: { name: string; color: string } | null
   setlist_songs: { count: number }[]
 }
@@ -33,12 +30,28 @@ const WEEKDAYS_SHORT = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
 /** Primeira amostra v2 — o que Projetos mostra para um projeto sem cor */
 const DEFAULT_PROJECT_COLOR = '#4CC9F0'
 
+/** Secção "Passados" aberta/fechada — preferência local (recolhida por defeito). */
+const PAST_OPEN_KEY = 'gigio-past-open'
+
+function readPastOpen(): boolean {
+  try { return localStorage.getItem(PAST_OPEN_KEY) === '1' } catch { return false }
+}
+
+function writePastOpen(open: boolean) {
+  try { localStorage.setItem(PAST_OPEN_KEY, open ? '1' : '0') } catch { /* modo privado / bloqueado */ }
+}
+
 /** Cor do projeto pronta a pintar no LED (null = concerto pessoal, sem projeto). */
 function projectLedColor(band: { color?: string | null } | null | undefined): string | null {
   if (!band) return null
   const raw = band.color?.trim()
   if (!raw) return DEFAULT_PROJECT_COLOR
   return mapLegacyProjectColor(raw)
+}
+
+/** Concerto pessoal = sem projeto (band_id null). Sem a coluna, vale a ausência do projeto. */
+function isPersonal(r: Row): boolean {
+  return r.band_id === undefined ? !r.band : r.band_id === null
 }
 
 function toYMD(d: Date): string {
@@ -48,6 +61,10 @@ function toYMD(d: Date): string {
 function parseLocal(dateStr: string): Date {
   const [y, m, d] = dateStr.split('-').map(Number)
   return new Date(y, m - 1, d)
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
 }
 
 /** Dia com 2 dígitos: "04". */
@@ -65,37 +82,23 @@ function longDate(dateStr: string): string {
 }
 
 /**
- * Agrupa por mês, como uma agenda impressa:
- * meses a partir do corrente (mais próximo primeiro) → "Sem data" → meses passados (mais recente primeiro).
+ * Agrupa concertos COM data por mês, como uma agenda impressa.
+ * 'asc' (próximos): hoje primeiro, depois por data · 'desc' (passados): mais recente primeiro.
  */
-function groupByMonth(rows: Row[], currentYM: string): MonthGroup[] {
-  const byMonth = new Map<string, Row[]>()
-  const undated: Row[] = []
-  for (const r of rows) {
-    if (!r.date) { undated.push(r); continue }
-    const key = r.date.slice(0, 7)
-    const list = byMonth.get(key)
-    if (list) list.push(r)
-    else byMonth.set(key, [r])
+function groupByMonth(rows: Row[], order: 'asc' | 'desc'): MonthGroup[] {
+  const sorted = [...rows].sort(order === 'asc' ? compareUpcoming : comparePast)
+  const groups: MonthGroup[] = []
+  for (const r of sorted) {
+    const key = (r.date ?? '').slice(0, 7)
+    let group = groups[groups.length - 1]
+    if (!group || group.key !== key) {
+      const [y, m] = key.split('-').map(Number)
+      group = { key, label: `${MONTHS[m - 1] ?? ''} ${y}`, items: [] }
+      groups.push(group)
+    }
+    group.items.push(r)
   }
-
-  const toGroup = (key: string, ascending: boolean): MonthGroup => {
-    const [y, m] = key.split('-').map(Number)
-    const items = [...(byMonth.get(key) ?? [])].sort((a, b) =>
-      ascending ? a.date!.localeCompare(b.date!) : b.date!.localeCompare(a.date!)
-    )
-    return { key, label: `${MONTHS[m - 1]} ${y}`, items }
-  }
-
-  const keys = [...byMonth.keys()].sort()
-  const upcoming = keys.filter(k => k >= currentYM).map(k => toGroup(k, true))
-  const past = keys.filter(k => k < currentYM).reverse().map(k => toGroup(k, false))
-
-  return [
-    ...upcoming,
-    ...(undated.length > 0 ? [{ key: 'none', label: 'Sem data', items: undated }] : []),
-    ...past,
-  ]
+  return groups
 }
 
 /* ── Ícones SVG inline (stroke, currentColor) ── */
@@ -134,13 +137,11 @@ function IconSearch() {
   )
 }
 
-/** "Partilhada" em linhas estreitas: o chip encolhe a este ícone (projeto = pessoas). */
-function IconShared() {
+/** ▸ da secção "Passados" — roda para ▾ quando aberta */
+function IconChevron() {
   return (
-    <svg className={styles.sharedIcon} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-      <circle cx="9" cy="8" r="3.5" />
-      <path d="M2.5 20.5c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5" />
-      <path d="M15.5 4.8a3.5 3.5 0 0 1 0 6.4M18 14.4c2.1.9 3.5 3.1 3.5 5.6" />
+    <svg className={styles.pastChevron} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="square" aria-hidden="true" focusable="false">
+      <path d="M9 5l7 7-7 7" />
     </svg>
   )
 }
@@ -155,20 +156,30 @@ function IconMic() {
   )
 }
 
+/** Chip do estado que a DATA diz: HOJE (acento cheio + LED a piscar) · AMANHÃ / EM N DIAS (acento suave) · REALIZADO (neutro). */
+function WhenChip({ when }: { when: ConcertWhen }) {
+  if (!when.label) return null
+  return (
+    <span className={styles.chip} data-when={when.kind}>
+      {when.kind === 'today' && <span className={styles.liveLed} aria-hidden="true" />}
+      {when.label}
+    </span>
+  )
+}
+
 export default function SetlistsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const toast = useToast()
   const [setlists, setSetlists] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
-  const [picking, setPicking] = useState(false)
   const [search, setSearch] = useState('')
+  const [pastOpen, setPastOpen] = useState(readPastOpen)
 
   useEffect(() => {
     if (!user) return
     supabase
       .from('setlists')
-      .select('id, name, date, venue, status, is_shared, band:bands(name, color), setlist_songs(count)')
+      .select('id, name, date, venue, band_id, band:bands(name, color), setlist_songs(count)')
       .eq('owner_id', user.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
@@ -177,15 +188,16 @@ export default function SetlistsPage() {
       })
   }, [user])
 
-  async function createInProject(projectId: string) {
-    if (!user) return
-    const { data, error } = await supabase
-      .from('setlists')
-      .insert({ name: 'Novo Concerto', owner_id: user.id, band_id: projectId, is_shared: true, status: 'draft' })
-      .select()
-      .single()
-    if (error) { toast('Erro ao criar concerto: ' + error.message, { type: 'error' }); return }
-    if (data) navigate(`/setlist/${data.id}?add=1`)
+  /* Assistente de criação (escolhe o projeto em "PARA:" e a origem da lista) */
+  function createConcert() {
+    navigate('/concertos/novo')
+  }
+
+  function togglePast() {
+    setPastOpen(open => {
+      writePastOpen(!open)
+      return !open
+    })
   }
 
   const filtered = useMemo(() => setlists.filter(s =>
@@ -195,7 +207,30 @@ export default function SetlistsPage() {
   ), [setlists, search])
 
   const todayStr = toYMD(new Date())
-  const groups = useMemo(() => groupByMonth(filtered, todayStr.slice(0, 7)), [filtered, todayStr])
+
+  /* Próximos (hoje/futuro + sem data no fim) e passados — o filtro vale para os dois */
+  const sections = useMemo(() => {
+    // Referência = hoje (muda ao virar o dia: "hoje" passa a "realizado")
+    const ref = parseLocal(todayStr)
+    const upcoming: Row[] = []
+    const past: Row[] = []
+    for (const s of filtered) (isUpcoming(s.date, ref) ? upcoming : past).push(s)
+    const undated = upcoming.filter(s => !s.date)
+    const upcomingGroups: MonthGroup[] = [
+      ...groupByMonth(upcoming.filter(s => !!s.date), 'asc'),
+      ...(undated.length > 0 ? [{ key: 'none', label: 'Sem data', items: undated }] : []),
+    ]
+    return {
+      upcomingGroups,
+      upcomingCount: upcoming.length,
+      pastGroups: groupByMonth(past, 'desc'),
+      pastCount: past.length,
+    }
+  }, [filtered, todayStr])
+
+  const searching = !!search
+  /* Com pesquisa ativa, os passados que correspondam aparecem sempre */
+  const showPast = pastOpen || searching
 
   const isEmpty = !loading && setlists.length === 0
   const countLabel = loading
@@ -203,6 +238,104 @@ export default function SetlistsPage() {
     : search
       ? `${filtered.length} de ${setlists.length} concertos`
       : `${setlists.length} concerto${setlists.length !== 1 ? 's' : ''}`
+
+  /* Linha de concerto unificada (Concertos / Calendário / Dashboard):
+     data "26 / SÁB" | LED + nome / meta | chips | ▶ fantasma */
+  function renderRow(s: Row) {
+    const songCount = s.setlist_songs?.[0]?.count ?? 0
+    const when = concertWhen(s.date, parseLocal(todayStr))
+    const personal = isPersonal(s)
+    const isToday = when.kind === 'today'
+    const isPast = when.kind === 'past'
+    const hasChips = !!when.label || personal
+    /* Campos curtos antes do local: a elipse corta o local, nunca a contagem */
+    const rest = [`${songCount} mús`, s.venue].filter(Boolean).join(' · ')
+    const ledColor = projectLedColor(s.band)
+    const open = () => navigate(`/setlist/${s.id}`)
+    return (
+      <div
+        key={s.id}
+        className={[
+          styles.row,
+          isToday && styles.rowToday,
+          !hasChips && styles.rowNoChips,
+          isPast && styles.rowPast,
+        ].filter(Boolean).join(' ')}
+        role="button"
+        tabIndex={0}
+        onClick={open}
+        onKeyDown={e => {
+          if (e.target !== e.currentTarget) return
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() }
+        }}
+      >
+        {/* Bloco de data: "26" condensado + "SÁB" mono (o mês está no rótulo do grupo) */}
+        <div className={styles.dateBlock} title={s.date ? longDate(s.date) : 'Sem data'}>
+          {s.date ? (
+            <>
+              <span className={`${styles.dateDay} ${isToday ? styles.dateToday : ''}`}>
+                {dayNumber(s.date)}
+              </span>
+              <span className={styles.dateWeekday}>{weekdayShort(s.date)}</span>
+            </>
+          ) : (
+            <>
+              <span className={`${styles.dateDay} ${styles.dateNone}`} aria-hidden="true">--</span>
+              <span className={styles.dateWeekday}>s/d</span>
+            </>
+          )}
+        </div>
+
+        {/* LED do projeto junto ao nome; meta alinhada com o texto */}
+        <div className={styles.info}>
+          <span
+            className={`${styles.led} ${ledColor ? '' : styles.ledOff}`}
+            style={ledColor ? { background: ledColor } : undefined}
+            title={s.band?.name ?? 'Pessoal'}
+            aria-hidden="true"
+          />
+          <div className={styles.name}>{s.name}</div>
+          <div className={styles.meta}>
+            {/* No telemóvel o LED já identifica o projeto; pessoal → chip PESSOAL */}
+            {s.band && <span className={styles.metaBand}>{s.band.name} · </span>}
+            {rest}
+          </div>
+        </div>
+
+        {hasChips && (
+          <div className={styles.chips}>
+            <WhenChip when={when} />
+            {personal && <span className={styles.chip}>Pessoal</span>}
+          </div>
+        )}
+
+        {/* ▶ fantasma — atalho para o modo concerto (igual a Palco / Dashboard) */}
+        <button
+          type="button"
+          className={styles.playBtn}
+          aria-label={`Iniciar concerto ${s.name}`}
+          title="Iniciar concerto"
+          onClick={e => { e.stopPropagation(); navigate(`/setlist/${s.id}/concert`) }}
+        >
+          <IconPlay />
+        </button>
+      </div>
+    )
+  }
+
+  function renderGroup(group: MonthGroup) {
+    return (
+      <section key={group.key} className={styles.group} aria-label={group.label}>
+        <h3 className={styles.groupLabel}>
+          <span>{group.label}</span>
+          <span className={styles.groupCount}>{pad2(group.items.length)}</span>
+        </h3>
+        <div className={styles.panel}>
+          {group.items.map(renderRow)}
+        </div>
+      </section>
+    )
+  }
 
   return (
     <>
@@ -219,7 +352,7 @@ export default function SetlistsPage() {
               Calendário
             </button>
             {!isEmpty && (
-              <button className={styles.primaryBtn} onClick={() => setPicking(true)}>
+              <button className={styles.primaryBtn} onClick={createConcert}>
                 <IconPlus />
                 Novo concerto
               </button>
@@ -265,131 +398,74 @@ export default function SetlistsPage() {
             <span className={styles.emptyIcon}><IconMic /></span>
             <h2 className={styles.emptyTitle}>Ainda sem concertos</h2>
             <p className={styles.emptySub}>Cria o primeiro concerto num projeto para começar.</p>
-            <button className={styles.primaryBtn} onClick={() => setPicking(true)}>
+            <button className={styles.primaryBtn} onClick={createConcert}>
               <IconPlus />
               Criar concerto
             </button>
           </div>
         ) : filtered.length === 0 ? (
-          <div className={styles.noMatch}>
-            <p className={styles.noMatchText}>Nenhum concerto corresponde a “{search}”.</p>
+          <div className={styles.inlineEmpty}>
+            <p className={styles.inlineEmptyText}>Nenhum concerto corresponde a “{search}”.</p>
             <button className={styles.secondaryBtn} onClick={() => setSearch('')}>
               Limpar filtro
             </button>
           </div>
         ) : (
-          <div className={styles.groups}>
-            {groups.map(group => (
-              <section key={group.key} className={styles.group} aria-label={group.label}>
-                <h2 className={styles.groupLabel}>
-                  <span>{group.label}</span>
-                  <span className={styles.groupCount}>{String(group.items.length).padStart(2, '0')}</span>
+          <div className={styles.sections}>
+            {/* ── Próximos: hoje primeiro, por data; "Sem data" no fim ── */}
+            {(sections.upcomingCount > 0 || !searching) && (
+              <section className={styles.section} aria-labelledby="concerts-upcoming">
+                <h2 id="concerts-upcoming" className={styles.sectionHead}>
+                  Próximos<span className={styles.sectionCount}> · {pad2(sections.upcomingCount)}</span>
                 </h2>
-                <div className={styles.panel}>
-                  {group.items.map(s => {
-                    const songCount = s.setlist_songs?.[0]?.count ?? 0
-                    const isToday = s.date === todayStr
-                    const isPast = !!s.date && s.date < todayStr
-                    const hasChips = !!s.status || s.is_shared
-                    /* Campos curtos antes do local: a elipse corta o local, nunca a contagem */
-                    const rest = [`${songCount} mús`, s.venue].filter(Boolean).join(' · ')
-                    const ledColor = projectLedColor(s.band)
-                    const open = () => navigate(`/setlist/${s.id}`)
-                    return (
-                      <div
-                        key={s.id}
-                        className={[
-                          styles.row,
-                          isToday && styles.rowToday,
-                          !hasChips && styles.rowNoChips,
-                          isPast && styles.rowPast,
-                        ].filter(Boolean).join(' ')}
-                        role="button"
-                        tabIndex={0}
-                        onClick={open}
-                        onKeyDown={e => {
-                          if (e.target !== e.currentTarget) return
-                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() }
-                        }}
-                      >
-                        {/* Bloco de data: "26" condensado + "SÁB" mono (o mês está no rótulo do grupo) */}
-                        <div className={styles.dateBlock} title={s.date ? longDate(s.date) : 'Sem data'}>
-                          {s.date ? (
-                            <>
-                              <span className={`${styles.dateDay} ${isToday ? styles.dateToday : ''}`}>
-                                {dayNumber(s.date)}
-                              </span>
-                              <span className={`${styles.dateWeekday} ${isToday ? styles.dateToday : ''}`}>
-                                {isToday ? 'Hoje' : weekdayShort(s.date)}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <span className={`${styles.dateDay} ${styles.dateNone}`} aria-hidden="true">--</span>
-                              <span className={styles.dateWeekday}>s/d</span>
-                            </>
-                          )}
-                        </div>
-
-                        {/* LED do projeto junto ao nome; meta alinhada com o texto */}
-                        <div className={styles.info}>
-                          <span
-                            className={`${styles.led} ${ledColor ? '' : styles.ledOff}`}
-                            style={ledColor ? { background: ledColor } : undefined}
-                            title={s.band?.name ?? 'Pessoal'}
-                            aria-hidden="true"
-                          />
-                          <div className={styles.name}>{s.name}</div>
-                          <div className={styles.meta}>
-                            {/* No telemóvel o LED já identifica o projeto */}
-                            <span className={styles.metaBand}>{s.band?.name ?? 'Pessoal'} · </span>
-                            {rest}
-                          </div>
-                        </div>
-
-                        {hasChips && (
-                          <div className={styles.chips}>
-                            {s.status && (
-                              <span className={styles.chip} data-status={s.status}>
-                                {STATUS_LABELS[s.status] ?? s.status}
-                              </span>
-                            )}
-                            {s.is_shared && (
-                              <span className={`${styles.chip} ${styles.chipShared}`} title="Partilhada">
-                                <IconShared />
-                                <span className={styles.sharedText}>partilhada</span>
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        {/* ▶ fantasma — atalho para o modo concerto (igual a Palco / Dashboard) */}
-                        <button
-                          type="button"
-                          className={styles.playBtn}
-                          aria-label={`Iniciar concerto ${s.name}`}
-                          title="Iniciar concerto"
-                          onClick={e => { e.stopPropagation(); navigate(`/setlist/${s.id}/concert`) }}
-                        >
-                          <IconPlay />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
+                {sections.upcomingCount === 0 ? (
+                  /* Só a frase: o CTA "Novo concerto" já está no cabeçalho, logo acima */
+                  <div className={styles.inlineEmpty}>
+                    <p className={styles.inlineEmptyText}>Nenhum concerto marcado.</p>
+                  </div>
+                ) : (
+                  <div className={styles.groups}>
+                    {sections.upcomingGroups.map(renderGroup)}
+                  </div>
+                )}
               </section>
-            ))}
+            )}
+
+            {/* ── Passados: recolhidos por defeito, mais recente primeiro ── */}
+            {sections.pastCount > 0 && (
+              <section className={styles.section} aria-labelledby="concerts-past">
+                {searching ? (
+                  <h2 id="concerts-past" className={styles.sectionHead}>
+                    Passados<span className={styles.sectionCount}> · {pad2(sections.pastCount)}</span>
+                  </h2>
+                ) : (
+                  <h2 className={styles.pastHead}>
+                    <button
+                      type="button"
+                      id="concerts-past"
+                      className={styles.pastToggle}
+                      aria-expanded={pastOpen}
+                      aria-controls="concerts-past-list"
+                      onClick={togglePast}
+                    >
+                      <IconChevron />
+                      <span className={styles.pastLabel}>
+                        Passados<span className={styles.sectionCount}> · {pad2(sections.pastCount)}</span>
+                      </span>
+                      <span className={styles.pastHint} aria-hidden="true">{pastOpen ? 'Esconder' : 'Mostrar'}</span>
+                    </button>
+                  </h2>
+                )}
+                {showPast && (
+                  <div id="concerts-past-list" className={styles.groups}>
+                    {sections.pastGroups.map(renderGroup)}
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         )}
       </div>
-
-      {picking && (
-        <ProjectPickerModal
-          title="Em que projeto criar o concerto?"
-          onPick={(id) => { setPicking(false); createInProject(id) }}
-          onClose={() => setPicking(false)}
-        />
-      )}
     </>
   )
 }

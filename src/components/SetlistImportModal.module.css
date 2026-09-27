@@ -1,10 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════
-   Importar concerto de PDF — v2 "hardware / setlist impresso"
-   Painel --surface + hairlines, cantos secos, mono nos rótulos.
-   Tudo via tokens (src/index.css) → funciona nos dois temas.
+   Importar para um concerto — invólucro do importador (modal/sheet).
+   v2: painel --surface + hairlines, cantos secos, mono nos rótulos,
+   um só primário --accent. Os componentes internos estão em
+   src/components/import/Import.module.css.
 ═══════════════════════════════════════════════════════════════ */
 
-/* ── Overlay + modal ── */
 .overlay {
   position: fixed;
   inset: 0;
@@ -18,12 +18,13 @@
 }
 
 .modal {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 680px;
-  max-height: 86vh;
-  max-height: 86dvh;
+  max-width: 700px;
+  max-height: 88vh;
+  max-height: 88dvh;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
@@ -49,22 +50,14 @@
   padding-top: 4px;
 }
 
-.kicker,
-.label,
-.altsLabel,
-.readoutLabel,
-.dropMeta,
-.footerMeta {
+.kicker {
+  margin-bottom: 6px;
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text3);
-}
-
-.kicker {
-  margin-bottom: 6px;
 }
 
 .title {
@@ -76,6 +69,13 @@
   letter-spacing: -0.005em;
   color: var(--text);
   overflow-wrap: anywhere;
+}
+
+.sub {
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text2);
 }
 
 .close {
@@ -95,865 +95,196 @@
 .close:active:not(:disabled) { background: var(--surface-3); color: var(--text); }
 .close:disabled { opacity: 0.4; cursor: default; }
 
-/* ── Faixa de metadados mono (abaixo do cabeçalho) ── */
-.strip {
-  flex-shrink: 0;
-  padding: 12px 24px;
-  border-bottom: 1px solid var(--border);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text3);
-}
-
-.stripGroup {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-}
-
-.stripRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px 12px;
-}
-
-.stripNum {
-  font-weight: 700;
-  color: var(--text);
-}
-
-.sep {
-  color: var(--border2);
-}
-
-.stripTrack {
-  margin-top: 10px;
-}
-
-/* ── Área com scroll + rodapé fixo ── */
+/* ── Corpo com scroll + rodapé fixo ── */
 .scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 20px 24px;
+  padding: 20px 24px 24px;
 }
 
 .footer {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 10px;
   padding: 14px 24px;
   border-top: 1px solid var(--border);
   background: var(--surface);
 }
 
-.footerMeta {
-  margin-right: auto;
-  min-width: 0;
-}
-
-/* ── Botões ── */
 .btnPrimary,
-.btnSecondary,
-.btnGhost {
+.btnSecondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  min-height: var(--btn-lg);
   border-radius: var(--radius-btn);
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
-  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+  transition: background-color 0.12s, border-color 0.12s;
 }
+.btnPrimary svg,
+.btnSecondary svg { flex-shrink: 0; }
 
+/* Ação do ecrã — condensada em maiúsculas como "Iniciar concerto" */
 .btnPrimary {
-  min-height: var(--btn-lg);
-  padding: 0 22px;
+  min-width: 0;
+  padding: 0 24px;
   background: var(--accent);
   color: var(--on-accent);
   border: none;
   font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
+  font-weight: 800;
+  font-stretch: 85%;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
 }
 .btnPrimary:disabled { opacity: 0.45; cursor: default; }
 
 .btnSecondary {
-  min-height: var(--btn);
-  padding: 0 16px;
+  padding: 0 18px;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border2);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
 }
 .btnSecondary:active:not(:disabled) { background: var(--surface-3); }
 .btnSecondary:disabled { opacity: 0.45; cursor: default; }
 
-.btnGhost {
-  min-height: 44px;
-  padding: 0 12px;
-  background: transparent;
-  color: var(--text2);
-  border: none;
-  font-size: 15px;
-  font-weight: 600;
-}
-.btnGhost:active:not(:disabled) { background: var(--surface-3); color: var(--text); }
-
-/* No rodapé, primário e secundário partilham a altura */
-.footer .btnPrimary,
-.footer .btnSecondary {
-  min-height: var(--btn-lg);
-}
-.footer .btnSecondary {
-  padding: 0 18px;
-  font-size: 15px;
-}
-
-/* Botões compactos nas linhas de resultado (ícone + texto; só ícone no telemóvel) */
-.btnCompact {
-  flex-shrink: 0;
-  min-width: 44px;
-  padding: 0 12px;
-}
-.btnCompact svg { flex-shrink: 0; }
-
-.busy {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  letter-spacing: 0.1em;
-}
-
-/* ── Chips mono secos ── */
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  padding: 3px 6px;
-  border-radius: var(--radius-xs);
+/* Progresso da gravação: fio de sinal no fundo do modal */
+.progressTrack {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
   background: var(--surface-3);
-  color: var(--text2);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
 }
-.chipOk { background: var(--success-soft); color: var(--success-fg); }
-.chipWarn { background: var(--warn-soft); color: var(--warn-fg); }
-.chipDanger { background: var(--danger-soft); color: var(--danger); }
-
-/* ── Lista dentro de painel: linhas separadas por hairline ── */
-.list {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.list > * + * {
-  border-top: 1px solid var(--border);
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 56px;
-  padding: 10px 14px;
-}
-
-label.row {
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: background-color 0.12s;
-}
-label.row:active { background: var(--surface-2); }
-
-.checkbox {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  margin: 0;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-.checkbox:disabled { cursor: default; }
-
-/* Numeração 01/02 — assinatura da app */
-.num {
-  flex-shrink: 0;
-  min-width: 20px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 22px;
-  color: var(--text3);
-  font-variant-numeric: tabular-nums;
-}
-
-.songName {
-  display: block;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 22px;
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-
-/* Linha desmarcada = riscada na setlist impressa */
-.rowOff .songName {
-  color: var(--text3);
-  text-decoration: line-through;
-  text-decoration-color: var(--text3);
-}
-.rowOff .songLine .chip,
-.rowOff .matchTitle,
-.rowOff .bulkMeta,
-.rowOff .bulkNote { opacity: 0.5; }
-
-/* ── 01 · Ficheiro ── */
-.dropZone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 260px;
-  padding: 32px 24px;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px dashed var(--border2);
-  border-radius: var(--radius);
-  text-align: center;
-  -webkit-tap-highlight-color: transparent;
-  transition: background-color 0.12s, border-color 0.12s;
-}
-.dropZone:active:not(:disabled) {
-  transform: none;
-  background: var(--surface-2);
-}
-.dropZone[aria-disabled="true"] { cursor: progress; }
-
-/* Arrastar por cima = estado vivo → sinal laranja */
-.dropZoneOver,
-.dropZoneOver:active:not(:disabled) {
-  border-style: solid;
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.dropZoneOver .dropIcon { border-color: var(--accent); color: var(--accent-text); }
-
-/* CTA visual dentro da zona (a zona inteira é o botão) — receita do primário */
-.dropCta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: var(--btn-lg);
-  margin-top: 14px;
-  padding: 0 22px;
-  background: var(--accent);
-  color: var(--on-accent);
-  border-radius: var(--radius-btn);
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  transition: background-color 0.12s;
-}
-.dropCta svg { flex-shrink: 0; }
-.dropZone:active:not([aria-disabled="true"]) .dropCta { background: var(--accent-hover); }
-.dropZone[aria-disabled="true"] .dropCta { opacity: 0.45; }
-
-.dropIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  margin-bottom: 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text3);
-}
-
-.dropTitle {
-  font-family: var(--font-display);
-  font-stretch: var(--display-stretch);
-  font-weight: 800;
-  font-size: 24px;
-  line-height: 1.05;
-  color: var(--text);
-}
-
-.dropSub {
-  max-width: 34ch;
-  font-size: 15px;
-  line-height: 1.4;
-  color: var(--text2);
-}
-
-.dropMeta {
-  margin-top: 4px;
-}
-
-.status {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.error {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 16px;
-  padding: 12px 14px;
-  background: var(--danger-soft);
-  color: var(--danger);
-  border-radius: var(--radius-btn);
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 1.4;
-}
-.error svg { flex-shrink: 0; margin-top: 1px; }
-
-/* ── Progresso: barra fina --accent sobre trilho --surface-3 ── */
-.progress {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.section .progress { margin-bottom: 12px; }
-
-.progressLabel {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: none;
-  color: var(--text2);
-}
-
-.progressCount {
-  flex-shrink: 0;
-  font-weight: 700;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-
-.progressSep {
-  flex-shrink: 0;
-  color: var(--text3);
-}
-
-.progressTitle {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.track {
-  position: relative;
-  height: 4px;
-  background: var(--surface-3);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.fill {
+.progressFill {
   height: 100%;
   background: var(--accent);
   transition: width 0.3s ease;
 }
 
-.indeterminate {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -35%;
-  width: 35%;
-  background: var(--accent);
-  animation: indeterminate 1.1s ease-in-out infinite;
-}
-
-@keyframes indeterminate {
-  from { left: -35%; }
-  to   { left: 100%; }
-}
-
-/* ── 02 · Rever ── */
-.entryRow {
-  align-items: flex-start;
-  padding: 14px;
-}
-
-.entryInfo {
-  flex: 1;
-  min-width: 0;
+/* ── Concerto com músicas: acrescentar / substituir ── */
+.modeBox {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
 }
-
-.medleyLabel {
-  display: block;
+.modeLabel {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
-  line-height: 22px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text3);
 }
-
-.singleSong,
-.medleySongs {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.medleySongs {
-  padding-left: 12px;
-  border-left: 2px solid var(--border);
-}
-
-.songLine {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.songText {
-  display: block;
-  flex: 1;
-  min-width: 0;
-}
-
-.songLine .chip {
-  margin-top: 2px;
-}
-
-.matchTitle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 2px;
-  font-size: 14px;
-  line-height: 1.35;
-  color: var(--text2);
-}
-.matchTitle svg {
-  flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  color: var(--text3);
-}
-.matchTitleText {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-/* ── 03 · Resultado ── */
-.readout {
+/* Segmentos: trilho --surface-3, opção ativa --surface */
+.segmented {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-3);
+  border-radius: var(--radius-btn);
 }
-
-.readoutCell {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  padding: 18px 20px;
-}
-.readoutCell + .readoutCell {
-  border-left: 1px solid var(--border);
-}
-
-.readoutNum {
+.segment {
+  min-height: 44px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--text2);
+  border: none;
+  border-radius: 6px;
   font-family: var(--font-mono);
-  font-size: 44px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.25;
+  -webkit-tap-highlight-color: transparent;
 }
-.readoutWarn { color: var(--warn-fg); }
-
-.readoutLabel {
-  line-height: 1.4;
-}
-
-.section {
-  margin-top: 24px;
-}
-
-.sectionHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.missedRow {
-  min-height: 52px;
-}
-
-.missedName {
-  flex: 1;
-  min-width: 0;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-
-/* ── Pesquisa um a um ── */
-.toolbar {
-  flex-shrink: 0;
-  display: flex;
-  gap: 8px;
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--border);
-}
-.toolbar .btnSecondary {
-  min-height: var(--input-h);
-}
-
-.searchField {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-}
-
-.searchIcon {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: inline-flex;
-  color: var(--text3);
-  pointer-events: none;
-}
-
-.input {
-  width: 100%;
-  min-height: var(--input-h);
-  padding: 0 14px 0 42px;
+.segmentOn {
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border2);
-  border-radius: var(--radius-btn);
-  transition: border-color 0.12s, box-shadow 0.12s;
+  box-shadow: 0 0 0 1px var(--border);
 }
-.input::placeholder { color: var(--text3); }
-.input:focus {
-  outline: none;
-  border-color: var(--text);
-  box-shadow: 0 0 0 3px var(--ring);
-}
+.segment:disabled { opacity: 0.5; cursor: default; }
+.segment:focus-visible { outline-offset: -2px; }
 
-.resultRow {
-  gap: 8px;
-  min-height: 64px;
-  padding: 8px 8px 8px 14px;
-}
-
-.resultInfo {
-  display: block;
-  flex: 1;
-  min-width: 0;
-}
-
-.resultTitle {
-  display: block;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.resultMeta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  margin-top: 3px;
-}
-
-.resultArtist {
-  min-width: 0;
-  font-size: 14px;
-  color: var(--text3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Skeletons (classe global .skeleton dá a cor/animação) */
-.skelRow {
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 8px;
-  min-height: 64px;
-}
-.skelTitle { display: block; width: 55%; height: 14px; }
-.skelSub { display: block; width: 32%; height: 11px; }
-
-.skelLines {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding-top: 4px;
-}
-.skelLine { display: block; height: 14px; }
-
-/* Empty state */
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 40px 16px;
-  text-align: center;
-}
-.emptyIcon {
-  display: inline-flex;
-  margin-bottom: 4px;
-  color: var(--text3);
-}
-.emptyTitle {
-  font-family: var(--font-display);
-  font-stretch: var(--display-stretch);
-  font-weight: 800;
-  font-size: 22px;
-  line-height: 1.05;
-  color: var(--text);
-}
-.emptyText {
-  font-size: 15px;
-  line-height: 1.4;
-  color: var(--text2);
-}
-.empty .btnSecondary {
-  margin-top: 10px;
-}
-
-/* Pré-visualização da letra */
-.previewBar {
-  flex-shrink: 0;
+.toggle {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 24px 10px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.previewMeta {
-  flex: 1;
-  min-width: 0;
-}
-
-.previewTitle {
-  font-size: 17px;
-  font-weight: 700;
-  line-height: 1.25;
+  min-height: 44px;
+  font-size: 15px;
+  line-height: 1.35;
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  cursor: pointer;
 }
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.toggleBox {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1.5px solid var(--border2);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  color: transparent;
+}
+.toggle input:checked + .toggleBox {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--surface);
+}
+.toggle input:focus-visible + .toggleBox { box-shadow: 0 0 0 3px var(--ring); }
 
-.previewArtist {
-  margin-top: 2px;
+.modeNote {
   font-size: 14px;
-  color: var(--text3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.4;
+  color: var(--text2);
 }
 
-.lyricsText {
-  margin: 0;
-  font-family: var(--font-body);
-  font-size: 17px;
-  line-height: 1.6;
-  color: var(--text);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* ── Em falta · lote ── */
-.bulkRow {
-  align-items: flex-start;
-  padding: 12px 8px 12px 14px;
-}
-.bulkMain {
-  display: block;
-  flex: 1;
-  min-width: 0;
-}
-
-.bulkMeta {
+.modeError {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
-  margin-top: 4px;
-}
-
-.bulkMatch {
-  min-width: 0;
-  font-size: 14px;
-  line-height: 1.35;
-  color: var(--text2);
-  overflow-wrap: anywhere;
-}
-
-.bulkMatchArtist {
-  color: var(--text3);
-}
-
-.bulkNote {
-  display: block;
-  margin-top: 4px;
-  font-size: 14px;
-  line-height: 1.35;
-  color: var(--text3);
-}
-.bulkNoteWarn { color: var(--warn-fg); }
-
-.bulkAdded {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--success-fg);
-}
-
-.iconBtn {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  margin: -11px 0;
-  background: transparent;
-  border: none;
+  gap: 8px 12px;
+  padding: 8px 8px 8px 14px;
+  background: var(--danger-soft);
+  color: var(--danger);
   border-radius: var(--radius-btn);
-  color: var(--text2);
-  -webkit-tap-highlight-color: transparent;
-  transition: background-color 0.12s, color 0.12s;
+  font-size: 14px;
+  line-height: 1.4;
 }
-.iconBtn:active:not(:disabled) { background: var(--surface-3); color: var(--text); }
-.iconBtnOn { background: var(--surface-3); color: var(--text); }
-/* Na 1.ª linha do painel (overflow: hidden) o anel exterior seria cortado */
-.iconBtn:focus-visible { outline-offset: -2px; }
+.modeError > span { flex: 1 1 200px; }
+.modeError .btnSecondary { min-height: var(--btn); background: transparent; color: var(--danger); border-color: currentColor; }
 
-.chev { transition: transform 0.15s ease; }
-.chevUp { transform: rotate(180deg); }
-
-/* Alternativas — inset --surface-2, alinhado com o nome */
-.alts {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px 8px 10px 68px;
-  background: var(--surface-2);
-  border-top: 1px solid var(--border);
-}
-
-.altsLabel {
-  padding: 10px 12px 6px;
-}
-
-.altRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 52px;
-  padding: 8px 12px;
-  background: transparent;
-  color: var(--text);
-  border: none;
-  border-radius: var(--radius-btn);
-  font: inherit;
-  text-align: left;
-  -webkit-tap-highlight-color: transparent;
-  transition: background-color 0.12s;
-}
-.altRow:active:not(:disabled) { background: var(--surface-3); }
-
-.altRowActive {
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--border2);
-}
-.altRowActive .resultTitle { font-weight: 700; }
-
-.altCheck {
-  flex-shrink: 0;
-  display: inline-flex;
-  color: var(--accent-text);
-}
-
-.altEmpty {
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text2);
-}
-.altEmpty svg { flex-shrink: 0; }
-
-/* ── Hover só em dispositivos com ponteiro (evita hover "preso" no iPad) ── */
 @media (hover: hover) {
   .close:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
   .btnPrimary:hover:not(:disabled) { background: var(--accent-hover); }
   .btnSecondary:hover:not(:disabled) { background: var(--surface-2); border-color: var(--text3); }
-  .btnGhost:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
-  label.row:hover { background: var(--surface-2); }
-  .dropZone:hover:not([aria-disabled="true"]) { background: var(--surface-2); border-color: var(--text3); }
-  .dropZone:hover:not([aria-disabled="true"]) .dropCta { background: var(--accent-hover); }
-  .dropZone.dropZoneOver:hover { background: var(--accent-soft); border-color: var(--accent); }
-  .iconBtn:hover { background: var(--surface-3); color: var(--text); }
-  .altRow:hover { background: var(--surface-3); }
-  .altRowActive:hover { background: var(--surface); }
+  .segment:hover:not(:disabled):not(.segmentOn) { color: var(--text); }
 }
 
 /* ── Telemóvel (≤640px): sheet a partir de baixo ── */
@@ -964,62 +295,23 @@ label.row:active { background: var(--surface-2); }
   }
   .modal {
     max-width: none;
-    max-height: 92vh;
-    max-height: 92dvh;
+    max-height: 94vh;
+    max-height: 94dvh;
     border-bottom: none;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
   .header { padding: 14px 8px 12px 16px; }
   .title { font-size: 24px; }
-  .strip,
-  .toolbar { padding-left: 16px; padding-right: 16px; }
-  .scroll { padding: 16px; }
+  .sub { font-size: 14px; }
+  .scroll { padding: 16px 16px 20px; }
   .footer {
     padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   }
-  .footer .btnPrimary { flex: 1 1 auto; padding: 0 16px; }
-  .footerStack {
-    flex-direction: column-reverse;
-    align-items: stretch;
-  }
-  .footerStack .btnPrimary { flex: none; }
-  .previewBar { padding: 8px 16px 8px 8px; }
-
-  .row { padding-left: 12px; }
-  .entryRow { padding: 12px; }
-  .row,
-  .entryRow { gap: 10px; }
-  .resultRow { padding-right: 6px; gap: 6px; }
-  .btnCompact { width: 44px; padding: 0; }
-  .btnText { display: none; }
-
-  .dropZone { min-height: 220px; padding: 28px 16px; }
-  .readoutCell { padding: 14px; }
-  .readoutNum { font-size: 36px; }
-  .alts { padding-left: 62px; padding-right: 6px; }
+  .footer .btnPrimary { flex: 1 1 auto; padding: 0 14px; }
+  .footer .btnSecondary { padding: 0 14px; }
 }
 
-/* ── Tablet (≥641px): corpo a 17px ── */
-@media (min-width: 641px) {
-  .songName,
-  .missedName,
-  .resultTitle { font-size: 17px; line-height: 24px; }
-  .entryRow .num,
-  .entryRow .checkbox,
-  .bulkRow .num,
-  .bulkRow .checkbox { margin-top: 1px; }
-  .matchTitle,
-  .bulkMatch,
-  .bulkNote,
-  .bulkAdded,
-  .resultArtist,
-  .previewArtist { font-size: 15px; }
-  .previewTitle { font-size: 18px; }
-  .chip { font-size: 11px; }
-  .lyricsText { font-size: 18px; }
-}
-
-/* ── Tablet paisagem / desktop (≥1024px) ── */
+/* ── Tablet paisagem / desktop ── */
 @media (min-width: 1024px) {
-  .modal { max-width: 720px; }
+  .modal { max-width: 760px; }
 }

@@ -56,15 +56,23 @@ function SAMPLE_LYRICS(title) {
 
 const BAND = { id: 'b1', name: 'Casamentos', color: '#7C3AED', image_url: null, owner_id: 'u1', invite_code: 'ABCD1234', created_at: '2026-01-01T00:00:00Z', member_count: 3, type: 'band' }
 
+// Estados pela data: HOJE (s4), AMANHÃ (s1), EM N DIAS / SEM (s2, s3), pessoal futuro (s7)
+// e dois REALIZADOS (s5, s6). O s1 continua a ser o concerto das outras capturas.
 const SETLISTS = [
   { id: 's1', name: 'Jantar', date: d(1), venue: 'Antes Perdida por Aqui Algures', status: 'preparing' },
   { id: 's2', name: 'Festa da Vila', date: d(7), venue: 'Largo do Rossio', status: 'draft' },
   { id: 's3', name: 'Bar do Cais — acústico', date: d(14), venue: 'Cascais', status: 'final' },
+  { id: 's4', name: 'Ensaio geral', date: d(0), venue: 'Estúdio 2', status: 'draft' },
+  { id: 's5', name: 'Aniversário do Rui', date: d(-12), venue: 'Quinta do Lago', status: 'final' },
+  { id: 's6', name: 'Festa de Natal', date: d(-40), venue: 'Clube Recreativo', status: 'draft' },
+  // Pessoal (sem projeto)
+  { id: 's7', name: 'Jam de sexta', date: d(30), venue: 'Sabotage Club', status: 'draft', band_id: null, is_shared: false, band: null, bands: null },
 ].map(s => ({
-  ...s, owner_id: 'u1', band_id: 'b1', is_shared: true, created_at: '2026-01-01T00:00:00Z',
+  owner_id: 'u1', band_id: 'b1', is_shared: true, created_at: '2026-01-01T00:00:00Z',
   band: { name: BAND.name, color: BAND.color },
   bands: { name: BAND.name, image_url: null, color: BAND.color, owner_id: 'u1' },
   setlist_songs: [{ count: s.id === 's1' ? SONGS.length : 8 }],
+  ...s,
 }))
 
 const SETLIST_SONGS = SONGS.map((song, i) => ({
@@ -132,10 +140,39 @@ function restResponse(route) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(wantsObject ? (out[0] ?? null) : out) })
 }
 
+// Rascunho do "Novo concerto" (sessionStorage): revisão de uma lista importada com linha
+// aproximada ("A CONFIRMAR"), momento de evento, repetida, secção ("SET 2") e uma linha de conversa ignorada
+const idleSearch = { state: 'idle', query: '', results: [] }
+const draftRow = (id, order, title, extra = {}) => ({ id, raw: title, title, artist: '', choice: null, search: idleSearch, order, ...extra })
+const NEW_CONCERT_DRAFT = {
+  v: 1, userId: 'u1', savedAt: Date.now() - 5 * 60000, mode: 'import', projectSet: false, project: null,
+  nameDraft: null, date: d(12), venue: 'Quinta da Ribeira',
+  file: {
+    rows: [
+      draftRow('d1', 1, 'A Thousand Years', { artist: 'Christina Perri', note: 'Entrada da noiva' }),
+      draftRow('d2', 2, 'ENGLISHMAN', { raw: '2. ENGLISHMAN (Em)', key: 'Em' }),
+      draftRow('d3', 4, 'Valerie'),
+      // Cabeçalho lido ("SET 2") → divisória mono na revisão
+      draftRow('d4', 5, 'Kiss', { section: 'SET 2' }),
+      draftRow('d5', 6, 'Valerie', { section: 'SET 2' }),
+    ],
+    source: { kind: 'text', name: 'Casamento Ana & Rui', meta: {} },
+    skipped: [{ order: 3, raw: 'Chegamos às 19h!', text: 'Chegamos às 19h!', reason: 'chat' }],
+    parsed: null,
+  },
+  list: null, listOrigin: null, copyExtras: true,
+}
+
 // ── Screenshots ─────────────────────────────────────────────────────────────
 const PAGES = [
-  ['palco', '/'],
   ['concertos', '/setlists'],
+  // Novo concerto: passo 1 (origens) e a pré-visualização de "copiar concerto"
+  ['novo-concerto', '/concertos/novo'],
+  ['novo-concerto-copiar', '/concertos/novo?copy=s1'],
+  // Vindo do Calendário num dia que já tem concerto: data visível + "Importar para esse"
+  ['novo-concerto-dia', `/concertos/novo?date=${d(1)}`],
+  // Revisão retomada de um rascunho (recarregar em ?passo=rever)
+  ['novo-concerto-rever', '/concertos/novo?passo=rever', { session: { 'gigio-new-concert-draft': JSON.stringify(NEW_CONCERT_DRAFT) } }],
   ['setlist', '/setlist/s1'],
   ['concerto-modo', '/setlist/s1/concert'],
   // 2.ª música do fixture tem sync — mostra espera/transporte/± linha
@@ -143,7 +180,7 @@ const PAGES = [
   ['repertorio', '/library'],
   ['pesquisa', '/search'],
   ['calendario', '/calendar'],
-  ['projetos', '/projects'],
+  ['projetos', '/'],
   ['dashboard', '/projects/b1'],
   ['musica', '/songs/sg1'],
   ['sync', '/songs/sg2/sync'],
@@ -190,7 +227,7 @@ for (const theme of THEMES) {
         const fullPage = !name.startsWith('concerto-') && name !== 'sync'
         // Numa captura de página inteira, barras position:fixed ficam desenhadas a meio
         // da página — pô-las em fluxo normal para aparecerem no fim, como ao fazer scroll.
-        const unfix = fullPage ? await page.addStyleTag({ content: '[class*="bottomNav"]{position:static!important}' }) : null
+        const unfix = fullPage ? await page.addStyleTag({ content: '[class*="bottomNav"],[class*="_actionBar_"]{position:static!important}' }) : null
         await page.screenshot({ path: path.join(OUT, `${name}--${vname}--${theme}.png`), fullPage })
         if (unfix) await unfix.evaluate(el => el.remove())
         console.log('ok', `${name}--${vname}--${theme}`)

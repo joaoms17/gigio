@@ -100,7 +100,7 @@ export default function ProjectPickerModal({ title, onPick, onClose, busy }: {
               <span className={styles.emptyIcon}><IconLayers /></span>
               <div className={styles.emptyTitle}>Ainda não tens projetos</div>
               <p className={styles.emptyText}>Cria um projeto primeiro para guardar setlists.</p>
-              <button type="button" className={styles.btnPrimary} onClick={() => navigate('/projects')}>
+              <button type="button" className={styles.btnPrimary} onClick={() => navigate('/')}>
                 Criar projeto
               </button>
             </div>
@@ -124,7 +124,7 @@ export default function ProjectPickerModal({ title, onPick, onClose, busy }: {
                   </button>
                 ))}
               </div>
-              <button type="button" className={styles.newProject} onClick={() => navigate('/projects')} disabled={busy}>
+              <button type="button" className={styles.newProject} onClick={() => navigate('/')} disabled={busy}>
                 <span className={styles.lead}><IconPlus /></span>
                 <span className={styles.newLabel}>Novo projeto</span>
               </button>

@@ -511,7 +511,7 @@ export default function SongPage() {
               ]
             : projectId
             ? [
-                { label: 'Projetos', to: '/projects' },
+                { label: 'Projetos', to: '/' },
                 { label: projectName ?? 'Projeto', to: `/projects/${projectId}` },
                 { label: 'Repertório', to: `/projects/${projectId}?tab=repertoire` },
                 { label: song.title || 'Música' },

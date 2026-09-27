@@ -5,7 +5,6 @@ import { ToastProvider } from './components/Toast'
 import { useAuth } from './hooks/useAuth'
 import Layout from './components/Layout'
 import AuthPage from './pages/auth/AuthPage'
-import PalcoPage from './pages/palco/PalcoPage'
 import CalendarPage from './pages/calendar/CalendarPage'
 import ProjectsPage from './pages/projects/ProjectsPage'
 import ProjectDashboardPage from './pages/projects/ProjectDashboardPage'
@@ -16,6 +15,7 @@ import InvitePage from './pages/invite/InvitePage'
 import ConcertPage from './pages/concert/ConcertPage'
 import LibraryPage from './pages/library/LibraryPage'
 import SetlistsPage from './pages/setlists/SetlistsPage'
+import NewConcertPage from './pages/newConcert/NewConcertPage'
 import SettingsPage from './pages/settings/SettingsPage'
 import SyncEditorPage from './pages/sync/SyncEditorPage'
 import './index.css'
@@ -34,16 +34,18 @@ function AppRoutes() {
 
       {/* Páginas com Layout — rota-pai partilhada para o Layout não remontar */}
       <Route element={<AuthGuard><Layout /></AuthGuard>}>
-        {/* Palco — landing após login: o próximo concerto em destaque */}
-        <Route path="/" element={<PalcoPage />} />
+        {/* Projetos — página inicial após login */}
+        <Route path="/" element={<ProjectsPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
 
         {/* Projetos */}
-        <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/projects" element={<Navigate to="/" replace />} />
         <Route path="/projects/:id" element={<ProjectDashboardPage />} />
 
         {/* Setlists */}
         <Route path="/setlists" element={<SetlistsPage />} />
+        {/* Novo concerto: importar lista / copiar concerto / repertório / vazio */}
+        <Route path="/concertos/novo" element={<NewConcertPage />} />
         <Route path="/setlist/:id" element={<SetlistPage />} />
 
         {/* Biblioteca pessoal */}

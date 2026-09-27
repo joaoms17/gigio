@@ -224,6 +224,11 @@
   box-shadow: inset 0 0 0 2px var(--text);
 }
 
+/* Dias passados com concertos: marcadores discretos (já aconteceram) */
+.cellPast .leds,
+.cellPast .names { opacity: 0.45; }
+.cellPast .nameText { font-weight: 500; }
+
 /* Eventos: quadrados-LED (≤1023) */
 .leds {
   display: flex;
@@ -502,9 +507,16 @@
   white-space: nowrap;
 }
 
-.rowPast .dateDay { color: var(--text3); }
-.dateToday,
-.rowPast .dateToday { color: var(--accent-text); }
+.dateToday { color: var(--accent-text); }
+
+/* Concerto realizado: a linha inteira esbate (continua tocável — abre o alinhamento) */
+.rowPast .dateBlock,
+.rowPast .info,
+.rowPast .chips {
+  opacity: 0.6;
+  transition: opacity 0.12s ease;
+}
+.rowPast .playBtn { color: var(--text3); }
 
 /* LED do projeto junto ao nome; a meta alinha com o texto do nome */
 .info {
@@ -545,7 +557,7 @@
 
 .metaBand { color: var(--text2); }
 
-/* Chips SEMPRE numa só linha (nunca empilham); em último caso o estado ganha elipse */
+/* Chips (quando? · pessoal) SEMPRE numa só linha (nunca empilham); em último caso ganham elipse */
 .chips {
   grid-area: chips;
   justify-self: end;
@@ -576,26 +588,33 @@
   text-overflow: ellipsis;
 }
 
-/* "Partilhada": texto em linhas largas; ícone (pessoas) em linhas estreitas */
-.chipShared {
-  position: relative;
-  flex-shrink: 0;
+/* Estado que a DATA diz (src/lib/concertWhen.ts):
+   HOJE = único destaque forte (acento cheio + LED a piscar) ·
+   AMANHÃ / EM N DIAS / EM N SEM = acento suave · REALIZADO / PESSOAL = neutro */
+.chip[data-when="today"] {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-}
-.sharedIcon {
-  display: none;
+  gap: 5px;
   flex-shrink: 0;
+  background: var(--accent);
+  color: var(--on-accent);
 }
-.chip[data-status="draft"],
-.chip[data-status="preparing"] {
-  background: var(--warn-soft);
-  color: var(--warn-fg);
+.chip[data-when="tomorrow"],
+.chip[data-when="soon"] {
+  flex-shrink: 0;
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
-.chip[data-status="final"] {
-  background: var(--success-soft);
-  color: var(--success-fg);
+
+/* LED quadrado do "HOJE" — pulso de "ao vivo" */
+.liveLed {
+  display: block;
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: currentColor;
+  animation: livePulse 1.6s infinite;
 }
 
 /* ▶ fantasma 44px → modo concerto (a linha inteira abre o alinhamento) */
@@ -639,6 +658,9 @@
   }
   .cell:hover { background: var(--surface-2); }
   .row:hover { background: var(--surface-2); }
+  .rowPast:hover .dateBlock,
+  .rowPast:hover .info,
+  .rowPast:hover .chips { opacity: 1; }
   .playBtn:hover {
     background: var(--surface-3);
     color: var(--text);
@@ -699,24 +721,6 @@
   .name { font-size: 17px; }
 }
 
-/* ── Linhas estreitas (< ~480px de conteúdo útil): PARTILHADA → ícone ──
-   Telemóvel, tablet retrato estreito (641–767, rail + gutters ≈ 500px de linha)
-   e coluna lateral ≥1024 (≈300–380px). Texto acessível (oculto) + title. */
-
-@media (max-width: 767px), (min-width: 1024px) {
-  .chipShared { padding: 3px 5px; }
-  .sharedIcon { display: block; }
-  .sharedText {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-}
-
 /* ── Telemóvel (≤640px) ────────────────────────────────────────── */
 
 @media (max-width: 640px) {
@@ -773,7 +777,7 @@
 @media (min-width: 1024px) {
   .body {
     display: grid;
-    /* ≥320px: estado mais longo (ALINHAMENTO FINAL) + ícone de partilha cabem numa linha */
+    /* ≥320px: chip mais longo (EM 13 DIAS) + PESSOAL cabem numa linha */
     grid-template-columns: minmax(0, 1fr) clamp(320px, 34%, 380px);
     align-items: start;
     gap: 24px;

@@ -450,7 +450,7 @@ export default function SearchPage() {
                 ]
               : projectId
               ? [
-                  { label: 'Projetos', to: '/projects' },
+                  { label: 'Projetos', to: '/' },
                   { label: projectName ?? 'Projeto', to: `/projects/${projectId}?tab=repertoire` },
                   { label: 'Adicionar música' },
                 ]

@@ -39,7 +39,7 @@ Aliases v1 (`--gig`, `--io`, `--amber`, `--bg2`, `--bg3`) existem só para compa
 ## 2. Tipografia
 
 ```css
-/* Título de página (destino de navegação: "CONCERTOS", "REPERTÓRIO", "PALCO") */
+/* Título de página (destino de navegação: "PROJETOS", "CONCERTOS", "REPERTÓRIO") */
 .pageTitle { font-family: var(--font-display); font-stretch: 75%; font-weight: 800;
   font-size: clamp(34px, 6vw, 52px); line-height: 0.95; text-transform: uppercase; letter-spacing: -0.005em; }
 
@@ -138,6 +138,8 @@ título `.entityTitle` a 24–28px; botão fechar 44×44 fantasma com ✕ SVG.
    remapeia a paleta v1 guardada nos dados. Tema de concerto: `normalizeConcertTheme()` (`src/lib/concertTheme.ts`).
 
 ## 5. Navegação
+
+Secções: **Projetos** (página inicial, `/`) · **Concertos** (inclui calendário e `/concertos/novo`) · **Repertório**.
 
 - Rail (≥641px): fundo `--surface`, hairline à direita; itens 76×64 com ícone SVG + rótulo mono 10px uppercase;
   ativo = texto `--text` + barra vertical 3px `--accent` à esquerda do item. Marca no topo: `<BrandMark size={40} />`.

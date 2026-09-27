@@ -27,12 +27,6 @@ const ICON_PROPS = {
 }
 
 const ICONS = {
-  palco: (
-    <svg {...ICON_PROPS}>
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="M10 8.5v7l6-3.5z" />
-    </svg>
-  ),
   concertos: (
     <svg {...ICON_PROPS}>
       <rect x="3" y="5" width="18" height="16" rx="2" />
@@ -68,13 +62,12 @@ function matchesSection(path: string, prefixes: string[]) {
   )
 }
 
-type SectionKey = 'palco' | 'concertos' | 'repertorio' | 'projetos'
+type SectionKey = 'projetos' | 'concertos' | 'repertorio'
 
 const NAV_ITEMS: { key: SectionKey; to: string; icon: React.ReactNode; label: string; match: string[] }[] = [
-  { key: 'palco', to: '/', icon: ICONS.palco, label: 'Palco', match: [] },
-  { key: 'concertos', to: '/setlists', icon: ICONS.concertos, label: 'Concertos', match: ['/setlists', '/setlist/', '/calendar'] },
+  { key: 'projetos', to: '/', icon: ICONS.projetos, label: 'Projetos', match: ['/projects'] },
+  { key: 'concertos', to: '/setlists', icon: ICONS.concertos, label: 'Concertos', match: ['/setlists', '/setlist/', '/calendar', '/concertos/'] },
   { key: 'repertorio', to: '/library', icon: ICONS.repertorio, label: 'Repertório', match: ['/library', '/songs/', '/search'] },
-  { key: 'projetos', to: '/projects', icon: ICONS.projetos, label: 'Projetos', match: ['/projects'] },
 ]
 
 /* Secção ativa da navegação. Música (/songs/:id) e Procurar (/search) são
@@ -82,13 +75,13 @@ const NAV_ITEMS: { key: SectionKey; to: string; icon: React.ReactNode; label: st
    ?project= → Projetos), tal como a raiz das breadcrumbs dessas páginas — o item
    aceso no rail/tab bar e a 1.ª breadcrumb dizem sempre o mesmo. */
 function activeSection(pathname: string, search: string): SectionKey | null {
-  if (pathname === '/') return 'palco'
+  if (pathname === '/') return 'projetos'
   if (pathname.startsWith('/songs/') || pathname === '/search') {
     const q = new URLSearchParams(search)
     if (q.get('setlist')) return 'concertos'
     if (q.get('project')) return 'projetos'
   }
-  return NAV_ITEMS.find(item => item.key !== 'palco' && matchesSection(pathname, item.match))?.key ?? null
+  return NAV_ITEMS.find(item => matchesSection(pathname, item.match))?.key ?? null
 }
 
 /* Partilhado com as páginas via <Outlet context>: as Breadcrumbs alinham a raiz
@@ -154,7 +147,7 @@ export default function Layout({ children }: Props) {
           o conteúdo interno fica colado ao viewport. */}
       <aside className={styles.rail}>
         <div className={styles.railInner}>
-          <Link to="/" className={styles.brand} aria-label="gigio — Palco">
+          <Link to="/" className={styles.brand} aria-label="gigio — Projetos">
             <BrandMark size={40} />
           </Link>
 
