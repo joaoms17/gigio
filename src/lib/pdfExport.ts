@@ -27,7 +27,7 @@ function esc(s: string): string {
  * bloqueado — o chamador deve avisar o utilizador e permitir tentar de novo.
  */
 export function exportSongsPdf(songs: PdfSongItem[], opts: PdfExportOptions): boolean {
-  const accent = opts.accent ?? '#FF4D6D'
+  const accent = opts.accent ?? '#FF5B14'
   const logoBlock = opts.logoUrl
     ? `<img class="logo" src="${esc(opts.logoUrl)}" alt="" />`
     : opts.logoInitial
@@ -69,7 +69,7 @@ export function exportSongsPdf(songs: PdfSongItem[], opts: PdfExportOptions): bo
           font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
           padding: 9px 20px; border-radius: 10px; border: 1px solid #ccc; background: #f5f5f5;
         }
-        .toolbar .print { background: ${accent}; border-color: ${accent}; color: #fff; }
+        .toolbar .print { background: #111; border-color: #111; color: #fff; }
         .header {
           padding: 14px 0 10px;
           display: flex; align-items: center; justify-content: center; gap: 16px;
