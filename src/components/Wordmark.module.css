@@ -1,0 +1,47 @@
+.wm {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: var(--font-display);
+  font-stretch: 75%;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* "ı" sem ponto + LED quadrado no acento no lugar do ponto */
+.i {
+  position: relative;
+  display: inline-block;
+}
+.i::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0.06em;
+  width: 0.17em;
+  height: 0.17em;
+  transform: translateX(-50%);
+  background: var(--accent);
+}
+
+/* Tile do símbolo: tinta com letras claras (claro) / invertido (escuro) */
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--text);
+  color: var(--bg);
+  font-family: var(--font-display);
+  font-stretch: 75%;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+.markInner {
+  display: inline-flex;
+  align-items: baseline;
+  transform: translateY(-0.04em);
+}
