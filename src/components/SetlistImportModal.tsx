@@ -7,7 +7,7 @@
      SUBSTITUIR O ALINHAMENTO pela ordem nova (as que ficam mantêm o
      tom/notas do concerto).
 ═══════════════════════════════════════════════════════════════ */
-import { useCallback, useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useToast } from './Toast'
 import { useConfirm } from './ConfirmDialog'
@@ -16,7 +16,7 @@ import ImportReview from './import/ImportReview'
 import { useSetlistImport } from './import/useSetlistImport'
 import { useOnline } from './import/useOnline'
 import { insertSetlistSongs, replaceSetlistSongs, toSetlistInserts } from '../lib/setlistImport/commit'
-import { importErrorMessage } from '../lib/setlistImport/errors'
+import { importErrorMessage, isAbort } from '../lib/setlistImport/errors'
 import { pad2 } from '../lib/setlistImport/text'
 import { IconArrowLeft, IconCheck, IconClose, IconRetry } from './import/icons'
 import styles from './SetlistImportModal.module.css'
@@ -47,6 +47,14 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
   const [saving, setSaving] = useState(false)
   const [mode, setMode] = useState<Mode>('append')
   const [skipExisting, setSkipExisting] = useState(true)
+  /** Gravação em curso (guarda síncrona contra um 2.º toque) */
+  const inFlight = useRef(false)
+  /** O modal ainda está montado (a página pode ter mudado a meio da gravação) */
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
 
   // Músicas que já estão no concerto (para marcar "JÁ NO CONCERTO" e não as repetir)
   useEffect(() => {
@@ -111,7 +119,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
   }
 
   async function handleAdd() {
-    if (total === 0 || working || !existingSet) return
+    if (total === 0 || working || inFlight.current || !existingSet) return
     if (effectiveMode === 'replace') {
       const ok = await confirm({
         title: 'Substituir o alinhamento?',
@@ -119,8 +127,9 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
         confirmLabel: 'Substituir',
         danger: true,
       })
-      if (!ok) return
+      if (!ok || inFlight.current) return
     }
+    inFlight.current = true
     setSaving(true)
     try {
       const result = await importer.commit()
@@ -130,7 +139,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
         toast(result.failed > 0 ? 'Nenhuma música foi adicionada — tenta de novo.' : 'Nada a adicionar: essas músicas já estão no concerto.', {
           type: result.failed > 0 ? 'error' : 'success',
         })
-        if (result.failed === 0) onImported()
+        if (result.failed === 0 && mounted.current) onImported()
         return
       }
       const { error } = effectiveMode === 'replace'
@@ -152,10 +161,14 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
       } else {
         toast(msg, { type: 'success' })
       }
-      onImported()
+      // Saiu da página a meio: fica o aviso, mas não se abre o concerto por cima de onde está agora
+      if (mounted.current) onImported()
     } catch (e) {
+      // Cancelada por ter saído da página: nada foi adicionado e não há nada a dizer
+      if (isAbort(e) && !mounted.current) return
       toast(importErrorMessage(e, 'Não foi possível adicionar as músicas.'), { type: 'error' })
     } finally {
+      inFlight.current = false
       setSaving(false)
     }
   }
@@ -262,6 +275,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
                 existingSongIds={existingSet ?? undefined}
                 skipExisting={effectiveMode === 'append' && skipExisting}
                 top={modeControls}
+                disabled={working}
               />
             )
             : <ImportSource importer={importer} />}

@@ -19,6 +19,8 @@ export interface ReviewStepProps {
   sourceText: string | null
   /** Aviso quando a lista vem de outro projeto */
   crossNote: string | null
+  /** Aviso sobre a lista copiada (ex.: músicas do concerto original que não estão visíveis) */
+  lineupNote?: string | null
   name: string
   onName: (v: string) => void
   /** Nome usado se o campo ficar vazio (título lido, local/projeto + data…) */
@@ -39,7 +41,7 @@ export interface ReviewStepProps {
 }
 
 export default function ReviewStep({
-  mode, importer, sourceText, crossNote, name, onName, namePlaceholder, nameRef,
+  mode, importer, sourceText, crossNote, lineupNote, name, onName, namePlaceholder, nameRef,
   date, onDate, venue, onVenue, disabled, isPersonal, copyExtras, onCopyExtras, notice,
 }: ReviewStepProps) {
   const uid = useId()
@@ -91,6 +93,7 @@ export default function ReviewStep({
         </h2>
         {sourceText && <p className={styles.sourceLine}>{sourceText}</p>}
         {crossNote && <p className={styles.note}>{crossNote}</p>}
+        {lineupNote && <p className={styles.note} role="status">{lineupNote}</p>}
         {mode === 'copy' && onCopyExtras && (
           <label className={styles.toggle}>
             <input type="checkbox" checked={!!copyExtras} onChange={e => onCopyExtras(e.target.checked)} disabled={disabled} />
@@ -99,9 +102,9 @@ export default function ReviewStep({
           </label>
         )}
 
-        {mode === 'import' && importer && <ImportReview importer={importer} />}
+        {mode === 'import' && importer && <ImportReview importer={importer} disabled={disabled} />}
         {(mode === 'copy' || mode === 'library') && importer && (
-          <SongListReview importer={importer} showStatus={!!crossNote} />
+          <SongListReview importer={importer} showStatus={!!crossNote} disabled={disabled} />
         )}
         {mode === 'empty' && (
           <div className={styles.emptyPanel}>

@@ -16,15 +16,16 @@ export { parseSetlist, parseSetlistText, forceEntry, looksLikeParallelColumns, p
 export type { ParsedSong, SetlistTextEntry, ParseOptions, SetlistParse, SkippedLine, SkipReason, SetlistDocMeta } from './parse'
 export { normalizeTitle, matchKey, titleSimilarity, artistSimilarity, smartCase, pad2 } from './text'
 export {
-  findLibraryMatch, matchLibrary, rankLibrary, rankResults, scoreResult, resultSourceLabel, searchQueryFor,
-  AUTO_PICK_SCORE, CONFIDENT_SCORE, LOOSE_LIBRARY_SCORE,
+  findLibraryMatch, matchLibrary, libraryMatchForResult, rankLibrary, rankResults, scoreResult, resultSourceLabel,
+  searchQueryFor, AUTO_PICK_SCORE, CONFIDENT_SCORE, LOOSE_LIBRARY_SCORE,
 } from './match'
 export type { SongQuery, RankedResult, LibraryCandidate, LibraryMatch } from './match'
 export { pairTitleArtist, mergeScreens, arrangeColumns, wordsToCells } from './layout'
 export type { OcrLine, Cell, CellRow } from './layout'
 export {
-  entriesToRows, songsToRows, rowQuery, rowStatus, countRows, isUncertain, autoOnlineChoice,
-  setlistFieldsFor, medleyPosition, newRowId, insertIndexFor, markRepeats, ROW_STATUS_LABEL,
+  entriesToRows, songsToRows, rowQuery, rowStatus, countRows, isUncertain, autoOnlineChoice, autoChoiceFor,
+  preferLibrary, newSongKey, reusableSongId, setlistFieldsFor, medleyPosition, newRowId, insertIndexFor,
+  markRepeats, ROW_STATUS_LABEL,
 } from './rows'
 export { searchOnline, createResolver } from './resolve'
 export type { OnlineOutcome, Resolver } from './resolve'

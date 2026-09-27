@@ -71,17 +71,19 @@ export async function createSongFromResult(
     edited_lyrics: lyrics,
     source: result.source === 'lrclib' ? 'lrclib' : 'manual',
     source_provider: lyrics ? fetched.provider : 'manual',
-    has_sync: !!lines,
+    // Só passa a true DEPOIS de a sync estar gravada (uma falha a meio nunca deixa
+    // has_sync=true sem linha em lyric_syncs)
+    has_sync: false,
     duration_sec: result.duration_sec ? Math.round(result.duration_sec) : null,
   }).select().single()
   if (error) throw error
   if (!song) throw new Error('A música não foi criada.')
   if (lines) {
-    const { error: syncErr } = await supabase.from('lyric_syncs').insert({ song_id: song.id, lines })
-    if (syncErr && song.has_sync) {
-      // Sem sync gravada, a música não pode dizer que a tem
-      await supabase.from('songs').update({ has_sync: false }).eq('id', song.id)
-      return { ...song, has_sync: false } as Song
+    const { error: syncErr } = await supabase.from('lyric_syncs').upsert({ song_id: song.id, lines }, { onConflict: 'song_id' })
+    if (!syncErr) {
+      const { error: flagErr } = await supabase.from('songs').update({ has_sync: true }).eq('id', song.id)
+      // A sync ficou gravada mas a marca não: a música fica "sem sync" (a sync pode refazer-se)
+      if (!flagErr) return { ...song, has_sync: true } as Song
     }
   }
   return song as Song

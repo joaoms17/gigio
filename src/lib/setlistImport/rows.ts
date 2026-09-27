@@ -3,7 +3,7 @@
    repertório, estado visível, contagens. PURO.
 ═══════════════════════════════════════════════════════════════ */
 import type { SetlistTextEntry } from './parse'
-import { AUTO_PICK_SCORE, CONFIDENT_SCORE, type RankedResult, type SongQuery } from './match'
+import { AUTO_PICK_SCORE, CONFIDENT_SCORE, libraryMatchForResult, type RankedResult, type SongQuery } from './match'
 import { normalizeTitle } from './text'
 import type { ImportCounts, ImportRow, LibrarySong, RowChoice, RowStatus, SetlistSongExtra } from './types'
 
@@ -76,6 +76,47 @@ export function autoOnlineChoice(results: readonly RankedResult[]): RowChoice | 
   const best = results[0]
   if (!best || best.score < AUTO_PICK_SCORE) return null
   return { kind: 'online', result: best.result, score: best.score, auto: true }
+}
+
+/**
+ * Uma escolha AUTOMÁTICA online que aponta para uma música que já está no repertório passa a
+ * ser essa música do repertório (a da banda, com a letra/tom dela — não uma cópia nova).
+ * "A confirmar" quando a correspondência é aproximada ou o resultado online era incerto.
+ * Escolhas manuais ficam como estão.
+ */
+export function preferLibrary(choice: RowChoice | null, library: readonly LibrarySong[]): RowChoice | null {
+  if (choice?.kind !== 'online' || !choice.auto) return choice
+  const m = libraryMatchForResult(choice.result, library)
+  if (!m) return choice
+  return m.loose || choice.score < CONFIDENT_SCORE
+    ? { kind: 'library', song: m.song, auto: true, loose: true }
+    : { kind: 'library', song: m.song, auto: true }
+}
+
+/** Escolha automática a partir dos resultados, preferindo o repertório (ver `preferLibrary`). */
+export function autoChoiceFor(results: readonly RankedResult[], library: readonly LibrarySong[]): RowChoice | null {
+  return preferLibrary(autoOnlineChoice(results), library)
+}
+
+/**
+ * Chave da música NOVA que a linha pede: a mesma música duas vezes na lista (reprise no
+ * encore) é criada uma só vez. Online = o mesmo resultado; sem letra = o mesmo título+artista.
+ * null = linha do repertório (não cria nada).
+ */
+export function newSongKey(row: ImportRow): string | null {
+  const c = row.choice
+  if (c?.kind === 'library') return null
+  if (c?.kind === 'online') return `online:${c.result.source}:${c.result.external_id}`
+  const title = normalizeTitle(row.title)
+  return title ? `empty:${title}::${normalizeTitle(row.artist)}` : `row:${row.id}`
+}
+
+/**
+ * `songId` de uma gravação anterior que ainda vale: só no MESMO projeto (mudar o PARA depois
+ * de uma falha não arrasta para o concerto músicas criadas noutra banda).
+ */
+export function reusableSongId(row: ImportRow, projectId: string | null): string | null {
+  return row.songId && row.songProject === (projectId ?? null) ? row.songId : null
 }
 
 /**

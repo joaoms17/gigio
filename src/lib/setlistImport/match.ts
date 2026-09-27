@@ -155,6 +155,22 @@ export function matchLibrary<T extends LibraryCandidate>(q: SongQuery, library: 
   return best && bestScore >= LOOSE_LIBRARY_SCORE ? { song: best, loose: true } : null
 }
 
+/**
+ * O resultado online escolhido é, afinal, uma música do repertório? ("Rolling in deep" não casa
+ * com o repertório, mas o LRCLIB devolve "Rolling in the Deep — Adele", que a banda já tem.)
+ * Usa-se então a do repertório — nunca se cria uma cópia. Recusa quando o artista é claramente outro.
+ */
+export function libraryMatchForResult<T extends LibraryCandidate>(
+  result: Pick<SearchResult, 'title' | 'artist'>,
+  library: readonly T[],
+): LibraryMatch<T> | null {
+  if (library.length === 0 || !normalizeTitle(result.title)) return null
+  const m = matchLibrary({ title: result.title, artist: result.artist || undefined }, library)
+  if (!m) return null
+  if (result.artist && m.song.artist && artistSimilarity(result.artist, m.song.artist) < 40) return null
+  return m
+}
+
 /** Repertório ordenado por semelhança com um texto livre (seletor "trocar correspondência"). */
 export function rankLibrary<T extends LibraryCandidate>(query: string, library: readonly T[], limit = 8): T[] {
   const q = normalizeTitle(query)

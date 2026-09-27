@@ -12,14 +12,14 @@ import {
 } from '../../lib/setlistImport/parse'
 import { matchLibrary, rankResults, searchQueryFor, type RankedResult } from '../../lib/setlistImport/match'
 import {
-  autoOnlineChoice, countRows, entriesToRows, insertIndexFor, markRepeats, rowQuery, songsToRows,
+  autoChoiceFor, countRows, entriesToRows, insertIndexFor, markRepeats, preferLibrary, rowQuery, songsToRows,
 } from '../../lib/setlistImport/rows'
 import { createResolver, type OnlineOutcome, type Resolver } from '../../lib/setlistImport/resolve'
 import {
   fileBaseName, fileKind, readImages, readPdf, readTextFile, sourcePreview, type SourceText,
 } from '../../lib/setlistImport/sources'
 import { commitRows, summarizeCommit } from '../../lib/setlistImport/commit'
-import { ImportError, humanizeError, importErrorMessage, isAbort } from '../../lib/setlistImport/errors'
+import { ImportError, abortError, humanizeError, importErrorMessage, isAbort } from '../../lib/setlistImport/errors'
 import type {
   CommitProgress, ImportCommitResult, ImportCounts, ImportProgress, ImportRow, ImportSourceKind,
   LibrarySong, RowChoice, SetlistSongExtra,
@@ -205,6 +205,14 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
   const libErrRef = useRef(libErr)
   const autoRef = useRef(autoResolve)
   const sourceCtrl = useRef<AbortController | null>(null)
+  /**
+   * Geração da lista: sobe quando a lista é substituída/descartada por outra via (reset, restore,
+   * texto colado, músicas do repertório) ou quando começa outra leitura. Uma leitura
+   * (ou miniatura) que termine depois disso é ignorada — nunca substitui a lista em revisão.
+   */
+  const srcGen = useRef(0)
+  const committingRef = useRef(false)
+  const disposedRef = useRef(false)
   const previewsRef = useRef<string[]>([])
   useLayoutEffect(() => {
     libKeyRef.current = libKey
@@ -237,12 +245,14 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
         patchRow(id, r => (r.search.query === query ? { ...r, search: { ...r.search, state: 'searching' } } : r))
       },
       onDone(id, query, outcome: OnlineOutcome) {
+        // Repertório carregado (para não criar de novo uma música que a banda já tem com outro nome)
+        const songs = libKeyRef.current && libRef.current.key === libKeyRef.current ? libRef.current.songs : []
         patchRow(id, r => {
           if (r.search.query !== query) return r
           if (outcome.status === 'offline') return { ...r, search: { ...r.search, state: 'offline', results: [] } }
           const q = r.search.custom ? { title: query } : rowQuery(r)
           const results = rankResults(q, outcome.results)
-          const choice = r.choice ?? autoOnlineChoice(results)
+          const choice = r.choice ?? autoChoiceFor(results, songs)
           return { ...r, choice, search: { ...r.search, state: 'done', results } }
         })
       },
@@ -260,6 +270,39 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
   }, [patchRow, resolver])
 
   /**
+   * Aplica o repertório a UMA linha (ver `applyLibrary`). `toSearch` recebe as linhas que
+   * precisam de pesquisa online.
+   */
+  const reapplyRow = useCallback((r: ImportRow, songs: readonly LibrarySong[], ids: ReadonlySet<string>, toSearch: string[]): ImportRow => {
+    const c = r.choice
+    if (c?.kind === 'empty') return r
+    if (c?.kind === 'online' && !c.auto) return r
+    if (c?.kind === 'library' && !c.auto && ids.has(c.song.id)) return r
+    const m = matchLibrary(rowQuery(r), songs)
+    if (m) {
+      if (c?.kind === 'library' && c.song.id === m.song.id && !!c.loose === m.loose && c.auto) return r
+      resolver.cancel(r.id)
+      const search = r.search.state === 'queued' || r.search.state === 'searching' ? { ...r.search, state: 'idle' as const } : r.search
+      return { ...r, choice: libraryChoice(m.song, m.loose), search, songId: undefined, songProject: undefined }
+    }
+    if (c?.kind === 'library') {
+      // Escolhida através do resultado online ("Rolling in deep" → "Rolling in the Deep"): continua cá
+      if (c.auto && ids.has(c.song.id)) return r
+      // Deixou de estar no repertório (mudou o projeto)
+      if (r.search.state === 'done') return { ...r, choice: autoChoiceFor(r.search.results, songs), songId: undefined, songProject: undefined }
+      if (r.search.state === 'idle' || r.search.state === 'offline') toSearch.push(r.id)
+      return { ...r, choice: null, songId: undefined, songProject: undefined }
+    }
+    if (c?.kind === 'online') {
+      // Escolha automática online de uma música que, afinal, está no repertório
+      const lib = preferLibrary(c, songs)
+      return lib === c ? r : { ...r, choice: lib, songId: undefined, songProject: undefined }
+    }
+    if (!c && r.search.state === 'idle') toSearch.push(r.id)
+    return r
+  }, [resolver])
+
+  /**
    * Aplica o repertório às linhas: as automáticas voltam a ser procuradas, e uma escolha
    * manual de uma música que NÃO está neste repertório (mudou o PARA, cópia de outra banda)
    * também — o concerto nunca fica com músicas de outro projeto. Põe na fila as que
@@ -268,29 +311,9 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
   const applyLibrary = useCallback((songs: LibrarySong[]) => {
     const ids = new Set(songs.map(s => s.id))
     const toSearch: string[] = []
-    updateRows(prev => prev.map(r => {
-      const c = r.choice
-      if (c?.kind === 'empty') return r
-      if (c?.kind === 'online' && !c.auto) return r
-      if (c?.kind === 'library' && !c.auto && ids.has(c.song.id)) return r
-      const m = matchLibrary(rowQuery(r), songs)
-      if (m) {
-        if (c?.kind === 'library' && c.song.id === m.song.id && !!c.loose === m.loose && c.auto) return r
-        resolver.cancel(r.id)
-        const search = r.search.state === 'queued' || r.search.state === 'searching' ? { ...r.search, state: 'idle' as const } : r.search
-        return { ...r, choice: libraryChoice(m.song, m.loose), search, songId: undefined }
-      }
-      if (c?.kind === 'library') {
-        // Deixou de estar no repertório (mudou o projeto)
-        if (r.search.state === 'done') return { ...r, choice: autoOnlineChoice(r.search.results), songId: undefined }
-        if (r.search.state === 'idle' || r.search.state === 'offline') toSearch.push(r.id)
-        return { ...r, choice: null, songId: undefined }
-      }
-      if (!c && r.search.state === 'idle') toSearch.push(r.id)
-      return r
-    }))
+    updateRows(prev => prev.map(r => reapplyRow(r, songs, ids, toSearch)))
     if (autoRef.current) toSearch.forEach(id => queueSearch(id))
-  }, [updateRows, resolver, queueSearch])
+  }, [updateRows, reapplyRow, queueSearch])
 
   // Carregar o repertório (projeto ou pessoal) e re-aplicar às linhas. Uma falha de rede
   // NÃO conta como "repertório vazio" (senão tudo seria criado em duplicado).
@@ -325,9 +348,10 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
   }, [])
 
   const retryOfflineRef = useRef<() => void>(() => {})
-  // A rede voltou / a app voltou ao ecrã: repetir o que falhou
+  // A rede voltou / a app voltou ao ecrã: repetir o que falhou (não a meio de uma gravação)
   useEffect(() => {
     function onBack() {
+      if (committingRef.current) return
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       const err = libErrRef.current
@@ -342,12 +366,16 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     }
   }, [reloadLibrary])
 
-  // Ao desmontar: parar leituras e pesquisas, libertar miniaturas
-  useEffect(() => () => {
-    sourceCtrl.current?.abort()
-    resolver.cancelAll()
-    previewsRef.current.forEach(u => URL.revokeObjectURL(u))
-    previewsRef.current = []
+  // Ao desmontar: parar leituras e pesquisas, libertar miniaturas (e as que ainda cheguem depois)
+  useEffect(() => {
+    disposedRef.current = false
+    return () => {
+      disposedRef.current = true
+      sourceCtrl.current?.abort()
+      resolver.cancelAll()
+      previewsRef.current.forEach(u => URL.revokeObjectURL(u))
+      previewsRef.current = []
+    }
   }, [resolver])
 
   const libReady = useCallback(() => !!libKeyRef.current && libRef.current.key === libKeyRef.current, [])
@@ -394,11 +422,15 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     sourceCtrl.current?.abort()
     const ctrl = new AbortController()
     sourceCtrl.current = ctrl
+    const gen = ++srcGen.current
+    /** Esta leitura ainda conta (não foi cancelada nem ultrapassada por outra lista) */
+    const live = () => !ctrl.signal.aborted && srcGen.current === gen
     setError(null)
     setBusy({ label: kind === 'pdf' ? 'A ler o PDF…' : kind === 'image' ? 'A preparar a imagem…' : 'A ler…', progress: null })
     try {
-      const { text, ocr, image, heading } = await read(ctrl.signal, p => { if (!ctrl.signal.aborted) setBusy(p) })
-      if (ctrl.signal.aborted) return false
+      const { text, ocr, image, heading } = await read(ctrl.signal, p => { if (live()) setBusy(p) })
+      // Cancelada, outra lista entrou entretanto, ou a gravação já começou: não mexe na lista em revisão
+      if (!live() || committingRef.current) return false
       const ok = ingestText(text, { ocr, image }, meta => ({ kind, name: pickName(meta, heading, fileName), meta }))
       if (!ok) { setError(EMPTY_MESSAGES[kind]); return false }
       // Miniatura da fonte para a revisão (em segundo plano)
@@ -407,13 +439,14 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
       else if (kind === 'pdf' && files[0]) {
         void sourcePreview(files[0]).then(url => {
           if (!url) return
-          if (sourceCtrl.current && sourceCtrl.current !== ctrl) { URL.revokeObjectURL(url); return }
+          // Outra lista entretanto, ou já desmontou → não é desta revisão (e não fica por revogar)
+          if (srcGen.current !== gen || disposedRef.current) { URL.revokeObjectURL(url); return }
           replacePreviews([url])
         })
       }
       return true
     } catch (e) {
-      if (ctrl.signal.aborted || isAbort(e)) return false
+      if (!live() || isAbort(e)) return false
       setError(importErrorMessage(e))
       return false
     } finally {
@@ -424,6 +457,14 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     }
   }, [ingestText, replacePreviews])
 
+  /** A lista vai ser substituída por outra via: a leitura em curso (e a sua miniatura) deixa de contar. */
+  const supersedeSource = useCallback(() => {
+    srcGen.current++
+    sourceCtrl.current?.abort()
+    sourceCtrl.current = null
+    setBusy(null)
+  }, [])
+
   const importPdf = useCallback((file: File) =>
     runSource('pdf', fileBaseName(file.name), (signal, onProgress) => readPdf(file, { signal, onProgress }), [file]), [runSource])
 
@@ -432,11 +473,13 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
       (signal, onProgress) => readImages(files, { signal, onProgress }), files), [runSource])
 
   const importText = useCallback((text: string, name: string | null = null) => {
+    if (committingRef.current) return false
     const ok = ingestText(text, {}, meta => ({ kind: 'text', name: name ?? (meta.title ? tidyTitle(meta.title) || null : null), meta }))
     if (!ok) { setError(EMPTY_MESSAGES.text); return false }
+    supersedeSource()
     replacePreviews([])
     return true
-  }, [ingestText, replacePreviews])
+  }, [ingestText, replacePreviews, supersedeSource])
 
   const importFiles = useCallback(async (list: File[] | FileList): Promise<boolean> => {
     const files = Array.from(list)
@@ -452,12 +495,13 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
   }, [importPdf, importImages, runSource])
 
   const loadSongs = useCallback((items: readonly { song: LibrarySong; extra?: SetlistSongExtra; sourceExtra?: SetlistSongExtra }[], info?: ImportSourceInfo) => {
+    supersedeSource()
     setParsed(null)
     setSkipped([])
     setSuggestion(null)
     replacePreviews([])
     ingest(songsToRows(items), info ?? { kind: 'library', name: null })
-  }, [ingest, replacePreviews])
+  }, [ingest, replacePreviews, supersedeSource])
 
   const cancelSource = useCallback(() => {
     sourceCtrl.current?.abort()
@@ -508,11 +552,20 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
 
   const undoRemove = useCallback(() => {
     if (!lastRemoved) return
-    const { row, index } = lastRemoved
+    const { index } = lastRemoved
+    let { row } = lastRemoved
+    // O repertório pode ter mudado entretanto (mudou o PARA): a linha reposta segue o atual
+    const toSearch: string[] = []
+    if (libReady()) {
+      const songs = libRef.current.songs
+      row = reapplyRow(row, songs, new Set(songs.map(s => s.id)), toSearch)
+    }
     updateRows(prev => [...prev.slice(0, index), row, ...prev.slice(index)])
     setLastRemoved(null)
-    if (!row.choice && (row.search.state === 'queued' || row.search.state === 'searching')) queueSearch(row.id)
-  }, [lastRemoved, updateRows, queueSearch])
+    // Estava a ser procurada quando saiu (a pesquisa foi cancelada), ou precisa agora de pesquisa
+    const resume = row.search.state === 'queued' || row.search.state === 'searching'
+    if (!row.choice && (resume || (autoRef.current && toSearch.includes(row.id)))) queueSearch(row.id)
+  }, [lastRemoved, updateRows, queueSearch, reapplyRow, libReady])
 
   const moveTo = useCallback((id: string, index: number) => {
     updateRows(prev => {
@@ -570,6 +623,8 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
   }, [queueSearch])
 
   const retryOffline = useCallback(() => {
+    // A meio de uma gravação a lista já foi tirada: novas escolhas não entravam (e baralhavam o resultado)
+    if (committingRef.current) return
     rowsRef.current.filter(r => r.search.state === 'offline').forEach(r => retry(r.id))
   }, [retry])
   useLayoutEffect(() => { retryOfflineRef.current = retryOffline }, [retryOffline])
@@ -616,20 +671,18 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
   }, [updateRows])
 
   const reset = useCallback(() => {
-    sourceCtrl.current?.abort()
-    sourceCtrl.current = null
+    supersedeSource()
     resolver.cancelAll()
     setRows([])
     setLastRemoved(null)
     setSource(null)
-    setBusy(null)
     setError(null)
     setSkipped([])
     setParsed(null)
     setSuggestion(null)
     replacePreviews([])
     setPhase('source')
-  }, [resolver, setRows, replacePreviews])
+  }, [resolver, setRows, replacePreviews, supersedeSource])
 
   /* ── Rascunho ── */
   const snapshot = useCallback((): ImporterSnapshot => ({
@@ -641,6 +694,8 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
   }), [source, skipped, parsed])
 
   const restore = useCallback((snap: ImporterSnapshot) => {
+    // Uma leitura (PDF/foto) ainda em curso não pode, ao terminar, substituir a lista retomada
+    supersedeSource()
     resolver.cancelAll()
     setRows(snap.rows.map(r => ({ ...r, search: idle() })))
     setSource(snap.source)
@@ -652,11 +707,13 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     replacePreviews([])
     setPhase(snap.rows.length ? 'review' : 'source')
     if (libReady()) applyLibrary(libRef.current.songs)
-  }, [resolver, setRows, replacePreviews, applyLibrary, libReady])
+  }, [resolver, setRows, replacePreviews, applyLibrary, libReady, supersedeSource])
 
   /* ── Gravar ── */
   const commit = useCallback(async (): Promise<ImportCommitResult> => {
     if (!userId) throw new ImportError('unreadable', 'A sessão terminou — entra de novo para gravar.')
+    if (committingRef.current) throw new ImportError('unreadable', 'A gravação já está a decorrer.')
+    committingRef.current = true
     setCommitting(true)
     try {
       // 1. O repertório tem de estar carregado (senão tudo seria criado em duplicado)
@@ -664,6 +721,7 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
         setCommitProgress({ phase: 'resolving', done: 0, total: rowsRef.current.length, current: 'A carregar o repertório…' })
         const t0 = Date.now()
         while (!libReady()) {
+          if (disposedRef.current) throw abortError()
           const err = libErrRef.current
           if (err && err.key === libKeyRef.current) throw new ImportError('offline', `Não foi possível carregar o repertório — ${err.message}`)
           if (!libKeyRef.current || Date.now() - t0 > LIBRARY_WAIT_MS) {
@@ -682,6 +740,8 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
         setCommitProgress({ phase: 'resolving', done: total - pendingNow(), total, current: 'A procurar letras…' })
         await Promise.race([resolver.idle(), new Promise(r => setTimeout(r, RESOLVE_WAIT_MS))])
         clearInterval(tick)
+        // Saiu da página entretanto (as pesquisas foram canceladas): não criar tudo "sem letra"
+        if (disposedRef.current) throw abortError()
         if (resolver.size > 0) {
           // Demorou demais: as que faltam ficam sem letra
           resolver.cancelAll()
@@ -689,12 +749,25 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
             ? { ...r, search: { ...r.search, state: 'idle' } } : r)))
         }
       }
+      if (disposedRef.current) throw abortError()
       const current = rowsRef.current
-      const items = await commitRows(current, { ownerId: userId, projectId }, { onProgress: setCommitProgress })
-      const created = new Map(items.filter(i => i.created && i.songId).map(i => [i.rowId, i.songId as string]))
-      if (created.size) updateRows(prev => prev.map(r => (created.has(r.id) ? { ...r, songId: created.get(r.id) } : r)))
+      const owner = { ownerId: userId, projectId: projectId ?? null }
+      const items = await commitRows(current, owner, { onProgress: setCommitProgress })
+      // Cada linha guarda a sua música (repetir não duplica) e o projeto onde foi criada — só se a
+      // linha não mudou entretanto (senão a música já não é a que a linha pede)
+      const before = new Map(current.map(r => [r.id, r]))
+      const saved = new Map(items.filter(i => i.songId).map(i => [i.rowId, i.songId as string]))
+      updateRows(prev => prev.map(r => {
+        const songId = saved.get(r.id)
+        const was = before.get(r.id)
+        if (!songId || !was || r.choice?.kind === 'library') return r
+        if (r.title !== was.title || r.artist !== was.artist || r.choice !== was.choice) return r
+        if (r.songId === songId && r.songProject === owner.projectId) return r
+        return { ...r, songId, songProject: owner.projectId }
+      }))
       return summarizeCommit(items)
     } finally {
+      committingRef.current = false
       setCommitting(false)
       setCommitProgress(null)
     }

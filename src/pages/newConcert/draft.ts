@@ -16,6 +16,8 @@ export interface DraftListOrigin {
   key: string
   project: string | null
   label: string
+  /** Músicas do concerto copiado que não estão visíveis para o utilizador (ficam de fora) */
+  hidden?: number
 }
 
 export interface NewConcertDraft {
@@ -33,6 +35,11 @@ export interface NewConcertDraft {
   list: ImporterSnapshot | null
   listOrigin: DraftListOrigin | null
   copyExtras: boolean
+  /**
+   * Id do concerto desta criação (gerado no cliente antes de gravar): retomar o rascunho e
+   * repetir escreve no MESMO concerto — nunca cria um segundo.
+   */
+  concertId?: string | null
 }
 
 export function readDraft(userId: string | null): NewConcertDraft | null {

@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 /* ═══════════════════════════════════════════════════════════════
-   Testes do motor de importação de setlists (parse + correspondência).
+   Testes do motor de importação de setlists (parse + correspondência +
+   pesquisa online + gravação).
    Corre em Node puro:  node scripts/test-setlist-parse.mjs
    Transpila src/lib/setlistImport/{text,parse,match,layout,rows,errors,
-   sources}.ts com o TypeScript do projeto para uma pasta temporária e
-   importa os módulos.
+   sources,resolve,commit}.ts com o TypeScript do projeto para uma pasta
+   temporária e importa os módulos. O Supabase e a criação de músicas
+   (commit.ts) são substituídos por simulações em memória; o fetch
+   (resolve.ts) é simulado em cada teste.
 ═══════════════════════════════════════════════════════════════ */
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,7 +19,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
 const ts = require(join(root, 'node_modules/typescript'))
 
-const MODULES = ['text', 'parse', 'match', 'layout', 'errors', 'rows', 'sources']
+const MODULES = ['text', 'parse', 'match', 'layout', 'errors', 'rows', 'sources', 'resolve', 'commit', 'ocr']
 const out = mkdtempSync(join(tmpdir(), 'setlist-parse-'))
 for (const name of MODULES) {
   const src = readFileSync(join(root, 'src/lib/setlistImport', `${name}.ts`), 'utf8')
@@ -24,16 +27,31 @@ for (const name of MODULES) {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, verbatimModuleSyntax: true },
   }).outputText
   js = js.replace(/from\s+'\.\/([\w-]+)'/g, "from './$1.mjs'")
+  // commit.ts: Supabase e criação de músicas simulados (definidos em globalThis pelos testes)
+  js = js.replace(/from\s+'\.\.\/supabase'/g, "from './stub-supabase.mjs'").replace(/from\s+'\.\.\/songs'/g, "from './stub-songs.mjs'")
+  // ocr.ts: tesseract.js simulado
+  js = js.replace(/import\('tesseract\.js'\)/g, "import('./stub-tesseract.mjs')")
   writeFileSync(join(out, `${name}.mjs`), js)
 }
+writeFileSync(join(out, 'stub-supabase.mjs'), 'export const supabase = { from: t => globalThis.__fakeDb.from(t) }\n')
+writeFileSync(join(out, 'stub-tesseract.mjs'), 'export const createWorker = (...a) => globalThis.__fakeTesseract.createWorker(...a)\n')
+writeFileSync(join(out, 'stub-songs.mjs'), [
+  'export const createSongFromResult = (...a) => globalThis.__fakeSongs.createSongFromResult(...a)',
+  'export const createEmptySong = (...a) => globalThis.__fakeSongs.createEmptySong(...a)',
+  '',
+].join('\n'))
 const { parseSetlistText, parseSetlist, forceEntry, tidyTitle } = await import(pathToFileURL(join(out, 'parse.mjs')).href)
-const { findLibraryMatch, matchLibrary, rankResults, scoreResult } = await import(pathToFileURL(join(out, 'match.mjs')).href)
+const { findLibraryMatch, matchLibrary, libraryMatchForResult, rankResults, scoreResult } = await import(pathToFileURL(join(out, 'match.mjs')).href)
 const text = await import(pathToFileURL(join(out, 'text.mjs')).href)
 const { pairTitleArtist, arrangeOcrLines, arrangeColumns, joinWords, wordsToCells, mergeScreens } = await import(pathToFileURL(join(out, 'layout.mjs')).href)
 const rowsMod = await import(pathToFileURL(join(out, 'rows.mjs')).href)
 const { fileBaseName } = await import(pathToFileURL(join(out, 'sources.mjs')).href)
 const errors = await import(pathToFileURL(join(out, 'errors.mjs')).href)
-rmSync(out, { recursive: true, force: true })
+const resolveMod = await import(pathToFileURL(join(out, 'resolve.mjs')).href)
+const commitMod = await import(pathToFileURL(join(out, 'commit.mjs')).href)
+const ocrMod = await import(pathToFileURL(join(out, 'ocr.mjs')).href)
+// Apagar a pasta temporária só no fim: o ocr.ts importa o tesseract (simulado) dinamicamente, a meio dos testes
+process.on('exit', () => rmSync(out, { recursive: true, force: true }))
 
 /* ── mini harness ── */
 let pass = 0
@@ -486,6 +504,311 @@ eq(tidyTitle('SETLIST — QUINTA DA RIBEIRA · 28/09'), 'Quinta da Ribeira', 't�
   eq(errors.humanizeError('TypeError: Failed to fetch'), errors.OFFLINE_MESSAGE, 'erro de rede → "Sem ligação"')
   eq(errors.humanizeError('Load failed'), errors.OFFLINE_MESSAGE, 'erro de rede (Safari) → "Sem ligação"')
   eq(errors.humanizeError('duplicate key value'), 'duplicate key value', 'outros erros ficam')
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Regressões da auditoria (gravação, pesquisa online)
+═══════════════════════════════════════════════════════════════ */
+const onlineResult = (title, artist, id, has_sync = true) => ({ title, artist, source: 'lrclib', has_sync, external_id: id })
+const mkRow = (id, title, choice = null, extra = {}) => ({
+  id, raw: title, title, artist: '', choice, search: { state: 'idle', query: '', results: [] }, ...extra,
+})
+
+/* ═══ A1. Resultado online que já está no repertório (abreviado na lista) ═══ */
+{
+  const lib3 = [
+    { id: 'rd', title: 'Rolling in the Deep', artist: 'Adele' },
+    { id: 'ss', title: 'Sultans of Swing', artist: 'Dire Straits' },
+    { id: 'hl', title: 'Hallelujah', artist: 'Leonard Cohen' },
+  ]
+  eq(matchLibrary({ title: 'Rolling in deep' }, lib3), null, 'resultado online — a linha sozinha não casa com o repertório')
+  eq(libraryMatchForResult(onlineResult('Rolling in the Deep', 'Adele', '1'), lib3)?.song.id, 'rd', 'resultado online — casa com o repertório')
+  eq(libraryMatchForResult(onlineResult('Hallelujah', 'Pentatonix', '2'), lib3), null, 'resultado online — outro artista não casa')
+  eq(libraryMatchForResult(onlineResult('Wonderwall', 'Oasis', '3'), lib3), null, 'resultado online — fora do repertório')
+  const ranked81 = [{ result: onlineResult('Rolling in the Deep', 'Adele', '1'), score: 81 }]
+  const ranked63 = [{ result: onlineResult('Sultans of Swing', 'Dire Straits', '4'), score: 63 }]
+  eq(rowsMod.autoChoiceFor(ranked81, lib3), { kind: 'library', song: lib3[0], auto: true }, 'escolha automática → a do repertório (confiante)')
+  eq(rowsMod.autoChoiceFor(ranked63, lib3), { kind: 'library', song: lib3[1], auto: true, loose: true }, 'escolha automática incerta → repertório "a confirmar"')
+  eq(rowsMod.autoChoiceFor(ranked81, []).kind, 'online', 'sem repertório carregado → online')
+  const manual = { kind: 'online', result: ranked81[0].result, score: 81, auto: false }
+  eq(rowsMod.preferLibrary(manual, lib3), manual, 'escolha online MANUAL fica como está')
+}
+
+/* ═══ A2. Chave da música nova; songId só no mesmo projeto ═══ */
+{
+  const r1 = onlineResult('Valerie', 'Amy Winehouse', '77')
+  const a = mkRow('a', 'Valerie', { kind: 'online', result: r1, score: 90, auto: true })
+  const b = mkRow('b', 'Valerie', { kind: 'online', result: { ...r1 }, score: 90, auto: true })
+  eq(rowsMod.newSongKey(a) === rowsMod.newSongKey(b), true, 'mesmo resultado online → mesma música nova')
+  eq(rowsMod.newSongKey(mkRow('c', 'Kiss')) === rowsMod.newSongKey(mkRow('d', 'KISS', { kind: 'empty' })), true, 'sem letra, mesmo título → mesma música nova')
+  eq(rowsMod.newSongKey(mkRow('e', 'Kiss', null, { artist: 'Prince' })) === rowsMod.newSongKey(mkRow('f', 'Kiss')), false, 'artista diferente → outra música')
+  eq(rowsMod.newSongKey(mkRow('g', 'Kiss', { kind: 'library', song: { id: 'k', title: 'Kiss', artist: '' }, auto: true })), null, 'repertório → não cria')
+  const withId = mkRow('h', 'Kiss', null, { songId: 'song-A', songProject: 'band-A' })
+  eq(rowsMod.reusableSongId(withId, 'band-A'), 'song-A', 'songId reutilizado no mesmo projeto')
+  eq(rowsMod.reusableSongId(withId, 'band-B'), null, 'songId de outro projeto não se reutiliza')
+  eq(rowsMod.reusableSongId(withId, null), null, 'songId de uma banda não vai para o pessoal')
+  eq(rowsMod.reusableSongId(mkRow('i', 'Kiss', null, { songId: 'song-P', songProject: null }), null), 'song-P', 'songId pessoal no pessoal')
+  eq(rowsMod.reusableSongId(mkRow('j', 'Kiss', null, { songId: 'song-X' }), 'band-A'), null, 'songId sem projeto conhecido não se reutiliza')
+}
+
+/* ═══ A3. commitRows: a mesma música nova duas vezes é criada UMA vez ═══ */
+{
+  const created = []
+  let n = 0
+  globalThis.__fakeSongs = {
+    async createSongFromResult(result, owner) {
+      await new Promise(r => setTimeout(r, 5))
+      created.push(['online', result.title, owner.projectId])
+      return { id: `song-${++n}`, title: result.title, lyrics: 'la la' }
+    },
+    async createEmptySong(title, artist, owner) {
+      await new Promise(r => setTimeout(r, 5))
+      created.push(['empty', title, owner.projectId])
+      return { id: `song-${++n}`, title, lyrics: '' }
+    },
+  }
+  const val = onlineResult('Valerie', 'Amy Winehouse', '77')
+  const rows = [
+    mkRow('r1', 'Valerie', { kind: 'online', result: val, score: 90, auto: true }),
+    mkRow('r2', 'Wonderwall', { kind: 'library', song: { id: 'lib-w', title: 'Wonderwall', artist: 'Oasis' }, auto: true }),
+    mkRow('r3', 'Kiss'),
+    mkRow('r4', 'Valerie', { kind: 'online', result: { ...val }, score: 90, auto: true }),
+    mkRow('r5', 'KISS', { kind: 'empty' }),
+  ]
+  const items = await commitMod.commitRows(rows, { ownerId: 'u1', projectId: 'band-A' })
+  eq(created.map(c => c[0] + ':' + c[1]).sort(), ['empty:Kiss', 'online:Valerie'], 'reprise — cada música nova criada uma só vez')
+  eq(items.map(i => i.rowId), ['r1', 'r2', 'r3', 'r4', 'r5'], 'reprise — itens pela ordem da lista')
+  eq(items[1].songId, 'lib-w', 'reprise — a do repertório não é criada')
+  eq(items[0].songId === items[3].songId && items[2].songId === items[4].songId && items[0].songId !== items[2].songId, true, 'reprise — as repetições usam a mesma música')
+  eq(items.map(i => i.created), [true, false, true, false, false], 'reprise — conta como criada uma vez')
+  const sum = commitMod.summarizeCommit(items)
+  eq([sum.created, sum.reused, sum.failed, sum.withoutLyrics], [2, 3, 0, 1], 'reprise — contagens (criadas uma vez)')
+  eq(created.every(c => c[2] === 'band-A'), true, 'músicas criadas no projeto do concerto')
+
+  // Nova tentativa depois de mudar o PARA: o songId do projeto A não entra no concerto de B
+  created.length = 0
+  const retryRows = [mkRow('s1', 'Kiss', { kind: 'empty' }, { songId: 'song-A1', songProject: 'band-A' })]
+  const inB = await commitMod.commitRows(retryRows, { ownerId: 'u1', projectId: 'band-B' })
+  eq([inB[0].songId === 'song-A1', inB[0].created, created.length], [false, true, 1], 'mudar o PARA — cria no projeto novo')
+  const inA = await commitMod.commitRows(retryRows, { ownerId: 'u1', projectId: 'band-A' })
+  eq([inA[0].songId, inA[0].created, created.length], ['song-A1', false, 1], 'mesmo projeto — reutiliza (não duplica)')
+}
+
+/* ═══ A4. replaceSetlistSongs nunca deixa o concerto vazio ═══ */
+/** Supabase em memória (só setlist_songs), com unique(setlist_id, position) verificado linha a linha */
+function fakeDb(initial, faults = {}) {
+  const rows = initial.map(r => ({ ...r }))
+  const calls = { insert: 0, delete: 0, upsert: 0 }
+  let seq = 0
+  const unique = list => new Set(list.map(r => `${r.setlist_id}:${r.position}`)).size === list.length
+  const fail = (message, code) => ({ data: null, error: { message, code } })
+  function from() {
+    const filters = []
+    let op = 'select'
+    let payload = null
+    const matching = () => rows.filter(r => filters.every(f => f(r)))
+    function run() {
+      if (op === 'select') return { data: matching().map(r => ({ ...r })), error: null }
+      if (op === 'insert') {
+        if (faults.insert?.includes(++calls.insert)) return fail('Failed to fetch')
+        const added = payload.map(p => ({ id: `ss-new-${++seq}`, ...p }))
+        if (!unique([...rows, ...added])) return fail('duplicate key value violates unique constraint', '23505')
+        rows.push(...added)
+        return { data: added.map(r => ({ ...r })), error: null }
+      }
+      if (op === 'delete') {
+        if (faults.delete?.includes(++calls.delete)) return fail('Failed to fetch')
+        const gone = new Set(matching())
+        for (let i = rows.length - 1; i >= 0; i--) if (gone.has(rows[i])) rows.splice(i, 1)
+        return { data: null, error: null }
+      }
+      // upsert por id: cada linha é aplicada e verificada à vez (como o Postgres)
+      if (faults.upsert?.includes(++calls.upsert)) return fail('Failed to fetch')
+      const next = rows.map(r => ({ ...r }))
+      for (const p of payload) {
+        const t = next.find(r => r.id === p.id)
+        if (t) Object.assign(t, p)
+        else next.push({ ...p })
+        if (!unique(next)) return fail('duplicate key value violates unique constraint', '23505')
+      }
+      rows.splice(0, rows.length, ...next)
+      return { data: null, error: null }
+    }
+    const q = {
+      select() { return q },
+      eq(c, v) { filters.push(r => r[c] === v); return q },
+      lt(c, v) { filters.push(r => r[c] < v); return q },
+      gte(c, v) { filters.push(r => r[c] >= v); return q },
+      insert(list) { op = 'insert'; payload = list; return q },
+      delete() { op = 'delete'; return q },
+      upsert(list) { op = 'upsert'; payload = list; return q },
+      then(ok, ko) { return Promise.resolve().then(run).then(ok, ko) },
+    }
+    return q
+  }
+  return { from, rows, calls }
+}
+{
+  const SL = 'set-1'
+  const old = [
+    { id: 'o1', setlist_id: SL, song_id: 'a', position: 0, notes: null },
+    { id: 'o2', setlist_id: SL, song_id: 'b', position: 1, notes: 'Intro só guitarra', performance_key: 'Am' },
+    { id: 'o3', setlist_id: SL, song_id: 'c', position: 2, notes: null },
+  ]
+  const lineup = db => db.rows.filter(r => r.setlist_id === SL).sort((x, y) => x.position - y.position)
+  const next = [{ song_id: 'b' }, { song_id: 'd' }, { song_id: 'e' }, { song_id: 'f', notes: 'Final lento' }]
+
+  let db = fakeDb(old)
+  globalThis.__fakeDb = db
+  let res = await commitMod.replaceSetlistSongs(SL, next)
+  eq(res, { inserted: 4, error: null }, 'substituir — sucesso')
+  eq(lineup(db).map(r => [r.position, r.song_id]), [[0, 'b'], [1, 'd'], [2, 'e'], [3, 'f']], 'substituir — nova ordem em 0…N-1')
+  eq([lineup(db)[0].notes, lineup(db)[0].performance_key, lineup(db)[3].notes], ['Intro só guitarra', 'Am', 'Final lento'], 'substituir — as que ficam guardam tom/notas')
+
+  db = fakeDb(old, { insert: [1] })
+  globalThis.__fakeDb = db
+  res = await commitMod.replaceSetlistSongs(SL, next)
+  eq(lineup(db).map(r => r.id), ['o1', 'o2', 'o3'], 'substituir — insert falha: o alinhamento antigo fica intacto')
+  eq(/ficou como estava/.test(res.error ?? ''), true, 'substituir — insert falha: o aviso diz que nada mudou')
+
+  db = fakeDb(old, { delete: [1] })
+  globalThis.__fakeDb = db
+  res = await commitMod.replaceSetlistSongs(SL, next)
+  eq(lineup(db).map(r => r.id), ['o1', 'o2', 'o3'], 'substituir — apagar falha: as novas saem, o antigo fica')
+  eq(/ficou como estava/.test(res.error ?? ''), true, 'substituir — apagar falha: aviso')
+
+  db = fakeDb(old, { delete: [1, 2] })
+  globalThis.__fakeDb = db
+  res = await commitMod.replaceSetlistSongs(SL, next)
+  eq(lineup(db).map(r => r.song_id), ['a', 'b', 'c', 'b', 'd', 'e', 'f'], 'substituir — rede cai a meio: nada se perde (antigas + novas)')
+  eq(/revê o alinhamento/.test(res.error ?? ''), true, 'substituir — rede cai a meio: o aviso diz o estado real')
+
+  db = fakeDb(old, { upsert: [1] })
+  globalThis.__fakeDb = db
+  res = await commitMod.replaceSetlistSongs(SL, next)
+  eq([res.error, lineup(db).map(r => r.song_id)], [null, ['b', 'd', 'e', 'f']], 'substituir — renumerar falha: a ordem já está certa')
+
+  // Muitas músicas (N > posições antigas): renumerar não colide a meio
+  const big = Array.from({ length: 30 }, (_, i) => ({ song_id: `n${i}` }))
+  db = fakeDb(old)
+  globalThis.__fakeDb = db
+  res = await commitMod.replaceSetlistSongs(SL, big)
+  eq([res.error, lineup(db).map(r => r.position).join(',')], [null, Array.from({ length: 30 }, (_, i) => i).join(',')], 'substituir — 30 músicas em 0…29')
+}
+
+/* ═══ A5. Pesquisa online: cancelar aborta o pedido; erros HTTP não ficam em cache ═══ */
+{
+  const realFetch = globalThis.fetch
+  const log = []
+  let lrclib = () => ({ status: 200, body: [] })
+  let genius = () => ({ status: 200, body: { response: { hits: [] } } })
+  globalThis.fetch = (url, init = {}) => new Promise((resolve, reject) => {
+    const kind = String(url).includes('lrclib') ? 'lrclib' : 'genius'
+    log.push(kind)
+    const reply = (kind === 'lrclib' ? lrclib : genius)(init)
+    const abort = () => {
+      log.push(`abort:${kind}`)
+      reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }))
+    }
+    if (init.signal?.aborted) return abort()
+    init.signal?.addEventListener('abort', abort)
+    if (reply === 'hang') return
+    resolve({ ok: reply.status >= 200 && reply.status < 300, status: reply.status, json: async () => reply.body })
+  })
+  const lrcItem = { id: 9, trackName: 'Creep', artistName: 'Radiohead', duration: 238, syncedLyrics: '[00:01.00] x' }
+
+  // LRCLIB 429 + Genius vazio → "sem ligação", e NÃO fica em cache
+  lrclib = () => ({ status: 429, body: null })
+  let o = await resolveMod.searchOnline('creep 429')
+  eq(o.status, 'offline', 'pesquisa — HTTP 429 do LRCLIB não é "sem resultados"')
+  lrclib = () => ({ status: 200, body: [lrcItem] })
+  log.length = 0
+  o = await resolveMod.searchOnline('creep 429')
+  eq([o.status, o.results.length, log.filter(l => l === 'lrclib').length], ['ok', 1, 1], 'pesquisa — depois do 429, volta a perguntar')
+
+  // Genius falha (500): resultados do LRCLIB, mas não fica em cache
+  genius = () => ({ status: 500, body: null })
+  o = await resolveMod.searchOnline('creep genius down')
+  log.length = 0
+  genius = () => ({ status: 200, body: { response: { hits: [] } } })
+  await resolveMod.searchOnline('creep genius down')
+  eq([o.results.length, log.length > 0], [1, true], 'pesquisa — resposta incompleta não fica em cache')
+
+  // As duas fontes responderam: fica em cache
+  log.length = 0
+  await resolveMod.searchOnline('creep genius down')
+  eq(log.length, 0, 'pesquisa — resposta completa fica em cache')
+
+  // Cancelar aborta o próprio pedido (não só a espera)
+  lrclib = () => 'hang'
+  genius = () => 'hang'
+  log.length = 0
+  const ctrl = new AbortController()
+  const pending = resolveMod.searchOnline('creep hang', { signal: ctrl.signal }).then(() => 'ok', e => (errors.isAbort(e) ? 'aborted' : String(e)))
+  await new Promise(r => setTimeout(r, 5))
+  ctrl.abort()
+  eq([await pending, log.includes('abort:lrclib'), log.includes('abort:genius')], ['aborted', true, true], 'pesquisa — cancelar aborta os pedidos')
+
+  // Tempo esgotado aborta o pedido e conta como "sem ligação"
+  log.length = 0
+  o = await resolveMod.searchOnline('creep timeout', { timeoutMs: 20 })
+  eq([o.status, log.includes('abort:lrclib')], ['offline', true], 'pesquisa — tempo esgotado aborta o pedido')
+
+  // Fila: cancelar uma linha aborta o pedido dela e liberta o lugar
+  log.length = 0
+  const done = []
+  const resolver = resolveMod.createResolver({ onStart() {}, onDone(id) { done.push(id) } }, 1)
+  resolver.enqueue('x', 'creep fila 1')
+  resolver.enqueue('y', 'creep fila 2')
+  await new Promise(r => setTimeout(r, 5))
+  eq(log.filter(l => l === 'lrclib').length, 1, 'fila — um de cada vez')
+  resolver.cancel('x')
+  await new Promise(r => setTimeout(r, 5))
+  eq([log.includes('abort:lrclib'), log.filter(l => l === 'lrclib').length], [true, 2], 'fila — cancelar aborta o pedido e passa ao seguinte')
+  resolver.cancelAll()
+  await new Promise(r => setTimeout(r, 5))
+  eq([resolver.size, done.length], [0, 0], 'fila — cancelar tudo não entrega resultados')
+  globalThis.fetch = realFetch
+}
+
+/* ═══ A6. OCR: dicionários que falham não deixam a leitura pendurada nem o worker vivo ═══ */
+{
+  const terminated = []
+  class FakeWorker {
+    constructor(url) { this.url = url }
+    addEventListener() {}
+    terminate() { terminated.push(this.url) }
+  }
+  const prevWorker = globalThis.Worker
+  globalThis.Worker = FakeWorker
+  // Como o tesseract.js 7: cria o Web Worker sincronamente; se os dicionários falham, o erro só vai
+  // para o errorHandler e a promessa do createWorker NUNCA resolve nem rejeita
+  globalThis.__fakeTesseract = {
+    createWorker(langs, oem, opts) {
+      new Worker('tesseract-worker')
+      setTimeout(() => {
+        opts.logger({ status: 'loading language traineddata', progress: 0 })
+        opts.errorHandler('Network error while fetching https://cdn.jsdelivr.net/npm/@tesseract.js-data/por/4.0.0_best_int/por.traineddata.gz. Response code: 403')
+      }, 5)
+      return new Promise(() => {})
+    },
+  }
+  const r1 = await ocrMod.recognizeImages([{}]).then(() => 'ok', e => e)
+  eq([r1.code, terminated], ['offline', ['tesseract-worker']], 'OCR — dicionários falham: "sem ligação" e o worker é terminado')
+
+  terminated.length = 0
+  globalThis.__fakeTesseract.createWorker = () => {
+    new Worker('tesseract-worker-2')
+    return new Promise(() => {}) // download parado
+  }
+  const ctrl = new AbortController()
+  const pending = ocrMod.recognizeImages([{}], { signal: ctrl.signal }).then(() => 'ok', e => e)
+  await new Promise(r => setTimeout(r, 5))
+  ctrl.abort()
+  const r2 = await pending
+  eq([r2.code, terminated], ['aborted', ['tesseract-worker-2']], 'OCR — cancelar a meio do download termina o worker')
+  eq(globalThis.Worker === FakeWorker, true, 'OCR — o construtor Worker global é reposto')
+  globalThis.Worker = prevWorker
 }
 
 /* ── resultado ── */

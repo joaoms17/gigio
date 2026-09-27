@@ -77,6 +77,8 @@ export interface ImportRow {
   extra?: SetlistSongExtra
   /** Música já criada numa gravação anterior (repetir não duplica) */
   songId?: string
+  /** Projeto onde `songId` foi criada (null = pessoal): noutro projeto não se reutiliza */
+  songProject?: string | null
   /** Posição da linha no documento lido (para repor linhas ignoradas no sítio certo) */
   order?: number
   /** Momento do evento ("Entrada da noiva") — vai para as notas da música no concerto */

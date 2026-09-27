@@ -30,17 +30,31 @@ interface PdfPage {
   cleanup?(): void
 }
 interface PdfDocument { numPages: number; getPage(n: number): Promise<PdfPage> }
-const pdfjs = pdfjsLib as unknown as { getDocument(o: { data: ArrayBuffer }): { promise: Promise<PdfDocument> } }
+interface PdfLoadingTask { promise: Promise<PdfDocument>; destroy(): Promise<void> }
+const pdfjs = pdfjsLib as unknown as { getDocument(o: { data: ArrayBuffer }): PdfLoadingTask }
 
-async function openPdf(file: Blob): Promise<PdfDocument> {
+/**
+ * Abre o PDF, corre `work` e destrói SEMPRE o documento no fim: cada `getDocument` cria o seu
+ * Web Worker do pdf.js (com os bytes do PDF), que só morre com `destroy()`.
+ */
+async function withPdf<T>(file: Blob, work: (pdf: PdfDocument) => Promise<T>): Promise<T> {
+  let task: PdfLoadingTask | null = null
+  let pdf: PdfDocument
   try {
     const buffer = await file.arrayBuffer()
-    return await pdfjs.getDocument({ data: buffer }).promise
+    task = pdfjs.getDocument({ data: buffer })
+    pdf = await task.promise
   } catch (err) {
+    void task?.destroy().catch(() => {})
     if ((err as { name?: string } | null)?.name === 'PasswordException') {
       throw new ImportError('unreadable', 'Este PDF está protegido por palavra-passe.')
     }
     throw new ImportError('unreadable', 'Não foi possível abrir o PDF. O ficheiro pode estar corrompido.')
+  }
+  try {
+    return await work(pdf)
+  } finally {
+    void task.destroy().catch(() => {})
   }
 }
 
@@ -61,8 +75,11 @@ const letterCount = (s: string) => (s.match(/\p{L}/gu) ?? []).length
  * sets LADO A LADO sai coluna a coluna (esquerda inteira, depois direita).
  * `heading`: a linha de letra bem maior no topo da 1.ª página (nome sugerido; não é música).
  */
-export async function extractPdfLines(file: Blob, opts: { maxPages?: number } = {}): Promise<{ lines: string[]; pages: number; heading: string | null }> {
-  const pdf = await openPdf(file)
+export function extractPdfLines(file: Blob, opts: { maxPages?: number } = {}): Promise<{ lines: string[]; pages: number; heading: string | null }> {
+  return withPdf(file, pdf => readLines(pdf, opts))
+}
+
+async function readLines(pdf: PdfDocument, opts: { maxPages?: number }): Promise<{ lines: string[]; pages: number; heading: string | null }> {
   const lines: string[] = []
   let heading: string | null = null
   const pages = Math.min(pdf.numPages, opts.maxPages ?? 30)
@@ -123,25 +140,40 @@ export async function extractPdfLines(file: Blob, opts: { maxPages?: number } = 
 }
 
 /** Renderiza as primeiras páginas em canvas (para OCR de PDFs digitalizados, sem texto). */
-export async function renderPdfPages(file: Blob, opts: { maxPages?: number; targetWidth?: number } = {}): Promise<HTMLCanvasElement[]> {
-  const pdf = await openPdf(file)
-  const out: HTMLCanvasElement[] = []
-  const pages = Math.min(pdf.numPages, opts.maxPages ?? 4)
-  for (let p = 1; p <= pages; p++) {
-    const page = await pdf.getPage(p)
-    const base = page.getViewport({ scale: 1 })
-    const scale = Math.min(4, (opts.targetWidth ?? 1700) / base.width)
-    const viewport = page.getViewport({ scale })
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.round(viewport.width)
-    canvas.height = Math.round(viewport.height)
-    const ctx = canvas.getContext('2d')
-    if (!ctx) continue
-    await page.render({ canvasContext: ctx, viewport }).promise
-    out.push(canvas)
-    page.cleanup?.()
+export function renderPdfPages(file: Blob, opts: { maxPages?: number; targetWidth?: number } = {}): Promise<HTMLCanvasElement[]> {
+  return withPdf(file, async pdf => {
+    const out: HTMLCanvasElement[] = []
+    try {
+      const pages = Math.min(pdf.numPages, opts.maxPages ?? 4)
+      for (let p = 1; p <= pages; p++) {
+        const page = await pdf.getPage(p)
+        const base = page.getViewport({ scale: 1 })
+        const scale = Math.min(4, (opts.targetWidth ?? 1700) / base.width)
+        const viewport = page.getViewport({ scale })
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(viewport.width)
+        canvas.height = Math.round(viewport.height)
+        const ctx = canvas.getContext('2d')
+        if (!ctx) continue
+        out.push(canvas)
+        await page.render({ canvasContext: ctx, viewport }).promise
+        page.cleanup?.()
+      }
+      return out
+    } catch (e) {
+      // Falhou a meio: liberta já as páginas que ficaram feitas
+      releaseCanvases(out)
+      throw e
+    }
+  })
+}
+
+/** Liberta a memória de canvases (páginas grandes no iPad): largura/altura 0. */
+export function releaseCanvases(canvases: readonly HTMLCanvasElement[]): void {
+  for (const c of canvases) {
+    c.width = 0
+    c.height = 0
   }
-  return out
 }
 
 /** Compatibilidade: PDF → entradas de setlist (via `parseSetlistText`). */

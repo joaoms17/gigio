@@ -151,6 +151,72 @@ function toImportError(e: unknown): Error {
 }
 
 /**
+ * Sem nenhum sinal de progresso durante este tempo, a leitura desiste (download parado, worker
+ * morto). Os dicionários chegam de uma vez (sem progresso a meio), por isso é largo.
+ */
+const STALL_MS = 120000
+
+/**
+ * Vigia da leitura: `failed` rejeita quando o tesseract reporta um erro (errorHandler), quando se
+ * cancela ou quando fica parado demasiado tempo. Faz-se `race` de cada passo com ela — no
+ * tesseract.js 7 o `createWorker` NUNCA resolve nem rejeita se os dicionários ou o initialize
+ * falharem (o erro só vai para o errorHandler).
+ */
+function watchdog(signal: AbortSignal | undefined) {
+  let reject: (e: unknown) => void = () => {}
+  const failed = new Promise<never>((_, r) => { reject = r })
+  failed.catch(() => {}) // rejeições depois do fim não são "não tratadas"
+  let phase: 'init' | 'read' = 'init'
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let disposed = false
+  const arm = () => {
+    if (timer) clearTimeout(timer)
+    if (disposed) return
+    timer = setTimeout(() => reject(phase === 'init'
+      ? new ImportError('offline', OFFLINE_OCR_MESSAGE)
+      : new ImportError('unreadable', 'A leitura da imagem parou. Tenta de novo — ou cola o texto.')), STALL_MS)
+  }
+  const onAbort = () => reject(abortError())
+  signal?.addEventListener('abort', onAbort)
+  arm()
+  return {
+    failed,
+    fail: (e: unknown) => reject(e),
+    arm,
+    reading() { phase = 'read'; arm() },
+    dispose() {
+      disposed = true
+      if (timer) clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+    },
+  }
+}
+
+/**
+ * Chama `create` e apanha os Web Workers que ele cria (o tesseract cria o seu, sincronamente,
+ * dentro de `createWorker`). Assim o worker pode ser terminado mesmo que o tesseract nunca o
+ * devolva. O construtor global é reposto logo a seguir (nada mais corre entretanto).
+ */
+function trackWorkers<T>(create: () => T): { result: T; spawned: Worker[] } {
+  const spawned: Worker[] = []
+  const g = globalThis as unknown as { Worker?: typeof Worker }
+  const Native = g.Worker
+  if (typeof Native !== 'function') return { result: create(), spawned }
+  g.Worker = new Proxy(Native, {
+    construct(target, args) {
+      const w = Reflect.construct(target, args) as Worker
+      spawned.push(w)
+      return w
+    },
+  })
+  try {
+    return { result: create(), spawned }
+  } finally {
+    g.Worker = Native
+  }
+}
+
+/**
  * Lê uma ou mais imagens (pela ordem) e devolve o texto (uma linha por música quando
  * possível) e o título grande do topo, se houver (nome da playlist/concerto). Vários screenshots de uma playlist longa são concatenados sem repetir as
  * músicas que aparecem em dois ecrãs.
@@ -179,12 +245,14 @@ export async function recognizeImages(
   const createWorker = mod.createWorker ?? (mod as unknown as { default?: TesseractModule }).default?.createWorker
   if (!createWorker) throw new ImportError('unreadable', 'O leitor de texto não está disponível.')
 
+  const watch = watchdog(signal)
+  let pending: Promise<TesseractWorker> | null = null
+  let spawned: Worker[] = []
   let worker: TesseractWorker | null = null
-  const onAbort = () => { void worker?.terminate() }
-  signal?.addEventListener('abort', onAbort)
   try {
-    worker = await createWorker('por+eng', undefined, {
+    const tracked = trackWorkers(() => createWorker('por+eng', undefined, {
       logger: m => {
+        watch.arm()
         const p = typeof m.progress === 'number' ? m.progress : 0
         switch (m.status) {
           case 'loading tesseract core': report('A preparar o leitor de texto…', 0.03 + 0.1 * p); break
@@ -194,25 +262,38 @@ export async function recognizeImages(
           case 'recognizing text': report(readingLabel(), 0.42 + 0.58 * ((current.index + p) / total)); break
         }
       },
-      // Sem isto, um erro de carregamento é relançado dentro do worker (erro não tratado)
-      errorHandler: () => {},
-    })
+      // Os erros dos dicionários/initialize SÓ chegam aqui (a promessa do createWorker fica pendurada)
+      errorHandler: e => watch.fail(e),
+    }))
+    pending = tracked.result
+    spawned = tracked.spawned
+    // O worker morreu (script do CDN não carregou, falta de memória…)
+    spawned.forEach(w => w.addEventListener('error', ev => watch.fail(ev.message || 'worker error')))
+    worker = await Promise.race([pending, watch.failed])
     throwIfAborted(signal)
+    watch.reading()
     const screens: string[][] = []
     let heading: string | null = null
     for (let i = 0; i < total; i++) {
       current.index = i
       report(readingLabel(), 0.42 + 0.58 * (i / total))
-      const canvas = await prepareImageForOcr(images[i])
-      throwIfAborted(signal)
-      const { data } = await worker.recognize(canvas, {}, { text: true, blocks: true })
-      throwIfAborted(signal)
-      const page = linesFromPage(data)
-      screens.push(page.lines)
-      heading ??= page.heading
-      // Liberta a memória do canvas já (iPad com várias fotos grandes)
-      canvas.width = 0
-      canvas.height = 0
+      let canvas: HTMLCanvasElement | null = null
+      try {
+        canvas = await prepareImageForOcr(images[i])
+        throwIfAborted(signal)
+        watch.arm()
+        const { data } = await Promise.race([worker.recognize(canvas, {}, { text: true, blocks: true }), watch.failed])
+        throwIfAborted(signal)
+        const page = linesFromPage(data)
+        screens.push(page.lines)
+        heading ??= page.heading
+      } finally {
+        // Liberta a memória do canvas já (iPad com várias fotos grandes) — também num erro/cancelar
+        if (canvas) {
+          canvas.width = 0
+          canvas.height = 0
+        }
+      }
     }
     report('A organizar a lista…', 1)
     return { text: mergeScreens(screens).join('\n'), heading }
@@ -220,7 +301,11 @@ export async function recognizeImages(
     if (signal?.aborted) throw abortError()
     throw toImportError(e)
   } finally {
-    signal?.removeEventListener('abort', onAbort)
+    watch.dispose()
     if (worker) void worker.terminate().catch(() => {})
+    // Se o createWorker ainda resolver depois de desistirmos, termina esse worker também
+    else if (pending) void pending.then(w => w.terminate(), () => {}).catch(() => {})
+    // O Web Worker apanhado à nascença (terminar duas vezes não faz mal)
+    spawned.forEach(w => w.terminate())
   }
 }

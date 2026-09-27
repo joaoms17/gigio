@@ -10,12 +10,15 @@ import { pad2 } from './data'
 import { IconClose, IconDown, IconUp } from './icons'
 import styles from './NewConcertPage.module.css'
 
-export default function SongListReview({ importer, showStatus }: {
+export default function SongListReview({ importer, showStatus, disabled }: {
   importer: SetlistImporter
   /** Mostrar o estado de cada linha (cópia de outro projeto: há músicas a procurar/criar) */
   showStatus?: boolean
+  /** A criar o concerto: a lista fica só de leitura (também antes/depois de `commit()`) */
+  disabled?: boolean
 }) {
-  const { rows, committing } = importer
+  const { rows } = importer
+  const committing = importer.committing || !!disabled
   const [undoHiddenFor, setUndoHiddenFor] = useState<string | null>(null)
 
   // "Desfazer" some ao fim de alguns segundos

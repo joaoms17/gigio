@@ -19,13 +19,13 @@ import { useConfirm } from '../../components/ConfirmDialog'
 import SetlistImportModal from '../../components/SetlistImportModal'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
-import { humanizeError, importErrorMessage } from '../../lib/setlistImport/errors'
+import { humanizeError, importErrorMessage, isAbort } from '../../lib/setlistImport/errors'
 import {
   insertSetlistSongs, toSetlistInserts, useSetlistImport,
   type ImportCommitResult, type ImportSourceInfo, type LibrarySong, type SetlistImporter,
 } from '../../components/import'
 import {
-  fetchConcertSongs, fetchConcerts, fetchConcertsOnDate, fetchProjects, isYmd, pad2, readLastProject,
+  fetchConcertSongs, fetchConcerts, fetchConcertsOnDate, fetchProjects, isYmd, newConcertId, pad2, readLastProject,
   rememberProject, shortDate, songsLabel, sortConcerts, stripDateSuffix,
   type ConcertOption, type ConcertSong, type DayConcert, type ProjectOption,
 } from './data'
@@ -78,6 +78,8 @@ interface ListOrigin {
   project: string | null
   /** "Cópia de Jantar · sáb 28 set" */
   label: string
+  /** Músicas do concerto copiado que não estão visíveis para o utilizador (ficam de fora) */
+  hidden?: number
 }
 
 /** Desfazer na seleção do repertório ("Retirada: Valerie", "Seleção limpa") */
@@ -208,9 +210,21 @@ export default function NewConcertPage() {
   /* ── Gravação ── */
   const [creating, setCreating] = useState(false)
   const [stage, setStage] = useState<Stage | null>(null)
-  /** Concerto já criado numa tentativa anterior (repetir não duplica) */
-  const createdId = useRef<string | null>(null)
+  /** Guarda síncrona contra um 2.º toque em CRIAR */
+  const creatingRef = useRef(false)
+  /**
+   * Id do concerto desta criação — gerado no cliente e guardado no rascunho ANTES de gravar
+   * (`upsert` nesse id): repetir, recarregar ou retomar o rascunho nunca cria um segundo concerto.
+   */
+  const concertIdRef = useRef<string | null>(restoreFrom?.concertId ?? null)
   const [done, setDone] = useState(false)
+  const doneRef = useRef(false)
+  /** A página ainda está montada (promessas que acabam depois de sair não navegam) */
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   /* ── Importar para o concerto que já existe nesse dia ── */
   const [dayConcerts, setDayConcerts] = useState<{ date: string; list: DayConcert[] } | null>(null)
@@ -221,6 +235,14 @@ export default function NewConcertPage() {
   const view: View = urlView === 'review' && !mode ? 'start' : urlView
   const viewRef = useRef(view)
   useLayoutEffect(() => { viewRef.current = view })
+
+  // Saiu do passo 1 (outro passo, "voltar" do browser…): um concerto do cartão ainda a abrir deixa
+  // de contar — senão, ao chegar, levava à revisão desse concerto por cima do que se escolheu depois
+  useEffect(() => {
+    if (view === 'start' || !openingRef.current) return
+    openingRef.current = null
+    setOpeningId(null)
+  }, [view])
 
   /* ── Retomar o rascunho automaticamente (recarregar em ?passo=rever) ── */
   const autoRestored = useRef(false)
@@ -338,7 +360,10 @@ export default function NewConcertPage() {
     else goTo(parent, { replace: true })
   }
 
+  const cancelFileSource = impFile.cancelSource
   function enterReview(next: Mode) {
+    // Uma leitura (PDF/foto) ainda em curso não pode, ao terminar, trocar a lista que se vai rever
+    cancelFileSource()
     setMode(next)
     // Começou outra lista: o rascunho antigo deixa de ser oferecido (e é substituído)
     setDraftOffer(null)
@@ -349,28 +374,33 @@ export default function NewConcertPage() {
   const hasWork = !done && (impFile.rows.length > 0 || impList.rows.length > 0)
   const snapFile = impFile.snapshot
   const snapList = impList.snapshot
+  const fileRows = impFile.rows
+  const listRows = impList.rows
+  const buildDraft = useCallback((): NewConcertDraft | null => (userId ? {
+    v: 1,
+    userId,
+    savedAt: Date.now(),
+    mode,
+    projectSet: pickedProject !== undefined,
+    project: pickedProject ?? null,
+    nameDraft,
+    date,
+    venue,
+    file: fileRows.length ? snapFile() : null,
+    list: listRows.length ? snapList() : null,
+    listOrigin,
+    copyExtras,
+    concertId: concertIdRef.current,
+  } : null), [userId, mode, pickedProject, nameDraft, date, venue, fileRows, listRows, snapFile, snapList, listOrigin, copyExtras])
   useEffect(() => {
-    if (!userId || draftOffer || !hasWork) return
+    if (draftOffer || !hasWork) return
     const t = setTimeout(() => {
-      writeDraft({
-        v: 1,
-        userId,
-        savedAt: Date.now(),
-        mode,
-        projectSet: pickedProject !== undefined,
-        project: pickedProject ?? null,
-        nameDraft,
-        date,
-        venue,
-        file: impFile.rows.length ? snapFile() : null,
-        list: impList.rows.length ? snapList() : null,
-        listOrigin,
-        copyExtras,
-      })
+      if (doneRef.current) return
+      const d = buildDraft()
+      if (d) writeDraft(d)
     }, 600)
     return () => clearTimeout(t)
-  }, [userId, draftOffer, hasWork, mode, pickedProject, nameDraft, date, venue, impFile.rows, impList.rows,
-    snapFile, snapList, listOrigin, copyExtras])
+  }, [draftOffer, hasWork, buildDraft])
 
   useEffect(() => {
     if (!hasWork && picked.length === 0) return
@@ -385,6 +415,7 @@ export default function NewConcertPage() {
   function restoreDraft() {
     const d = draftOffer
     if (!d) return
+    cancelFileSource()
     if (d.file) impFile.restore(d.file)
     if (d.list) impList.restore(d.list)
     if (d.projectSet) setPickedProject(d.project)
@@ -393,6 +424,8 @@ export default function NewConcertPage() {
     setVenue(d.venue)
     setListOrigin(d.listOrigin)
     setCopyExtras(d.copyExtras)
+    // Uma tentativa anterior já gravou (ou tentou gravar) o concerto com este id: continua nele
+    concertIdRef.current = d.concertId ?? null
     setDraftOffer(null)
     if (d.mode) {
       setMode(d.mode)
@@ -459,6 +492,8 @@ export default function NewConcertPage() {
         key,
         project: c.bandId,
         label: `Cópia de ${c.name}${c.date ? ` · ${shortDate(c.date)}` : ''}`,
+        // Músicas que o utilizador não vê (permissões) ficam de fora — a revisão diz quantas
+        hidden: Math.max(0, c.songCount - songs.length),
       })
       // Concerto recorrente: quase sempre no mesmo sítio
       if (!venue.trim() && c.venue) setVenue(c.venue)
@@ -473,9 +508,12 @@ export default function NewConcertPage() {
     setCopyId(id)
     openingRef.current = id
     setOpeningId(id)
+    // Só conta se, quando o alinhamento chegar, o utilizador continua no passo 1 à espera DESTE
+    // concerto (não escolheu outro, não mudou de passo, não saiu da página)
+    const stillWaiting = () => openingRef.current === id && mountedRef.current && viewRef.current === 'start'
     ensureCopySongs(id).then(
       songs => {
-        if (openingRef.current !== id) return
+        if (!stillWaiting()) return
         openingRef.current = null
         setOpeningId(null)
         if (songs.length === 0) {
@@ -485,7 +523,7 @@ export default function NewConcertPage() {
         startCopy(c, songs)
       },
       e => {
-        if (openingRef.current !== id) return
+        if (!stillWaiting()) return
         openingRef.current = null
         setOpeningId(null)
         toast(`Não foi possível abrir o alinhamento — ${importErrorMessage(e)}`, { type: 'error' })
@@ -607,6 +645,11 @@ export default function NewConcertPage() {
   const crossNote = crossProject && (mode === 'copy' || mode === 'library')
     ? `As músicas vêm de ${originName}. As que não estão no repertório ${projectId ? `de ${projectName}` : 'pessoal'} são procuradas e criadas lá.`
     : null
+  // O mesmo aviso do passo "Copiar concerto" (tocar no cartão do passo 1 salta esse passo)
+  const hiddenCount = mode === 'copy' ? (listOrigin?.hidden ?? 0) : 0
+  const lineupNote = hiddenCount > 0
+    ? `${hiddenCount === 1 ? 'Uma música do concerto original não está disponível' : `${hiddenCount} músicas do concerto original não estão disponíveis`} para ti e fica${hiddenCount === 1 ? '' : 'm'} de fora.`
+    : null
 
   /* ── "Esta lista é de outra banda?" ── */
   const strictMatched = impFile.rows.filter(r => r.choice?.kind === 'library' && !r.choice.loose).length
@@ -628,8 +671,14 @@ export default function NewConcertPage() {
     </div>
   ) : null
 
+  function finish() {
+    doneRef.current = true
+    clearDraft()
+    setDone(true)
+  }
+
   async function create() {
-    if (!user || creating || !mode) return
+    if (!user || creating || creatingRef.current || !mode) return
     if (!online) {
       toast('Sem ligação — criar o concerto precisa de rede. A lista fica guardada.', { type: 'error' })
       return
@@ -637,8 +686,34 @@ export default function NewConcertPage() {
     const title = nameValue.trim() || suggestedName
     const imp = activeImp
     const withSongs = !!imp && mode !== 'empty' && imp.rows.length > 0
+    creatingRef.current = true
     setCreating(true)
     setStage('setlist')
+    // Id do concerto: gerado agora e guardado no rascunho ANTES de gravar. Uma nova tentativa (mesmo
+    // depois de recarregar a página ou retomar o rascunho) escreve no MESMO concerto.
+    const retry = concertIdRef.current !== null
+    const id = concertIdRef.current ?? newConcertId()
+    concertIdRef.current = id
+    if (withSongs) {
+      const d = buildDraft()
+      if (d) writeDraft(d)
+    }
+    /** O concerto está gravado mas sem alinhamento: desfaz (não fica um concerto vazio em Concertos) */
+    let saved = false
+    const undoSetlist = async (): Promise<boolean> => {
+      if (!saved) return true
+      const { error } = await supabase.from('setlists').delete().eq('id', id)
+      return !error
+    }
+    /** Falhou depois de gravar o concerto: tira-o outra vez e diz o que aconteceu */
+    const failAfterSave = async (reason: string) => {
+      const undone = await undoSetlist()
+      const why = reason.trim().replace(/[\s.]+$/, '')
+      const retryHint = /tenta de novo/i.test(why) ? '' : ' Tenta de novo.'
+      toast(undone
+        ? `Não foi possível criar o concerto: ${why}.${retryHint} A lista fica guardada.`
+        : `O concerto foi criado, mas as músicas não entraram no alinhamento: ${why}.${retryHint}`, { type: 'error' })
+    }
     try {
       const fields = {
         name: title,
@@ -647,36 +722,31 @@ export default function NewConcertPage() {
         band_id: projectId,
         is_shared: !!projectId,
       }
-      let id = createdId.current
-      if (id) {
-        // Nova tentativa: atualiza o concerto já criado e limpa um alinhamento parcial
-        const { error } = await supabase.from('setlists').update(fields).eq('id', id)
-        if (error) {
-          toast(`Não foi possível guardar o concerto — ${humanizeError(error.message)}`, { type: 'error' })
-          return
-        }
-        await supabase.from('setlist_songs').delete().eq('setlist_id', id)
-      } else {
-        const { data, error } = await supabase
-          .from('setlists')
-          .insert({ ...fields, owner_id: user.id, status: 'draft' })
-          .select('id')
-          .single()
-        if (error || !data) {
-          toast(`Não foi possível criar o concerto — ${error ? humanizeError(error.message) : 'tenta de novo'}`, { type: 'error' })
-          return
-        }
-        id = String(data.id)
-        createdId.current = id
+      // upsert no id do cliente: repetir (ou uma resposta perdida) nunca cria um segundo concerto
+      const { error } = await supabase
+        .from('setlists')
+        .upsert({ id, ...fields, owner_id: user.id, status: 'draft' }, { onConflict: 'id' })
+      if (error) {
+        toast(`Não foi possível criar o concerto — ${humanizeError(error.message)}`, { type: 'error' })
+        return
       }
+      saved = true
       rememberProject(projectId)
 
       if (!withSongs || !imp) {
-        clearDraft()
-        setDone(true)
+        finish()
         toast('Concerto criado — junta as músicas', { type: 'success' })
-        navigate(`/setlist/${id}?add=1`, { replace: true })
+        if (mountedRef.current) navigate(`/setlist/${id}?add=1`, { replace: true })
         return
+      }
+
+      if (retry) {
+        // Uma tentativa anterior pode ter deixado um alinhamento (resposta perdida): recomeça do zero
+        const { error: clearErr } = await supabase.from('setlist_songs').delete().eq('setlist_id', id)
+        if (clearErr) {
+          await failAfterSave(humanizeError(clearErr.message))
+          return
+        }
       }
 
       setStage('songs')
@@ -684,21 +754,28 @@ export default function NewConcertPage() {
       setStage('lineup')
       const inserts = toSetlistInserts(res)
       if (inserts.length === 0) {
-        toast('Não foi possível criar as músicas. Confirma a ligação e tenta de novo.', { type: 'error' })
+        await failAfterSave('as músicas não foram criadas — confirma a ligação e tenta de novo')
         return
       }
-      const { inserted, error } = await insertSetlistSongs(id, inserts, { startPosition: 0 })
-      if (error) {
-        toast(`O concerto foi criado, mas as músicas não entraram no alinhamento (${error}). Tenta de novo.`, { type: 'error' })
+      const { inserted, error: lineErr } = await insertSetlistSongs(id, inserts, { startPosition: 0 })
+      if (lineErr) {
+        await failAfterSave(lineErr)
         return
       }
-      clearDraft()
-      setDone(true)
+      finish()
       toast(summaryText(res, inserted), { type: res.failed > 0 ? 'error' : 'success' })
-      navigate(`/setlist/${id}`, { replace: true })
+      // Saiu da página a meio: fica o aviso, mas não se muda de página por cima de onde está agora
+      if (mountedRef.current) navigate(`/setlist/${id}`, { replace: true })
     } catch (e) {
-      toast(importErrorMessage(e, 'Algo correu mal — tenta de novo.'), { type: 'error' })
+      if (isAbort(e) && !mountedRef.current) {
+        // Saiu da página enquanto se procuravam letras: nada é criado; a lista fica no rascunho
+        await undoSetlist()
+        toast('A criação do concerto foi interrompida — a lista ficou guardada em Novo concerto.', { type: 'error' })
+        return
+      }
+      await failAfterSave(importErrorMessage(e, 'algo correu mal'))
     } finally {
+      creatingRef.current = false
       setCreating(false)
       setStage(null)
     }
@@ -918,6 +995,7 @@ export default function NewConcertPage() {
           importer={activeImp}
           sourceText={sourceText}
           crossNote={crossNote}
+          lineupNote={lineupNote}
           name={nameValue}
           onName={setNameDraft}
           namePlaceholder={suggestedName}

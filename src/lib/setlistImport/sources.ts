@@ -67,11 +67,16 @@ export async function readPdf(file: File, opts: SourceOptions = {}): Promise<Sou
   // PDF digitalizado (só imagem): renderizar e ler com OCR
   opts.onProgress?.({ label: 'PDF sem texto — a ler como imagem…', progress: null })
   const canvases = await pdf.renderPdfPages(file, { maxPages: 4, targetWidth: 1700 })
-  throwIfAborted(opts.signal)
-  if (canvases.length === 0) throw new ImportError('empty', 'O PDF não tem páginas legíveis.')
-  const { recognizeImages } = await import('./ocr')
-  const r = await recognizeImages(canvases, opts)
-  return { text: r.text, ocr: true, heading: r.heading }
+  try {
+    throwIfAborted(opts.signal)
+    if (canvases.length === 0) throw new ImportError('empty', 'O PDF não tem páginas legíveis.')
+    const { recognizeImages } = await import('./ocr')
+    const r = await recognizeImages(canvases, opts)
+    return { text: r.text, ocr: true, heading: r.heading }
+  } finally {
+    // Páginas até 1700 px de largura (~15 MB cada): libertar já, também num erro/cancelar
+    pdf.releaseCanvases(canvases)
+  }
 }
 
 /** Uma ou mais imagens (pela ordem) → texto via OCR. */
@@ -90,12 +95,15 @@ export async function sourcePreview(file: File): Promise<string | null> {
     if (fileKind(file) === 'image') return URL.createObjectURL(file)
     if (fileKind(file) !== 'pdf') return null
     const pdf = await import('../pdfSetlist')
-    const [canvas] = await pdf.renderPdfPages(file, { maxPages: 1, targetWidth: 900 })
+    const canvases = await pdf.renderPdfPages(file, { maxPages: 1, targetWidth: 900 })
+    const [canvas] = canvases
     if (!canvas) return null
-    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82))
-    canvas.width = 0
-    canvas.height = 0
-    return blob ? URL.createObjectURL(blob) : null
+    try {
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82))
+      return blob ? URL.createObjectURL(blob) : null
+    } finally {
+      pdf.releaseCanvases(canvases)
+    }
   } catch {
     return null
   }

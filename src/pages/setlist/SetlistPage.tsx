@@ -717,7 +717,9 @@ export default function SetlistPage() {
                 Sempre UMA linha, sem scroll. Telemóvel: colunas iguais, ícone por
                 cima do rótulo e "PDF" como micro-etiqueta mono por baixo */}
             <div className={styles.toolbar} role="group" aria-label="Mais ações do concerto">
-              {setlist && (
+              {/* Importar escreve no alinhamento (setlist_songs): só o dono do concerto pode — senão
+                  as músicas novas eram criadas no repertório e o alinhamento recusado (RLS) */}
+              {setlist && setlist.owner_id === user?.id && (
                 <button className={styles.toolBtn} onClick={() => setShowImport(true)} title="Importar lista (PDF, foto ou texto)">
                   <Ico size={16}>{P.import}</Ico><span className={styles.toolLabel}>Importar</span>
                 </button>
@@ -965,7 +967,7 @@ export default function SetlistPage() {
         <ExportPdfSheet kind={pdfKind} data={pdfData()} onClose={() => setPdfKind(null)} />
       )}
 
-      {showImport && setlist && (
+      {showImport && setlist && setlist.owner_id === user?.id && (
         <SetlistImportModal
           setlistId={id!}
           projectId={setlist.band_id ?? null}

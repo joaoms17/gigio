@@ -37,6 +37,11 @@ export interface ImportReviewProps {
   hideAddLine?: boolean
   /** Conteúdo extra por cima da lista (avisos do contentor: banda errada, modo de importação…) */
   top?: ReactNode
+  /**
+   * O contentor está a gravar (ex.: a criar o concerto antes/depois de `commit()`): a lista
+   * fica só de leitura e o seletor fecha. Durante `commit()` já fica desativada sozinha.
+   */
+  disabled?: boolean
   className?: string
 }
 
@@ -104,8 +109,10 @@ function rowDetail(row: ImportRow, status: RowStatus): ReactNode {
   )
 }
 
-export default function ImportReview({ importer, existingSongIds, skipExisting, hideSummary, hideAddLine, top, className }: ImportReviewProps) {
-  const { rows, counts, committing } = importer
+export default function ImportReview({ importer, existingSongIds, skipExisting, hideSummary, hideAddLine, top, disabled: saving, className }: ImportReviewProps) {
+  const { rows, counts } = importer
+  // A gravar (do contentor ou do próprio commit): nada na lista se mexe
+  const committing = importer.committing || !!saving
   const [pickerId, setPickerId] = useState<string | null>(null)
   /** O seletor foi aberto pelo "A CONFIRMAR": ao escolher, passa à linha incerta seguinte */
   const [confirmRun, setConfirmRun] = useState(false)
@@ -115,6 +122,16 @@ export default function ImportReview({ importer, existingSongIds, skipExisting, 
   const [zoom, setZoom] = useState<string | null>(null)
   const disabled = committing
   const loadingLib = importer.libraryLoading
+
+  // Começou a gravar com o seletor aberto: fecha-o (as escolhas feitas a meio não entravam)
+  const [wasCommitting, setWasCommitting] = useState(committing)
+  if (wasCommitting !== committing) {
+    setWasCommitting(committing)
+    if (committing) {
+      setPickerId(null)
+      setConfirmRun(false)
+    }
+  }
 
   // "Desfazer" some ao fim de alguns segundos
   const lastRemovedId = importer.lastRemoved?.id ?? null
@@ -423,7 +440,7 @@ export default function ImportReview({ importer, existingSongIds, skipExisting, 
         </form>
       )}
 
-      {pickerRow && (
+      {pickerRow && !committing && (
         <MatchPicker
           importer={importer}
           row={pickerRow}
