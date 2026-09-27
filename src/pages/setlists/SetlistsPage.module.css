@@ -113,6 +113,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
   min-height: 84px;
   padding: 14px 16px;
   border: 1px solid var(--border);
@@ -170,6 +171,7 @@
 .cardMain {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 3px;

@@ -35,16 +35,22 @@ function SortableSongRow({ ss, index, selected, onSelect, onEdit, onRemove, onOv
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: ss.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
   const hasOverrides = !!(ss.performance_key || ss.notes || ss.custom_intro || ss.custom_ending)
-  // Clique na linha = selecionar para pré-visualizar; o modal de tom/notas
-  // abre só via os chips (ou pelo botão "Tom & notas" no painel direito)
   const openOv = (e: MouseEvent) => { e.stopPropagation(); onOverrides(ss) }
+  // Ecrã largo: clique seleciona para pré-visualizar no painel direito.
+  // Ecrã estreito (sem painel): clique abre logo o tom/notas — senão o toque não faz nada.
+  const onRowClick = () => {
+    if (window.matchMedia('(min-width: 1024px)').matches) onSelect(ss)
+    else onOverrides(ss)
+  }
+  const dur = ss.song?.duration_sec
+    ? `${Math.floor(ss.song.duration_sec / 60)}:${String(ss.song.duration_sec % 60).padStart(2, '0')}`
+    : ''
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={`${styles.songRow} ${isDragging ? styles.dragging : ''} ${selected ? styles.songRowSelected : ''}`}
-      onClick={() => onSelect(ss)}
-      title="Pré-visualizar letra"
+      onClick={onRowClick}
     >
       <button
         ref={setActivatorNodeRef}
@@ -52,39 +58,53 @@ function SortableSongRow({ ss, index, selected, onSelect, onEdit, onRemove, onOv
         {...attributes}
         {...listeners}
         onClick={e => e.stopPropagation()}
+        aria-label="Arrastar para reordenar"
         title="Arrastar para reordenar"
-      >⋮⋮</button>
+      >
+        <svg width="14" height="18" viewBox="0 0 14 18" fill="currentColor" aria-hidden="true">
+          <circle cx="4" cy="3" r="1.6" /><circle cx="10" cy="3" r="1.6" />
+          <circle cx="4" cy="9" r="1.6" /><circle cx="10" cy="9" r="1.6" />
+          <circle cx="4" cy="15" r="1.6" /><circle cx="10" cy="15" r="1.6" />
+        </svg>
+      </button>
       <div className={styles.songNum}>{index + 1}</div>
-      <div className={styles.songInfo}>
-        <div className={styles.songTitle}>{ss.song?.title}</div>
-        <div className={styles.songArtist}>
-          {ss.song?.artist}
+      <div className={styles.songMain}>
+        <div className={styles.titleLine}>
+          <span className={styles.songTitle}>{ss.song?.title}</span>
+        </div>
+        <div className={styles.metaLine}>
+          <span className={styles.songArtist}>{ss.song?.artist}</span>
           {ss.performance_key && (
             <button
               className={styles.keyChip}
               onClick={openOv}
               aria-label={`Tom nesta setlist: ${ss.performance_key} — editar tom e notas`}
-              title="Tom, notas, intro e final desta música nesta setlist"
             >{ss.performance_key}</button>
           )}
-          {ss.notes && <span className={styles.notesIndicator} onClick={openOv} role="img" aria-label={`Notas: ${ss.notes}`} title={ss.notes}>📝</span>}
-          {(ss.custom_intro || ss.custom_ending) && <span className={styles.notesIndicator} onClick={openOv} role="img" aria-label="Tem intro/final custom" title="Tem intro/final custom">🎬</span>}
-          {ss.song?.has_sync && <span className={styles.syncBadge} aria-label="Letra sincronizada">sync ✓</span>}
-          {!hasOverrides && (
-            <button
-              className={styles.ghostChip}
-              onClick={openOv}
-              title="Tom, notas, intro e final desta música nesta setlist"
-            >＋ Tom · Notas</button>
+          {ss.notes && (
+            <span className={styles.metaIndicator} onClick={openOv} aria-label={`Notas: ${ss.notes}`} title={ss.notes}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /></svg>
+            </span>
           )}
+          {(ss.custom_intro || ss.custom_ending) && (
+            <span className={styles.metaIndicator} onClick={openOv} aria-label="Tem intro/final custom" title="Tem intro/final custom">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 21V4h12l-2 4 2 4H4" /></svg>
+            </span>
+          )}
+          {ss.song?.has_sync && <span className={styles.syncBadge} aria-label="Letra sincronizada">sync</span>}
+          {!hasOverrides && (
+            <button className={styles.ghostChip} onClick={openOv}>＋ Tom · Notas</button>
+          )}
+          {dur && <span className={styles.songDur}>{dur}</span>}
         </div>
       </div>
-      <div className={styles.songDur}>
-        {ss.song?.duration_sec ? `${Math.floor(ss.song.duration_sec / 60)}:${String(ss.song.duration_sec % 60).padStart(2, '0')}` : ''}
-      </div>
       <div className={styles.songActions}>
-        <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onEdit(ss.song_id) }} title="Editar música">✎</button>
-        <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onRemove(ss.id) }} title="Remover da setlist">✕</button>
+        <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onEdit(ss.song_id) }} aria-label="Editar música" title="Editar música">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+        </button>
+        <button className={styles.iconBtn} onClick={e => { e.stopPropagation(); onRemove(ss.id) }} aria-label="Remover da setlist" title="Remover da setlist">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
       </div>
     </div>
   )
@@ -532,7 +552,9 @@ export default function SetlistPage() {
               </span>
               <div className={styles.venueWrap}>
                 <div className={styles.metaField}>
-                  <span className={styles.metaIcon}>📍</span>
+                  <span className={styles.metaIcon} aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                  </span>
                   <input
                     className={styles.venueInput}
                     value={venue}
@@ -555,7 +577,9 @@ export default function SetlistPage() {
                 )}
               </div>
               <div className={styles.metaField}>
-                <span className={styles.metaIcon}>📅</span>
+                <span className={styles.metaIcon} aria-hidden="true">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+                </span>
                 <input
                   className={styles.dateInput}
                   type="date"
@@ -576,7 +600,7 @@ export default function SetlistPage() {
               <button className={styles.dupBtn} onClick={() => exportPdf(false)}>Exportar lista</button>
               <button className={styles.dupBtn} onClick={() => exportPdf(true)}>Exportar repertório</button>
               <button className={styles.dupBtn} onClick={() => setDuplicating(true)}>Duplicar</button>
-              {canDelete && <button className={styles.deleteBtn} onClick={deleteSetlist}>Apagar</button>}
+              {/* Apagar mudou para o fundo da página — ver deleteLink */}
             </div>
           </div>
         </div>
@@ -672,6 +696,12 @@ export default function SetlistPage() {
             )}
           </aside>
         </div>
+
+        {canDelete && (
+          <button className={styles.deleteLink} onClick={deleteSetlist}>
+            Apagar este concerto
+          </button>
+        )}
       </div>
 
       {/* Per-setlist overrides modal */}

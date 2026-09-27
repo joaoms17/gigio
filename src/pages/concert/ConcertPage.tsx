@@ -668,7 +668,7 @@ export default function ConcertPage() {
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          <div style={{ height: '40vh', flexShrink: 0 }} />
+          <div style={{ height: syncLines ? '40vh' : '12px', flexShrink: 0 }} />
           {lines.length === 0 ? (
             <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
               Sem letra disponível
@@ -724,7 +724,7 @@ export default function ConcertPage() {
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          <div style={{ height: '40vh', flexShrink: 0 }} />
+          <div style={{ height: syncLines ? '40vh' : '12px', flexShrink: 0 }} />
           {lines.length === 0 ? (
             <div className={styles.emptyLyrics} style={{ color: theme.active_color, opacity: 0.25 }}>
               Sem letra disponível
