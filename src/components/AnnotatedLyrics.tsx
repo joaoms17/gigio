@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import LyricsView from './LyricsView'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import LyricsView, { withAlpha } from './LyricsView'
 import { loadAnnotations, pullAnnotations, annotationPath, type SavedAnnotations } from './AnnotationLayer'
 
 const PAD_V = 16
@@ -73,21 +73,33 @@ export default function AnnotatedLyrics({
     [data, xRatio, yRatio]
   )
 
-  const isDark = !!bgColor
+  // Com fundo próprio (modo palco) ocupa o ecrã sem moldura; sem ele é um
+  // painel v2 normal (--surface + hairline) e segue o tema da app.
+  const hasOwnBg = !!bgColor
+
+  // Tinta: a cor pedida e os seus tons secundários derivados dela (não
+  // escrever `--text: var(--text)` — seria uma referência circular).
+  const ink: Record<string, string> = {}
+  if (textColor) {
+    ink['--text'] = textColor
+    ink['--text2'] = withAlpha(textColor, 0.68)
+    ink['--text3'] = withAlpha(textColor, 0.56)
+  }
+
+  const frameStyle: CSSProperties = {
+    background: bgColor ?? 'var(--surface)',
+    border: hasOwnBg ? 'none' : '1px solid var(--border)',
+    borderRadius: hasOwnBg ? 0 : 'var(--radius)',
+    overflow: 'hidden',
+    padding: `${padV}px ${padH}px`,
+    color: textColor ?? 'var(--text)',
+    ...(ink as CSSProperties),
+  }
 
   return (
     <div
       ref={outerRef}
-      style={{
-        background: bgColor ?? '#ffffff',
-        borderRadius: isDark ? 0 : 12,
-        overflow: 'hidden',
-        padding: `${padV}px ${padH}px`,
-        color: textColor ?? '#0f0f14',
-        ['--text' as any]: textColor ?? '#0f0f14',
-        ['--text2' as any]: isDark ? 'rgba(255,255,255,0.55)' : '#5c5c78',
-        ['--text3' as any]: isDark ? 'rgba(255,255,255,0.30)' : '#9898b4',
-      }}
+      style={frameStyle}
     >
       <div ref={innerRef} style={{ position: 'relative' }}>
         <LyricsView lyrics={lyrics} activeLine={activeLine} accent={accentColor} fontSize={fontSize} lineHeight={lineHeight} />

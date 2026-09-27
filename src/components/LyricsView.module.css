@@ -1,25 +1,66 @@
+/* Letra (ensaio + anotações no palco).
+   --lyric-accent chega do modo palco (concert_theme); na app cai no --accent-text. */
 .root {
   --lyric-size: 16px;
   --lyric-lh: 1.9;
 }
 
+/* Rótulo de secção — micro-rótulo mono, ladeado por dois traços curtos
+   (a "voz hardware"). line-height fixo para a altura do bloco não mudar
+   em relação à letra onde as anotações foram desenhadas. */
 .section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 800;
-  /* Não usar var(--io): ~3.4:1 sobre o fundo escuro do concerto */
-  color: #A78BFA;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  color: var(--lyric-accent, var(--accent-text));
   margin: 18px 0 6px;
   text-align: center;
 }
+.section::before,
+.section::after {
+  content: '';
+  width: 20px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
 .section:first-child { margin-top: 0; }
-.line { text-align: center; font-size: var(--lyric-size); line-height: var(--lyric-lh); }
+
+.line {
+  text-align: center;
+  font-size: var(--lyric-size);
+  line-height: var(--lyric-lh);
+  overflow-wrap: break-word;
+}
+/* Linha ativa: faixa tintada + barra de acento à esquerda (sem reflow) */
+.lineActive {
+  background: var(--lyric-accent-soft, var(--accent-soft));
+  box-shadow: inset 3px 0 0 var(--lyric-accent, var(--accent));
+}
+
 .break { height: calc(var(--lyric-size) * 0.8); }
-.hint { color: var(--text3); font-style: italic; }
+
+.hint {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
 
 /* Tablet / larger screens — bigger default when no explicit size given */
 @media (min-width: 768px) {
   .root { --lyric-size: 21px; }
   .section { font-size: 13px; margin: 22px 0 8px; }
+  .section::before,
+  .section::after { width: 28px; }
 }

@@ -1,47 +1,303 @@
+/* ═══════════════════════════════════════════════════════════════
+   Escolher projeto — v2 "hardware / setlist impresso"
+   Linhas com hairline dentro de painel; LED quadrado da cor do projeto.
+═══════════════════════════════════════════════════════════════ */
+
 .overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-  display: flex; align-items: center; justify-content: center; z-index: 200; padding: 20px;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.5);
+  animation: overlayIn 0.18s ease-out;
 }
+
 .modal {
-  background: var(--bg); border-radius: 16px; padding: 22px;
-  width: 100%; max-width: 420px; border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 480px;
+  max-height: 86vh;
+  max-height: 86dvh;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: sheetIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
-.title { font-size: 17px; font-weight: 800; color: var(--text); }
+
+/* ── Cabeçalho ── */
+.header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 12px 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.kicker {
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
+  font-weight: 800;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
 .close {
-  background: none; border: none; font-size: 18px; cursor: pointer; color: var(--text3);
-  min-width: 44px; min-height: 44px; margin: -10px -12px -10px 0;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-btn);
+  color: var(--text2);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.12s, color 0.12s;
+}
+.close:active:not(:disabled) { background: var(--surface-3); color: var(--text); }
+
+/* ── Corpo ── */
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 24px 24px;
 }
 
-.list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+/* Lista dentro de painel: hairlines, não cartões */
+.list {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.list > * + * {
+  border-top: 1px solid var(--border);
+}
+
+/* Coluna de "abertura" partilhada: LED do projeto / + do novo projeto */
+.lead {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+}
+
 .row {
-  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-  padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border);
-  background: var(--bg2); color: var(--text); font-size: 14px; font-weight: 600;
-  cursor: pointer; transition: border-color 0.12s; min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 10px 8px 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: none;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.12s;
 }
-.row:hover { border-color: var(--gig); }
+/* A lista é um painel — sem "encolher" a linha ao carregar */
+.row:active:not(:disabled) { transform: none; background: var(--surface-3); }
 .row:disabled { opacity: 0.5; cursor: default; }
-.dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
-.name { flex: 1; }
-.role { font-size: 11px; color: var(--text3); font-weight: 500; }
+/* O painel tem overflow: hidden — o anel de foco vai para dentro da linha */
+.row:focus-visible { outline-offset: -2px; }
 
+/* LED quadrado (nunca círculo) — cor vem dos dados; neutro se não houver */
+.led {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--text3);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+/* Chip mono neutro */
+.role {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.chev {
+  flex-shrink: 0;
+  display: inline-flex;
+  color: var(--text3);
+}
+
+/* "Novo projeto" — linha fantasma alinhada com as linhas do painel */
 .newProject {
-  width: 100%; padding: 11px; border-radius: 10px; border: 1.5px dashed var(--border);
-  background: none; color: var(--gig); font-size: 13px; font-weight: 700; cursor: pointer; margin-top: 10px;
-  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  margin-top: 8px;
+  padding: 0 10px 0 17px; /* 16px + 1px da borda do painel → + alinhado com os LEDs */
+  background: transparent;
+  color: var(--text2);
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.12s, color 0.12s;
 }
-.newProject:hover { border-color: var(--gig); }
+.newProject:active:not(:disabled) { background: var(--surface-3); color: var(--text); }
+.newProject:disabled { opacity: 0.5; cursor: default; }
 
-.hint { color: var(--text3); font-size: 14px; }
-.empty { text-align: center; padding: 16px; color: var(--text2); }
-.emptyIcon { font-size: 36px; margin-bottom: 8px; }
-.emptySub { font-size: 13px; color: var(--text3); margin: 4px 0 16px; }
-.createBtn {
-  padding: 10px 20px; background: var(--gig); color: #fff; border: none;
-  border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
-  min-height: 44px;
+.newLabel {
+  flex: 1;
+  min-width: 0;
 }
 
-.overlay { animation: overlayIn 0.18s ease-out; }
-.modal { animation: sheetIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+/* ── Carregamento ── */
+/* Mesma geometria das linhas reais (padding + coluna .lead) → sem "salto" ao carregar */
+.skelRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 8px 10px 8px 16px;
+}
+.skelLed { display: block; width: 10px; height: 10px; border-radius: 2px; }
+.skelName { display: block; width: 48%; height: 14px; }
+
+/* ── Sem projetos ── */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 8px 8px;
+  text-align: center;
+}
+
+.emptyIcon {
+  display: inline-flex;
+  margin-bottom: 4px;
+  color: var(--text3);
+}
+
+.emptyTitle {
+  font-family: var(--font-display);
+  font-stretch: var(--display-stretch);
+  font-weight: 800;
+  font-size: 22px;
+  line-height: 1.05;
+  color: var(--text);
+}
+
+.emptyText {
+  max-width: 32ch;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text2);
+}
+
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--btn-lg);
+  margin-top: 12px;
+  padding: 0 22px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.12s;
+}
+
+/* ── Hover só com ponteiro (evita hover "preso" no iPad) ── */
+@media (hover: hover) {
+  .close:hover { background: var(--surface-2); color: var(--text); }
+  .row:hover:not(:disabled) { background: var(--surface-2); }
+  .row:hover:not(:disabled) .chev { color: var(--text); }
+  .newProject:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+  .btnPrimary:hover { background: var(--accent-hover); }
+}
+
+/* ── Telemóvel (≤640px): sheet a partir de baixo ── */
+@media (max-width: 640px) {
+  .overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal {
+    max-width: none;
+    max-height: 92vh;
+    max-height: 92dvh;
+    border-bottom: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+  .header { padding: 14px 8px 12px 16px; }
+  .title { font-size: 24px; }
+  .body { padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .row,
+  .skelRow { padding-left: 14px; }
+  .newProject { padding-left: 15px; }
+}
+
+/* ── Tablet (≥641px): corpo a 17px ── */
+@media (min-width: 641px) {
+  .name { font-size: 17px; }
+  .role { font-size: 11px; }
+  .newProject { font-size: 16px; }
+}

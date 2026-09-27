@@ -1,246 +1,354 @@
-/* ── Convites — tema "palco" ── */
+/* ═══ Convites — v2 "cartaz" ═══
+   Mesmo tratamento do login: wordmark à esquerda (≥768) / em cima
+   (telemóvel) e o conteúdo num painel --surface com hairline. */
 
 .page {
+  min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 16px;
-  /* Fundo da app com um toque do gradiente da marca */
-  background:
-    radial-gradient(640px 420px at 8% -8%, rgba(255, 77, 109, 0.13), transparent 68%),
-    radial-gradient(720px 480px at 100% 110%, rgba(124, 58, 237, 0.14), transparent 68%),
-    var(--bg);
+  /* Mais respiro em baixo do que em cima: o bloco assenta no centro ótico
+     (ligeiramente acima do centro geométrico), não "a flutuar" a meio */
+  padding: max(40px, env(safe-area-inset-top, 0px)) 16px max(64px, 9vh, env(safe-area-inset-bottom, 0px));
+  background: var(--bg);
+  color: var(--text);
 }
 
-.card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 22px;
+.layout {
   width: 100%;
-  max-width: 420px;
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
   animation: pageIn 0.25s ease both;
 }
 
-/* ── Logotipo "gigio" ── */
+/* ── Marca ── */
 
-.logo {
-  text-align: center;
+.brand { min-width: 0; }
+.brandTitle { line-height: 1; }
+
+/* Wordmark v2 — o mesmo desenho da topbar/rail: "gigio" condensado 800
+   minúsculas + quadrado de sinal no fim (proporções em em → escala limpa) */
+.wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.1em;
   font-family: var(--font-display);
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-stretch: 75%;
+  font-weight: 800;
+  font-size: 56px;
   line-height: 1;
-  padding: 32px 24px 0;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-transform: lowercase;
+  white-space: nowrap;
+  user-select: none;
 }
-.gig { color: var(--gig); }
-.io  { color: var(--io); }
 
-.loading {
-  text-align: center;
-  padding: 48px 24px;
+.wordmarkDot {
+  display: inline-block;
+  width: 0.25em;
+  height: 0.25em;
+  background: var(--accent);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.brandLine {
+  margin-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+
+/* Setlist impressa (só ≥768): traço de tinta em cima, hairlines entre linhas */
+.benefits {
+  display: none;
+  min-width: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 2px solid var(--text);
+}
+
+.benefit {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text3);
-  font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
 
-/* ── Ícones de estado ── */
+.benefitText {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--text);
+}
 
-.errorIcon, .successIcon {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 32px auto 0;
+/* ── Painel ── */
+
+.panel {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
 }
-.errorIcon {
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: var(--danger);
-}
-.successIcon {
-  background: rgba(16, 185, 129, 0.13);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  color: var(--success-fg);
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 10px;
 }
 
 .title {
   font-family: var(--font-display);
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-stretch: 75%;
+  font-weight: 800;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: -0.005em;
   color: var(--text);
-  text-align: center;
-  padding: 18px 24px 8px;
-  margin: 0;
+  margin: 0 0 10px;
+  overflow-wrap: anywhere;
 }
 
 .sub {
-  font-size: 14px;
-  color: var(--text2);
-  text-align: center;
-  padding: 0 24px 22px;
-  margin: 0;
+  font-size: 15px;
   line-height: 1.5;
+  color: var(--text2);
+  margin: 0 0 22px;
 }
 
-/* ── CTA primário ── */
+/* ── A carregar: LED a pulsar + rótulo mono ── */
 
-.btn {
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+.loadingLed {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--accent);
+  flex-shrink: 0;
+  animation: livePulse 1.6s ease-in-out infinite;
+}
+
+/* ── Ícones de estado (quadrados secos) ── */
+
+.stateIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-btn);
   display: flex;
   align-items: center;
   justify-content: center;
-  width: calc(100% - 48px);
-  margin: 0 24px 24px;
-  min-height: 52px;
-  padding: 0 20px;
-  background: var(--gig);
-  color: #fff;
+  margin-bottom: 16px;
+}
+.stateError { background: var(--danger-soft); color: var(--danger); }
+.stateSuccess { background: var(--success-soft); color: var(--success-fg); }
+
+/* ── Botões ── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--btn-lg);
+  padding: 0 22px;
   border: none;
-  border-radius: 15px;
-  font-family: var(--font-display);
-  font-size: 17px;
+  border-radius: var(--radius-btn);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-body);
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.01em;
-  box-shadow: 0 6px 20px rgba(255, 77, 109, 0.32);
-  transition: filter 0.15s ease, box-shadow 0.15s ease;
+  text-align: center;
+  transition: background 0.15s ease;
 }
-.btn:hover:not(:disabled) {
-  filter: brightness(1.08);
-  box-shadow: 0 8px 24px rgba(255, 77, 109, 0.42);
-}
+.btn:hover:not(:disabled) { background: var(--accent-hover); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.btnSecondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--btn-lg);
+  padding: 0 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  font-size: 15px;
+  font-weight: 600;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btnSecondary:hover { background: var(--surface-2); border-color: var(--text3); }
+
+.btnGhost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: var(--btn);
+  padding: 0 16px;
+  background: transparent;
+  color: var(--text2);
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 15px;
+  font-weight: 600;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.btnGhost:hover { background: var(--surface-2); color: var(--text); }
 
 /* ── Convite por token ── */
 
-.projectBanner {
-  padding: 28px 24px 22px;
-  text-align: center;
+.project {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
-.bannerName {
+
+/* Cor do projeto como LED quadrado */
+.led {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.projectName {
+  min-width: 0;
+  margin: 0;
   font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: -0.01em;
+  font-stretch: 75%;
+  font-weight: 800;
+  font-size: clamp(28px, 4.5vw, 40px);
+  line-height: 1;
+  letter-spacing: -0.005em;
+  color: var(--text);
   overflow-wrap: anywhere;
 }
-.bannerType {
+
+.metaLine {
+  margin: 10px 0 0;
+  font-family: var(--font-mono);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.75);
-  margin-top: 6px;
+  color: var(--text3);
+  line-height: 1.6;
 }
+.sep { margin: 0 8px; color: var(--text3); }
 
-.inviteBody {
-  padding: 22px 24px 24px;
-}
 .inviteMsg {
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
   font-size: 15px;
-  color: var(--text2);
-  margin: 0 0 12px;
   line-height: 1.5;
+  color: var(--text2);
 }
-.inviteMsg strong { color: var(--text); }
+.inviteMsg strong { color: var(--text); font-weight: 700; }
+
 .projectDesc {
-  font-size: 13px;
-  color: var(--text3);
-  margin: 0 0 12px;
+  margin: 10px 0 0;
+  font-size: 14px;
   line-height: 1.5;
-}
-.inviteMeta {
-  margin-bottom: 18px;
-}
-.expiryNote {
-  font-size: 12px;
-  color: var(--text3);
-}
-
-.acceptBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-height: 52px;
-  padding: 0 20px;
-  border: none;
-  border-radius: 15px;
-  font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  color: #fff;
-  box-shadow: var(--shadow-sm);
-  transition: filter 0.15s ease;
-  margin-bottom: 10px;
-}
-.acceptBtn:hover:not(:disabled) { filter: brightness(1.1); }
-.acceptBtn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.declineBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-height: 48px;
-  padding: 0 20px;
-  background: none;
-  border: 1.5px solid var(--border2);
-  border-radius: 14px;
-  font-size: 15px;
-  font-weight: 600;
   color: var(--text2);
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  overflow-wrap: anywhere;
 }
-.declineBtn:hover { border-color: var(--text3); background: var(--bg3); color: var(--text); }
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 22px;
+}
 
 /* ── Entrada por código ── */
 
 .codeForm {
-  padding: 0 24px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
+
 .codeInput {
-  min-height: 56px;
-  padding: 12px 16px;
-  border: 1.5px solid var(--border);
-  border-radius: 14px;
-  background: var(--bg);
+  width: 100%;
+  min-height: 64px;
+  padding: 0 14px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
   color: var(--text);
-  font-size: 22px !important;
+  font-family: var(--font-mono);
+  font-size: 26px !important;
   font-weight: 700;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.2em;
   text-align: center;
   text-transform: uppercase;
-  font-family: var(--font-display);
-  transition: border-color 0.15s ease;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.codeInput:focus { outline: none; border-color: var(--gig); }
 .codeInput::placeholder {
   color: var(--text3);
   font-weight: 500;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.2em;
 }
+.codeInput:focus {
+  outline: none;
+  border-color: var(--text);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+.codeInput[aria-invalid="true"] { border-color: var(--danger); }
 
 .codeError {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--danger);
   margin: 0;
-  text-align: center;
-}
-
-/* .btn dentro do codeForm já tem margem lateral própria — anula-a */
-.codeForm .btn {
-  width: 100%;
-  margin: 0 0 24px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  box-shadow: inset 3px 0 0 var(--danger);
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .backLink {
@@ -248,24 +356,109 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 100%;
+  width: calc(100% + 40px);
   min-height: 52px;
-  padding: 16px 24px;
+  margin: 20px -20px -20px;
+  padding: 0 20px;
   background: none;
   border: none;
   border-top: 1px solid var(--border);
-  font-size: 13px;
+  border-radius: 0 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px);
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 12px;
   font-weight: 600;
-  color: var(--text3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   transition: color 0.15s ease, background 0.15s ease;
 }
-.backLink:hover { color: var(--gig); background: var(--bg3); }
+.backLink:hover { color: var(--text); background: var(--surface-2); }
 
-/* ── Responsivo ── */
+/* ── Tablet+ : cartaz em duas colunas (igual ao login) ──
+   Marca + setlist à esquerda, painel à direita; em tablet retrato alto a
+   marca sobe e atravessa as duas colunas. */
 
-@media (max-width: 420px) {
-  .page { padding: 16px; }
-  .title { font-size: 23px; }
-  .bannerName { font-size: 24px; }
-  .codeInput { font-size: 20px !important; letter-spacing: 0.16em; }
+@media (min-width: 768px) {
+  .page { padding: 48px 40px max(72px, 9vh); }
+
+  .layout {
+    max-width: 1080px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "brand    panel"
+      "benefits panel";
+    grid-template-rows: auto auto;
+    align-content: center;
+    gap: 36px 40px;
+  }
+
+  .brand    { grid-area: brand; align-self: end; }
+  .benefits { grid-area: benefits; align-self: start; display: block; }
+  .panel    { grid-area: panel; align-self: center; }
+
+  .wordmark { font-size: 88px; }
+  .brandLine { margin-top: 16px; font-size: 13px; }
+
+  .panel { padding: 28px; }
+  .label { font-size: 12px; }
+  .title { font-size: 34px; }
+  .metaLine { font-size: 13px; }
+  .inviteMsg { font-size: 16px; }
+  .backLink {
+    width: calc(100% + 56px);
+    margin: 24px -28px -28px;
+  }
+}
+
+/* Tablet retrato (iPad 768–1023 × ≥900 de altura): cartaz — cabeçalho de
+   página inteira ("masthead"): wordmark enorme à esquerda e a linha mono
+   encostada à direita, na mesma linha de base, para a marca ocupar a
+   largura toda em vez de deixar o quadrante de cima à direita vazio.
+   Por baixo, a setlist e o painel lado a lado, alinhados pelo topo
+   (traço de tinta ↔ topo do painel). Se não couber, a linha mono passa
+   para baixo da marca (flex-wrap). */
+@media (min-width: 768px) and (max-width: 1023px) and (min-height: 900px) {
+  .layout {
+    max-width: 760px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    grid-template-areas:
+      "brand    brand"
+      "benefits panel";
+    align-items: start;
+    gap: 40px 36px;
+  }
+  .brand, .benefits, .panel { align-self: start; }
+  .brand {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px 24px;
+  }
+  .wordmark { font-size: clamp(140px, 22vw, 200px); letter-spacing: -0.015em; }
+  .brandLine { margin-top: 0; font-size: 14px; }
+  .benefit { padding: 16px 0; }
+}
+
+@media (min-width: 1024px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+    gap: 36px 80px;
+  }
+  /* ~96px na base, a crescer com a coluna: a marca não fica tímida ao
+     lado da setlist que ocupa a coluna inteira */
+  .wordmark { font-size: clamp(96px, 9.5vw, 128px); }
+  .panel { padding: 32px; }
+  .backLink {
+    width: calc(100% + 64px);
+    margin: 28px -32px -32px;
+  }
+}
+
+/* Paisagem baixa (telemóvel deitado): menos respiro vertical */
+@media (max-height: 560px) and (min-width: 641px) {
+  .page { padding-top: 24px; padding-bottom: 24px; }
+  .layout { row-gap: 20px; }
+  .benefit { padding: 10px 0; }
 }

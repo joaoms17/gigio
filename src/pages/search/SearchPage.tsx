@@ -111,6 +111,38 @@ function IconAlert({ size = 28 }: { size?: number }) {
   )
 }
 
+function IconEye({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function IconRefresh({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <polyline points="21 3 21 9 15 9" />
+    </svg>
+  )
+}
+
+function IconChevronRight({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="9 6 15 12 9 18" />
+    </svg>
+  )
+}
+
+/** 245 → "4:05" */
+function formatDuration(sec?: number): string | null {
+  if (!sec) return null
+  return `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`
+}
+
 export default function SearchPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -399,140 +431,163 @@ export default function SearchPage() {
     }
   }
 
+  const pageTitle = setlistId ? 'Adicionar ao concerto' : projectId ? 'Adicionar ao repertório' : 'Procurar'
+  const onAdd = (r: SearchResult) => setlistId ? doAdd(r, setlistId) : projectId ? doAdd(r, null, true) : setPicker(r)
+  // Nome do concerto de origem (se for pessoal já está na lista carregada)
+  const setlistName = setlistId ? setlists.find(s => s.id === setlistId)?.name ?? null : null
+
   return (
     <>
       <div className={styles.page}>
-        <div className={styles.pageHeader}>
-          {setlistId ? (
-            <Breadcrumbs items={[
-              { label: 'Setlist', to: `/setlist/${setlistId}` },
-              { label: 'Adicionar música' },
-            ]} />
-          ) : projectId ? (
-            <Breadcrumbs items={[
-              { label: 'Projetos', to: '/' },
-              { label: projectName ?? 'Projeto', to: `/projects/${projectId}?tab=repertoire` },
-              { label: 'Adicionar música' },
-            ]} />
-          ) : null}
-          <h1 className={styles.title}>
-            {setlistId ? 'Adicionar música à setlist' : projectId ? 'Adicionar ao repertório' : 'Buscar Letras'}
-          </h1>
+        <header className={styles.pageHeader}>
+          {/* Procurar é sempre uma sub-rota: mostra de onde se veio, como a página da Música */}
+          <Breadcrumbs items={
+            setlistId
+              ? [
+                  { label: 'Concertos', to: '/setlists' },
+                  { label: setlistName ?? 'Concerto', to: `/setlist/${setlistId}` },
+                  { label: 'Adicionar música' },
+                ]
+              : projectId
+              ? [
+                  { label: 'Projetos', to: '/projects' },
+                  { label: projectName ?? 'Projeto', to: `/projects/${projectId}?tab=repertoire` },
+                  { label: 'Adicionar música' },
+                ]
+              : [
+                  { label: 'Repertório', to: '/library' },
+                  { label: 'Procurar' },
+                ]
+          } />
+          <h1 className={styles.pageTitle}>{pageTitle}</h1>
           {projectId && projectName && (
-            <p className={styles.projectCtx}>Projeto: <strong>{projectName}</strong></p>
+            <p className={styles.label}>
+              Projeto <span className={styles.sep} aria-hidden="true">·</span> <strong className={styles.labelStrong}>{projectName}</strong>
+            </p>
           )}
           {!projectId && !setlistId && (
-            <p className={styles.sub}>LRClib (com sincronização) e lyrics.ovh</p>
+            <p className={styles.label}>
+              Fontes <span className={styles.sep} aria-hidden="true">·</span> LRClib (sync) <span className={styles.sep} aria-hidden="true">·</span> lyrics.ovh
+            </p>
           )}
-        </div>
+        </header>
 
-        {/* ── Pesquisa como herói ── */}
-        <form onSubmit={handleSearch} className={styles.searchHero}>
-          <div className={styles.heroRow}>
-            <div className={styles.searchWrap}>
-              <span className={styles.searchIcon}><IconSearch /></span>
-              <input
-                className={styles.searchInput}
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Título da música..."
-                autoFocus
-              />
-            </div>
-            <label className={`${styles.pdfHeroBtn} ${importingPdf ? styles.btnBusy : ''}`}>
-              <IconFile />
-              <span className={styles.pdfHeroLabel}>{importingPdf ? 'A ler PDF...' : 'Importar PDF'}</span>
-              <input
-                type="file"
-                accept="application/pdf"
-                style={{ display: 'none' }}
-                disabled={importingPdf}
-                onChange={e => { const f = e.target.files?.[0]; if (f) importPdf(f); e.target.value = '' }}
-              />
-            </label>
-          </div>
-          <div className={styles.heroSubRow}>
+        {/* ── Pesquisa como herói — grelha: título · artista · Pesquisar, todos à mesma altura ── */}
+        <form onSubmit={handleSearch} className={styles.searchHero} role="search">
+          <div className={styles.searchWrap}>
+            <span className={styles.searchIcon}><IconSearch /></span>
             <input
-              className={styles.artistInput}
-              value={artistQuery}
-              onChange={e => setArtistQuery(e.target.value)}
-              placeholder="Artista (opcional)"
+              className={styles.searchInput}
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Título da música"
+              aria-label="Título da música"
+              autoFocus
             />
-            <button className={styles.searchBtn} type="submit" disabled={loading}>
-              {loading ? 'A pesquisar...' : 'Pesquisar'}
-            </button>
           </div>
+          <input
+            className={`${styles.input} ${styles.artistInput}`}
+            value={artistQuery}
+            onChange={e => setArtistQuery(e.target.value)}
+            placeholder="Artista (opcional)"
+            aria-label="Artista (opcional)"
+          />
+          <button className={styles.searchBtn} type="submit" disabled={loading}>
+            <IconSearch size={20} />
+            {loading ? 'A pesquisar…' : 'Pesquisar'}
+          </button>
         </form>
 
         <div className={styles.results}>
           {loading && (
-            <div className={styles.loadingBox}>
-              <div className={styles.spinner} />
-              <span>A pesquisar em LRClib e lyrics.ovh...</span>
-            </div>
+            <>
+              <div className={styles.sectionLabel} role="status">
+                <span className={styles.ledLive} aria-hidden="true" />
+                A pesquisar em LRClib e lyrics.ovh…
+              </div>
+              <div className={styles.panel} aria-hidden="true">
+                {[0, 1, 2, 3].map(i => (
+                  <div key={i} className={styles.skelRow}>
+                    <div className={styles.skelInfo}>
+                      <div className="skeleton" style={{ height: 15, width: `${50 + (i % 3) * 14}%` }} />
+                      <div className="skeleton" style={{ height: 12, width: `${30 + (i % 2) * 18}%` }} />
+                    </div>
+                    <div className={`skeleton ${styles.skelBtn}`} />
+                  </div>
+                ))}
+              </div>
+            </>
           )}
 
-          {!loading && results.map(r => {
-            const k = keyOf(r)
-            const isSaved = saved.includes(k)
-            const isSaving = saving === k
-            return (
-              <div key={k} className={styles.resultCard}>
-                <div className={styles.info}>
-                  <div className={styles.resultTitle}>
-                    {r.title}
-                    <span className={`${styles.badge} ${r.source === 'lrclib' ? styles.badgeLrclib : styles.badgeText}`}>
-                      {r.source === 'lrclib' ? 'LRClib' : 'Texto'}
-                    </span>
-                    {r.has_sync && (
-                      <span className={styles.syncBadge}>
-                        <IconCheck size={11} />
-                        sync
-                      </span>
-                    )}
-                    {alreadyOwned(r) && <span className={styles.ownedBadge}>já tens</span>}
-                  </div>
-                  <div className={styles.resultArtist}>
-                    {r.artist}
-                    {r.duration_sec ? ` · ${Math.floor(r.duration_sec / 60)}:${String(Math.floor(r.duration_sec % 60)).padStart(2, '0')}` : ''}
-                  </div>
-                </div>
-                <div className={styles.rowActions}>
-                  {!isSaved && (
-                    <button className={styles.previewBtn} onClick={() => openPreview(r)} disabled={isSaving}>
-                      Pré-ver
-                    </button>
-                  )}
-                  <button
-                    className={isSaved ? styles.savedBtn : styles.addBtn}
-                    onClick={() => setlistId ? doAdd(r, setlistId) : projectId ? doAdd(r, null, true) : setPicker(r)}
-                    disabled={isSaved || !!saving}
-                  >
-                    {isSaving ? (
-                      '...'
-                    ) : isSaved ? (
-                      <>
-                        <IconCheck />
-                        {setlistId ? 'Adicionada' : 'Guardado'}
-                      </>
-                    ) : (
-                      <>
-                        <IconPlus />
-                        Adicionar
-                      </>
-                    )}
-                  </button>
-                </div>
+          {!loading && results.length > 0 && (
+            <>
+              <div className={styles.sectionLabel}>
+                Resultados <span className={styles.sep} aria-hidden="true">·</span> {results.length}
               </div>
-            )
-          })}
+              <div className={styles.panel}>
+                {results.map(r => {
+                  const k = keyOf(r)
+                  const isSaved = saved.includes(k)
+                  const isSaving = saving === k
+                  const dur = formatDuration(r.duration_sec)
+                  return (
+                    <div key={k} className={styles.resultRow}>
+                      <div className={styles.info}>
+                        <div className={styles.resultTitle}>{r.title}</div>
+                        <div className={styles.resultMeta}>
+                          <span className={styles.resultArtist}>{r.artist}</span>
+                          {dur && <span className={styles.resultDur}>{dur}</span>}
+                          <span className={styles.chips}>
+                            <span className={styles.chip}>{r.source === 'lrclib' ? 'LRClib' : 'Texto'}</span>
+                            {r.has_sync && <span className={`${styles.chip} ${styles.chipSync}`}>Sync</span>}
+                            {alreadyOwned(r) && <span className={`${styles.chip} ${styles.chipOwned}`}>Já tens</span>}
+                          </span>
+                        </div>
+                      </div>
+                      <div className={styles.rowActions}>
+                        {!isSaved && (
+                          <button type="button" className={styles.previewBtn} onClick={() => openPreview(r)} disabled={isSaving}>
+                            <IconEye />
+                            Pré-ver
+                          </button>
+                        )}
+                        {isSaved ? (
+                          <span className={styles.savedTag}>
+                            <IconCheck size={16} />
+                            {setlistId ? 'Adicionada' : 'Guardado'}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className={styles.addBtn}
+                            onClick={() => onAdd(r)}
+                            disabled={!!saving}
+                          >
+                            {isSaving ? (
+                              <span className={styles.busy}>A guardar…</span>
+                            ) : (
+                              <>
+                                <IconPlus size={18} />
+                                Adicionar
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
 
           {!loading && searched && searchError && (
-            <div className={styles.stateCard}>
-              <div className={`${styles.stateIcon} ${styles.stateIconError}`}><IconAlert /></div>
+            <div className={styles.stateCard} role="alert">
+              <span className={`${styles.stateIcon} ${styles.stateIconError}`}><IconAlert /></span>
               <p className={styles.stateTitle}>Sem ligação — não foi possível pesquisar.</p>
               <p className={styles.stateSub}>Verifica a internet e tenta de novo.</p>
-              <button className={styles.manualBtn} onClick={runSearch}>
+              <button type="button" className={styles.secondaryBtn} onClick={runSearch}>
+                <IconRefresh />
                 Tentar de novo
               </button>
             </div>
@@ -540,10 +595,10 @@ export default function SearchPage() {
 
           {!loading && searched && !searchError && results.length === 0 && (
             <div className={styles.stateCard}>
-              <div className={styles.stateIcon}><IconSearch size={26} /></div>
+              <span className={styles.stateIcon}><IconSearch size={28} /></span>
               <p className={styles.stateTitle}>Não encontrei letra para "{query}".</p>
               <p className={styles.stateSub}>Tenta outro título/artista ou adiciona manualmente.</p>
-              <button className={styles.manualBtn} onClick={() => setManual({ title: query, artist: artistQuery, lyrics: '', setlistId })}>
+              <button type="button" className={styles.secondaryBtn} onClick={() => setManual({ title: query, artist: artistQuery, lyrics: '', setlistId })}>
                 <IconPencil />
                 Adicionar manualmente
               </button>
@@ -551,60 +606,108 @@ export default function SearchPage() {
           )}
         </div>
 
+        {/* Antes de pesquisar: passos numerados 01/02/03 (onde vão aparecer os
+            resultados) + alternativa manual no rodapé do mesmo painel */}
         {!searched && (
-          <div className={styles.fallback}>
-            <span className={styles.fallbackLabel}>Tens uma letra?</span>
-            <div className={styles.fallbackBtns}>
-              <button className={styles.fallbackBtn} onClick={() => setManual({ title: '', artist: '', lyrics: '', setlistId })}>
-                <IconPencil />
-                Escrever / colar manualmente
-              </button>
-              <label className={`${styles.fallbackBtn} ${importingPdf ? styles.btnBusy : ''}`}>
-                <IconFile size={16} />
-                {importingPdf ? 'A ler PDF...' : 'Importar de PDF'}
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  style={{ display: 'none' }}
-                  disabled={importingPdf}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) importPdf(f); e.target.value = '' }}
-                />
-              </label>
+          <section className={styles.idle} aria-label="Como procurar letras">
+            <div className={styles.sectionLabel}>Como funciona</div>
+            <div className={styles.idlePanel}>
+              <ol className={styles.steps}>
+                <li className={styles.step}>
+                  <span className={styles.stepNum} aria-hidden="true">01</span>
+                  <div className={styles.stepBody}>
+                    <p className={styles.stepTitle}>Procura</p>
+                    <p className={styles.stepText}>Título e, se souberes, o artista.</p>
+                  </div>
+                </li>
+                <li className={styles.step}>
+                  <span className={styles.stepNum} aria-hidden="true">02</span>
+                  <div className={styles.stepBody}>
+                    <p className={styles.stepTitle}>Escolhe</p>
+                    <p className={styles.stepText}>
+                      Resultados com <span className={`${styles.chip} ${styles.chipSync}`}>Sync</span> (letra
+                      sincronizada) vêm primeiro. Pré-vê antes de guardar.
+                    </p>
+                  </div>
+                </li>
+                <li className={styles.step}>
+                  <span className={styles.stepNum} aria-hidden="true">03</span>
+                  <div className={styles.stepBody}>
+                    <p className={styles.stepTitle}>Adiciona</p>
+                    <p className={styles.stepText}>
+                      {setlistId
+                        ? 'Entra direto no concerto — ficas aqui para adicionar mais.'
+                        : projectId
+                          ? 'Fica no repertório do projeto.'
+                          : 'Ao repertório ou direto a um concerto.'}
+                    </p>
+                  </div>
+                </li>
+              </ol>
+              <div className={styles.fallback}>
+                <div className={styles.sectionLabel}>Tens uma letra?</div>
+                <div className={styles.fallbackBtns}>
+                  <button type="button" className={styles.secondaryBtn} onClick={() => setManual({ title: '', artist: '', lyrics: '', setlistId })}>
+                    <IconPencil />
+                    Escrever / colar manualmente
+                  </button>
+                  <label className={`${styles.secondaryBtn} ${importingPdf ? styles.btnBusy : ''}`}>
+                    <IconFile />
+                    {importingPdf ? 'A ler PDF…' : 'Importar PDF'}
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className={styles.fileInput}
+                      disabled={importingPdf}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) importPdf(f); e.target.value = '' }}
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
-          </div>
+          </section>
         )}
       </div>
 
       {/* MODAL: escolher destino */}
       {picker && !projectId && (
         <div className={styles.overlay} onClick={() => setPicker(null)}>
-          <div className={styles.pickerModal} onClick={e => e.stopPropagation()}>
+          <div className={`${styles.modal} ${styles.pickerModal}`} role="dialog" aria-modal="true" aria-label={`Adicionar ${picker.title}`} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <div>
+              <div className={styles.modalHead}>
+                <div className={styles.modalKicker}>Adicionar a</div>
                 <div className={styles.modalTitle}>{picker.title}</div>
                 <div className={styles.modalArtist}>{picker.artist}</div>
               </div>
-              <button className={styles.closeBtn} onClick={() => setPicker(null)} aria-label="Fechar">
+              <button type="button" className={styles.closeBtn} onClick={() => setPicker(null)} aria-label="Fechar">
                 <IconX />
               </button>
             </div>
-            <button className={styles.targetRow} onClick={() => doAdd(picker, null)}>
-              <span className={styles.targetIcon}><IconBook /></span>
-              <span>Só na biblioteca</span>
-            </button>
-            {setlists.length > 0 && <div className={styles.targetDivider}>Ou directo para um concerto</div>}
-            <div className={styles.targetList}>
-              {setlists.map(s => (
-                <button key={s.id} className={styles.targetRow} onClick={() => doAdd(picker, s.id)}>
-                  <span className={styles.targetIcon}><IconMic /></span>
-                  <span>{s.name}</span>
+            <div className={styles.modalBody}>
+              <div className={styles.targetPanel}>
+                <button type="button" className={styles.targetRow} onClick={() => doAdd(picker, null)}>
+                  <span className={styles.targetIcon}><IconBook /></span>
+                  <span className={styles.targetName}>Só na biblioteca</span>
+                  <span className={styles.targetChevron}><IconChevronRight /></span>
                 </button>
-              ))}
+              </div>
+              {setlists.length > 0 && <div className={styles.targetDivider}>Ou direto para um concerto</div>}
+              {setlists.length > 0 && (
+                <div className={`${styles.targetPanel} ${styles.targetList}`}>
+                  {setlists.map(s => (
+                    <button key={s.id} type="button" className={styles.targetRow} onClick={() => doAdd(picker, s.id)}>
+                      <span className={styles.targetIcon}><IconMic /></span>
+                      <span className={styles.targetName}>{s.name}</span>
+                      <span className={styles.targetChevron}><IconChevronRight /></span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button type="button" className={`${styles.secondaryBtn} ${styles.newSetlistBtn}`} onClick={() => createSetlistAndAdd(picker)}>
+                <IconPlus />
+                Novo concerto
+              </button>
             </div>
-            <button className={styles.newSetlistRow} onClick={() => createSetlistAndAdd(picker)}>
-              <IconPlus />
-              Novo concerto
-            </button>
           </div>
         </div>
       )}
@@ -612,19 +715,25 @@ export default function SearchPage() {
       {/* MODAL PRÉ-VER */}
       {preview && (
         <div className={styles.overlay} onClick={() => setPreview(null)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+          <div className={styles.modal} role="dialog" aria-modal="true" aria-label={`Pré-visualizar ${preview.result.title}`} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <div>
+              <div className={styles.modalHead}>
+                <div className={styles.modalKicker}>
+                  Pré-ver <span className={styles.sep} aria-hidden="true">·</span> {preview.result.source === 'lrclib' ? 'LRClib' : 'Texto'}
+                </div>
                 <div className={styles.modalTitle}>{preview.result.title}</div>
                 <div className={styles.modalArtist}>{preview.result.artist}</div>
               </div>
-              <button className={styles.closeBtn} onClick={() => setPreview(null)} aria-label="Fechar">
+              <button type="button" className={styles.closeBtn} onClick={() => setPreview(null)} aria-label="Fechar">
                 <IconX />
               </button>
             </div>
             <div className={styles.previewBody}>
               {preview.loading ? (
-                <div className={styles.loadingBox}><div className={styles.spinner} /><span>A carregar letra...</span></div>
+                <div className={styles.loadingLine} role="status">
+                  <span className={styles.ledLive} aria-hidden="true" />
+                  A carregar letra…
+                </div>
               ) : preview.lyrics.trim() ? (
                 preview.lyrics.split('\n').map((line, i) => (
                   <div key={i} className={line.trim() === '' ? styles.lyricBreak : styles.lyricLine}>{line || ' '}</div>
@@ -635,17 +744,18 @@ export default function SearchPage() {
             </div>
             <div className={styles.modalFooter}>
               {preview.lines && (
-                <span className={styles.syncNote}>
-                  <IconCheck />
-                  Inclui sincronização ({preview.lines.length} linhas)
+                <span className={`${styles.chip} ${styles.chipSync} ${styles.syncNote}`}>
+                  <IconCheck size={12} />
+                  Sync · {preview.lines.length} linhas
                 </span>
               )}
               <button
-                className={styles.addBtn}
-                onClick={() => { const r = preview.result; setPreview(null); setlistId ? doAdd(r, setlistId) : projectId ? doAdd(r, null, true) : setPicker(r) }}
+                type="button"
+                className={`${styles.addBtn} ${styles.addBtnLg}`}
+                onClick={() => { const r = preview.result; setPreview(null); onAdd(r) }}
                 disabled={!!saving}
               >
-                <IconPlus />
+                <IconPlus size={18} />
                 Adicionar
               </button>
             </div>
@@ -656,34 +766,45 @@ export default function SearchPage() {
       {/* MODAL MANUAL */}
       {manual && (
         <div className={styles.overlay} onClick={() => closeManual(true)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+          <div className={styles.modal} role="dialog" aria-modal="true" aria-label="Nova música" onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <div className={styles.modalTitle}>Nova música</div>
-              <button className={styles.closeBtn} onClick={() => closeManual(false)} aria-label="Fechar">
+              <div className={styles.modalHead}>
+                <div className={styles.modalKicker}>Manual</div>
+                <div className={styles.modalTitle}>Nova música</div>
+              </div>
+              <button type="button" className={styles.closeBtn} onClick={() => closeManual(false)} aria-label="Fechar">
                 <IconX />
               </button>
             </div>
-            <div className={styles.manualForm}>
+            <div className={`${styles.modalBody} ${styles.manualForm}`}>
               <div className={styles.manualRow}>
-                <input className={styles.manualInput} placeholder="Título *" value={manual.title} onChange={e => setManual({ ...manual, title: e.target.value })} />
-                <input className={styles.manualInput} placeholder="Artista *" value={manual.artist} onChange={e => setManual({ ...manual, artist: e.target.value })} />
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Título *</span>
+                  <input className={styles.input} placeholder="Título" value={manual.title} onChange={e => setManual({ ...manual, title: e.target.value })} />
+                </label>
+                <label className={styles.field}>
+                  <span className={styles.fieldLabel}>Artista *</span>
+                  <input className={styles.input} placeholder="Artista" value={manual.artist} onChange={e => setManual({ ...manual, artist: e.target.value })} />
+                </label>
               </div>
-              <div className={styles.pdfRow}>
-                <label className={`${styles.pdfBtn} ${importingPdf ? styles.btnBusy : ''}`}>
+              <div className={styles.lyricsHead}>
+                <span className={styles.fieldLabel}>Letra</span>
+                <label className={`${styles.secondaryBtn} ${styles.pdfBtn} ${importingPdf ? styles.btnBusy : ''}`}>
                   <IconFile size={16} />
-                  {importingPdf ? 'A ler PDF...' : 'Importar letra de PDF'}
+                  {importingPdf ? 'A ler PDF…' : 'Importar letra de PDF'}
                   <input
                     type="file"
                     accept="application/pdf"
-                    style={{ display: 'none' }}
+                    className={styles.fileInput}
                     disabled={importingPdf}
                     onChange={e => { const f = e.target.files?.[0]; if (f) importPdf(f); e.target.value = '' }}
                   />
                 </label>
               </div>
               <textarea
-                className={styles.manualTextarea}
+                className={styles.textarea}
                 placeholder="Cola ou escreve a letra aqui...&#10;&#10;[Verso 1]&#10;..."
+                aria-label="Letra"
                 value={manual.lyrics}
                 onChange={e => setManual({ ...manual, lyrics: e.target.value })}
                 rows={10}
@@ -691,11 +812,12 @@ export default function SearchPage() {
             </div>
             <div className={styles.modalFooter}>
               <button
-                className={styles.addBtn}
+                type="button"
+                className={`${styles.addBtn} ${styles.addBtnLg}`}
                 onClick={saveManual}
                 disabled={savingManual || !manual.title.trim() || !manual.artist.trim()}
               >
-                {savingManual ? 'A guardar...' : 'Guardar música'}
+                {savingManual ? 'A guardar…' : 'Guardar música'}
               </button>
             </div>
           </div>
@@ -706,10 +828,10 @@ export default function SearchPage() {
       {addedToast > 0 && setlistId && (
         <div className={styles.addedToast} role="status">
           <span className={styles.addedToastMsg}>
-            <IconCheck size={15} />
+            <IconCheck size={16} />
             Adicionada ao concerto
           </span>
-          <button className={styles.addedToastLink} onClick={() => navigate(`/setlist/${setlistId}`)}>
+          <button type="button" className={styles.addedToastLink} onClick={() => navigate(`/setlist/${setlistId}`)}>
             Ver concerto
           </button>
         </div>

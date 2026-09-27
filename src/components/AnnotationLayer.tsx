@@ -437,8 +437,13 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
               fill="none" strokeLinecap="round" strokeLinejoin="round" />
           )}
           {tool === 'eraser' && eraserPos && (
-            <circle cx={eraserPos.x} cy={eraserPos.y} r={ERASER_RADIUS}
-              fill="none" stroke="var(--text3)" strokeWidth={1.5} strokeDasharray="4 3" />
+            <g className={styles.eraser} aria-hidden="true">
+              <circle className={styles.eraserRing} cx={eraserPos.x} cy={eraserPos.y} r={ERASER_RADIUS} />
+              <path
+                className={styles.eraserCross}
+                d={`M ${eraserPos.x - 4} ${eraserPos.y} H ${eraserPos.x + 4} M ${eraserPos.x} ${eraserPos.y - 4} V ${eraserPos.y + 4}`}
+              />
+            </g>
           )}
         </svg>
       )}

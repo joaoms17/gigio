@@ -51,10 +51,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             <div
               key={t.id}
               className={`${styles.toast} ${t.type === 'error' ? styles.error : ''} ${t.type === 'success' ? styles.success : ''}`}
-              role="status"
+              role={t.type === 'error' ? 'alert' : 'status'}
               onClick={() => dismiss(t.id)}
             >
-              {t.message}
+              {t.type && (
+                <span className={styles.tag} aria-hidden="true">
+                  {t.type === 'error' ? 'Erro' : 'OK'}
+                </span>
+              )}
+              <span className={styles.message}>{t.message}</span>
             </div>
           ))}
         </div>
