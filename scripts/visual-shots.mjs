@@ -138,6 +138,8 @@ const PAGES = [
   ['concertos', '/setlists'],
   ['setlist', '/setlist/s1'],
   ['concerto-modo', '/setlist/s1/concert'],
+  // 2.ª música do fixture tem sync — mostra espera/transporte/± linha
+  ['concerto-sync', '/setlist/s1/concert', { session: { 'concert-pos-s1': '1' } }],
   ['repertorio', '/library'],
   ['pesquisa', '/search'],
   ['calendario', '/calendar'],
@@ -176,12 +178,16 @@ for (const theme of THEMES) {
       localStorage.setItem('gigio-theme', '${theme}');
     `)
     const page = await ctx.newPage()
-    for (const [name, route] of PAGES) {
+    for (const [name, route, opts] of PAGES) {
       if (ONLY && !ONLY.includes(name)) continue
       try {
+        if (opts?.session) {
+          await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded', timeout: 15000 })
+          await page.evaluate(s => { for (const [k, v] of Object.entries(s)) sessionStorage.setItem(k, v) }, opts.session)
+        }
         await page.goto(`http://localhost:${PORT}${route}`, { waitUntil: 'networkidle', timeout: 15000 })
         await page.waitForTimeout(700)
-        const fullPage = name !== 'concerto-modo' && name !== 'sync'
+        const fullPage = !name.startsWith('concerto-') && name !== 'sync'
         // Numa captura de página inteira, barras position:fixed ficam desenhadas a meio
         // da página — pô-las em fluxo normal para aparecerem no fim, como ao fazer scroll.
         const unfix = fullPage ? await page.addStyleTag({ content: '[class*="bottomNav"]{position:static!important}' }) : null
