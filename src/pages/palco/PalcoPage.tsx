@@ -197,7 +197,6 @@ export default function PalcoPage() {
   const toast = useToast()
   const [events, setEvents] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
-  const [creating, setCreating] = useState(false)
   /** Primeiras músicas do alinhamento, associadas ao id do concerto a que pertencem. */
   const [preview, setPreview] = useState<{ setlistId: string; songs: PreviewSong[] } | null>(null)
 
@@ -272,20 +271,9 @@ export default function PalcoPage() {
     return () => { cancelled = true }
   }, [heroId, toast])
 
-  async function createConcert() {
-    if (!user || creating) return
-    setCreating(true)
-    const { data, error } = await supabase
-      .from('setlists')
-      .insert({ name: 'Novo Concerto', owner_id: user.id, status: 'draft' })
-      .select()
-      .single()
-    setCreating(false)
-    if (error || !data) {
-      toast('Erro ao criar concerto: ' + (error?.message ?? 'tenta de novo'), { type: 'error' })
-      return
-    }
-    navigate(`/setlist/${data.id}?add=1`)
+  /* Assistente de criação: importar lista / copiar concerto / repertório / vazio */
+  function createConcert() {
+    navigate('/concertos/novo')
   }
 
   const rest = events.slice(1, 6)
@@ -450,9 +438,9 @@ export default function PalcoPage() {
           <p className={styles.emptySub}>
             Ainda não tens concertos agendados. Cria o primeiro e começa a preparar o alinhamento.
           </p>
-          <button className={styles.primaryBtn} onClick={createConcert} disabled={creating}>
+          <button className={styles.primaryBtn} onClick={createConcert}>
             <IconPlus />
-            {creating ? 'A criar...' : 'Criar concerto'}
+            Criar concerto
           </button>
         </section>
       )}
@@ -551,9 +539,9 @@ export default function PalcoPage() {
           <span>Atalhos</span>
         </h2>
         <div className={styles.shortcuts}>
-          <button className={styles.secondaryBtn} onClick={createConcert} disabled={creating}>
+          <button className={styles.secondaryBtn} onClick={createConcert}>
             <IconPlus />
-            <span className={styles.shortcutLabel}>{creating ? 'A criar...' : 'Novo concerto'}</span>
+            <span className={styles.shortcutLabel}>Novo concerto</span>
           </button>
           <button className={styles.secondaryBtn} onClick={() => navigate('/search')}>
             <IconNote />

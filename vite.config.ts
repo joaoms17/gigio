@@ -31,7 +31,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,mjs,css,html,ico,svg,png,woff2}'],
+        // ttf: fontes embebidas nos PDFs (src/lib/pdf/fonts) — exportar funciona offline
+        globPatterns: ['**/*.{js,mjs,css,html,ico,svg,png,woff2,ttf}'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         skipWaiting: true,
         clientsClaim: true,

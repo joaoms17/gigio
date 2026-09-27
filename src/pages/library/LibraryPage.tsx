@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useConfirm } from '../../components/ConfirmDialog'
-import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
-import { exportSongsPdf } from '../../lib/pdfExport'
+import ExportPdfSheet from '../../components/ExportPdfSheet'
+import type { PdfData, PdfKind } from '../../lib/pdfExport'
 import { useAuth } from '../../hooks/useAuth'
 import type { Song } from '../../types'
 import styles from './LibraryPage.module.css'
@@ -61,7 +61,6 @@ export default function LibraryPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const confirmDialog = useConfirm()
-  const toast = useToast()
   const [songs, setSongs] = useState<Song[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -72,6 +71,7 @@ export default function LibraryPage() {
   const [selecting, setSelecting] = useState(false)
   const [selection, setSelection] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [pdfKind, setPdfKind] = useState<PdfKind | null>(null)
 
   useEffect(() => {
     if (!user) return
@@ -163,11 +163,24 @@ export default function LibraryPage() {
 
   /** Exporta as músicas filtradas atuais, pela ordem da vista */
   function exportPdf(withLyrics: boolean) {
-    const ok = exportSongsPdf(
-      filtered.map(s => ({ title: s.title, lyrics: s.edited_lyrics ?? s.lyrics })),
-      { title: 'A minha biblioteca', withLyrics }
-    )
-    if (!ok) toast('Permite pop-ups para exportar o PDF.', { type: 'error' })
+    setPdfKind(withLyrics ? 'repertorio' : 'alinhamento')
+  }
+
+  function pdfData(): PdfData {
+    return {
+      meta: { title: 'A minha biblioteca', context: 'library' },
+      songs: filtered.map(s => ({
+        title: s.title,
+        artist: s.artist,
+        key: s.performance_key || s.original_key || null,
+        originalKey: s.original_key,
+        bpm: s.bpm,
+        capo: s.capo,
+        durationSec: s.duration_sec,
+        lyrics: s.edited_lyrics ?? s.lyrics,
+        chords: s.chords,
+      })),
+    }
   }
 
   function toggleSelectAll() {
@@ -395,6 +408,10 @@ export default function LibraryPage() {
           </div>
         )}
       </section>
+
+      {pdfKind && (
+        <ExportPdfSheet kind={pdfKind} data={pdfData()} onClose={() => setPdfKind(null)} />
+      )}
 
       {/* ── Barra de ações em bloco ── */}
       {selecting && selection.size > 0 && (

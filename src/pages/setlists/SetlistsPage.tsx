@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import ProjectPickerModal from '../../components/ProjectPickerModal'
-import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './SetlistsPage.module.css'
@@ -158,10 +156,8 @@ function IconMic() {
 export default function SetlistsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const toast = useToast()
   const [setlists, setSetlists] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
-  const [picking, setPicking] = useState(false)
   const [search, setSearch] = useState('')
 
   useEffect(() => {
@@ -177,15 +173,9 @@ export default function SetlistsPage() {
       })
   }, [user])
 
-  async function createInProject(projectId: string) {
-    if (!user) return
-    const { data, error } = await supabase
-      .from('setlists')
-      .insert({ name: 'Novo Concerto', owner_id: user.id, band_id: projectId, is_shared: true, status: 'draft' })
-      .select()
-      .single()
-    if (error) { toast('Erro ao criar concerto: ' + error.message, { type: 'error' }); return }
-    if (data) navigate(`/setlist/${data.id}?add=1`)
+  /* Assistente de criação (escolhe o projeto em "PARA:" e a origem da lista) */
+  function createConcert() {
+    navigate('/concertos/novo')
   }
 
   const filtered = useMemo(() => setlists.filter(s =>
@@ -219,7 +209,7 @@ export default function SetlistsPage() {
               Calendário
             </button>
             {!isEmpty && (
-              <button className={styles.primaryBtn} onClick={() => setPicking(true)}>
+              <button className={styles.primaryBtn} onClick={createConcert}>
                 <IconPlus />
                 Novo concerto
               </button>
@@ -265,7 +255,7 @@ export default function SetlistsPage() {
             <span className={styles.emptyIcon}><IconMic /></span>
             <h2 className={styles.emptyTitle}>Ainda sem concertos</h2>
             <p className={styles.emptySub}>Cria o primeiro concerto num projeto para começar.</p>
-            <button className={styles.primaryBtn} onClick={() => setPicking(true)}>
+            <button className={styles.primaryBtn} onClick={createConcert}>
               <IconPlus />
               Criar concerto
             </button>
@@ -382,14 +372,6 @@ export default function SetlistsPage() {
           </div>
         )}
       </div>
-
-      {picking && (
-        <ProjectPickerModal
-          title="Em que projeto criar o concerto?"
-          onPick={(id) => { setPicking(false); createInProject(id) }}
-          onClose={() => setPicking(false)}
-        />
-      )}
     </>
   )
 }

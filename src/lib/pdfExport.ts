@@ -1,135 +1,136 @@
-export interface PdfSongItem {
-  title: string
-  lyrics?: string | null
+/**
+ * Exportação de PDF no browser (invólucro do construtor puro em src/lib/pdf).
+ *
+ * - O motor (jspdf + construtor) só é descarregado quando se exporta: import() dinâmico.
+ * - As fontes da v2 (TTF em src/lib/pdf/fonts) entram como URLs do Vite, são lidas
+ *   com fetch e convertidas para base64 uma única vez (cache em memória). Ficam no
+ *   precache do service worker, por isso exportar funciona offline.
+ * - Devolve um File "<Nome> — alinhamento.pdf" / "<Nome> — repertório.pdf" pronto
+ *   para navigator.share (num gesto novo do utilizador) ou para descarregar.
+ */
+import { pdfKindName, type PdfContext, type PdfData, type PdfFonts, type PdfKind, type PdfOptions } from './pdf/types'
+import displayUrl from './pdf/fonts/ArchivoCondensed-ExtraBold.ttf?url'
+import bodyUrl from './pdf/fonts/Archivo-Regular.ttf?url'
+import semiUrl from './pdf/fonts/Archivo-SemiBold.ttf?url'
+import monoUrl from './pdf/fonts/JetBrainsMono-Medium.ttf?url'
+import monoBoldUrl from './pdf/fonts/JetBrainsMono-Bold.ttf?url'
+
+export type {
+  PdfContext, PdfData, PdfKind, PdfMeta, PdfOptions, PdfSize, PdfSong, PdfTheme,
+} from './pdf/types'
+
+const FONT_URLS: Record<keyof PdfFonts, string> = {
+  display: displayUrl,
+  body: bodyUrl,
+  semi: semiUrl,
+  mono: monoUrl,
+  monoBold: monoBoldUrl,
 }
 
-export interface PdfExportOptions {
-  title: string
-  accent?: string | null
-  logoUrl?: string | null
-  logoInitial?: string | null
-  withLyrics?: boolean
+type Engine = typeof import('./pdf/buildSetlistPdf')
+
+let enginePromise: Promise<Engine> | null = null
+let fontsPromise: Promise<PdfFonts> | null = null
+
+function loadEngine(): Promise<Engine> {
+  if (!enginePromise) {
+    enginePromise = import('./pdf/buildSetlistPdf').catch(err => {
+      enginePromise = null // permite tentar de novo (ex.: voltou a rede)
+      throw err
+    })
+  }
+  return enginePromise
 }
 
-function esc(s: string): string {
-  // Aspas incluídas: o logoUrl é interpolado dentro de src="…"
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+function toBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf)
+  let bin = ''
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  return btoa(bin)
+}
+
+export function loadPdfFonts(): Promise<PdfFonts> {
+  if (!fontsPromise) {
+    const entries = Object.entries(FONT_URLS) as [keyof PdfFonts, string][]
+    fontsPromise = Promise.all(entries.map(async ([role, url]) => {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`Fonte do PDF indisponível (${res.status})`)
+      return [role, toBase64(await res.arrayBuffer())] as const
+    }))
+      .then(pairs => Object.fromEntries(pairs) as unknown as PdfFonts)
+      .catch(err => {
+        fontsPromise = null
+        throw err
+      })
+  }
+  return fontsPromise
+}
+
+/** Começa a carregar o motor e as fontes (ex.: ao abrir a folha de exportação). */
+export function preloadPdfEngine(): void {
+  loadEngine().catch(() => {})
+  loadPdfFonts().catch(() => {})
 }
 
 /**
- * Abre uma janela de impressão com a lista de músicas (só títulos, ou título +
- * letra completa por página quando withLyrics). Devolve false se o pop-up foi
- * bloqueado — o chamador deve avisar o utilizador e permitir tentar de novo.
+ * "Festa de Verão — alinhamento.pdf" / "— repertório.pdf" ("— lista.pdf" fora de
+ * um concerto), sem caracteres proibidos em nomes de ficheiro, sem controlo
+ * bidi/zero-width, sem ponto inicial (ficheiro oculto no macOS) e cortado por
+ * carácter (nunca a meio de um emoji).
  */
-export function exportSongsPdf(songs: PdfSongItem[], opts: PdfExportOptions): boolean {
-  const accent = opts.accent ?? '#FF5B14'
-  const logoBlock = opts.logoUrl
-    ? `<img class="logo" src="${esc(opts.logoUrl)}" alt="" />`
-    : opts.logoInitial
-      ? `<div class="logoInitial">${esc(opts.logoInitial.charAt(0).toUpperCase())}</div>`
-      : ''
+export function pdfFileName(title: string, kind: PdfKind, context: PdfContext = 'concert'): string {
+  const cleaned = Array.from(title.normalize('NFC'), c => {
+    const code = c.codePointAt(0) ?? 0
+    return code < 32 || code === 127 ? ' ' : c
+  }).join('')
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, '')
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[.\s]+/, '')
+  const base = Array.from(cleaned).slice(0, 80).join('').trim() || 'Gigio'
+  return `${base} — ${pdfKindName(kind, context)}.pdf`
+}
 
-  const rows = opts.withLyrics
-    ? songs.map((s, i) => {
-        const lyrics = (s.lyrics ?? '').replace(/\r\n/g, '\n').trim()
-        return `
-      <div class="songBlock">
-        <div class="song">
-          <span class="num">${i + 1}</span>
-          <span class="title">${esc(s.title)}</span>
-        </div>
-        ${lyrics ? `<div class="lyrics">${esc(lyrics)}</div>` : '<div class="noLyrics">— sem letra —</div>'}
-      </div>`
-      }).join('')
-    : songs.map((s, i) => `
-      <div class="song">
-        <span class="num">${i + 1}</span>
-        <span class="title">${esc(s.title)}</span>
-      </div>`
-    ).join('')
+export interface GeneratedPdf {
+  file: File
+  pages: number
+}
 
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(opts.title)}</title>
-      <style>
-        @page { size: A4; margin: 18mm 20mm; }
-        * { box-sizing: border-box; }
-        body {
-          font-family: -apple-system, 'Segoe UI', sans-serif;
-          color: #111; margin: 0; text-align: center;
-        }
-        .toolbar {
-          position: sticky; top: 0; display: flex; gap: 10px; justify-content: flex-end;
-          padding: 10px 16px 10px; background: #fff; border-bottom: 1px solid #eee;
-        }
-        .toolbar button {
-          font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
-          padding: 9px 20px; border-radius: 10px; border: 1px solid #ccc; background: #f5f5f5;
-        }
-        .toolbar .print { background: #111; border-color: #111; color: #fff; }
-        .header {
-          padding: 14px 0 10px;
-          display: flex; align-items: center; justify-content: center; gap: 16px;
-        }
-        .logo { width: 64px; height: 64px; border-radius: 14px; object-fit: cover; flex-shrink: 0; }
-        .logoInitial {
-          width: 64px; height: 64px; border-radius: 14px; flex-shrink: 0;
-          background: ${accent}; color: #fff;
-          font-size: 28px; font-weight: 900;
-          display: flex; align-items: center; justify-content: center;
-        }
-        .headerText { text-align: left; }
-        .concertName { font-size: 22px; font-weight: 900; letter-spacing: -0.3px; line-height: 1.2; }
-        .divider { width: 36px; height: 2.5px; background: ${accent}; border: none; border-radius: 2px; margin: 10px auto; }
-        .songs { padding: 0; }
-        .song {
-          display: flex; align-items: baseline; justify-content: center; gap: 7px;
-          padding: 2px 0;
-          page-break-inside: avoid;
-        }
-        .num { font-size: 11px; color: #bbb; font-weight: 700; min-width: 18px; text-align: right; flex-shrink: 0; }
-        .title { font-size: 17px; font-weight: 700; }
-        .songBlock { page-break-before: always; padding-top: 6px; }
-        .songBlock:first-child { page-break-before: auto; }
-        .lyrics {
-          white-space: pre-wrap; font-size: 13.5px; line-height: 1.55;
-          margin-top: 10px; text-align: center;
-        }
-        .noLyrics { margin-top: 10px; font-size: 12px; color: #bbb; font-style: italic; }
-        @media print { .toolbar { display: none; } }
-      </style></head><body>
-      <div class="toolbar">
-        <button onclick="window.close()">✕ Fechar</button>
-        <button class="print" onclick="window.print()">🖨 Imprimir / PDF</button>
-      </div>
-      <div class="header">
-        ${logoBlock}
-        <div class="headerText">
-          <div class="concertName">${esc(opts.title)}</div>
-        </div>
-      </div>
-      <hr class="divider" />
-      <div class="songs">${rows}</div>
-      <script>
-        window.onload = () => {
-          const img = document.querySelector('img.logo')
-          const go = () => setTimeout(() => window.print(), 100)
-          if (img && !img.complete) {
-            let done = false
-            const once = () => { if (!done) { done = true; go() } }
-            img.onload = once; img.onerror = once
-            setTimeout(once, 1500)
-          } else go()
-        }
-      <\/script>
-      </body></html>`
+/** Gera o PDF e devolve o ficheiro + nº de páginas. Lança erro se o motor/fontes não carregarem. */
+export async function generateSetlistPdf(data: PdfData, options: PdfOptions): Promise<GeneratedPdf> {
+  const [{ buildSetlistPdf }, fonts] = await Promise.all([loadEngine(), loadPdfFonts()])
+  const doc = buildSetlistPdf(data, options, fonts)
+  const blob = doc.output('blob')
+  const file = new File([blob], pdfFileName(data.meta.title, options.kind, data.meta.context), { type: 'application/pdf' })
+  return { file, pages: doc.getNumberOfPages() }
+}
 
-  const w = window.open('', '_blank')
-  if (!w) return false
-  w.document.write(html)
-  w.document.close()
-  return true
+/** O browser consegue partilhar este ficheiro (Web Share Level 2)? */
+export function canShareFile(file: File): boolean {
+  try {
+    return typeof navigator !== 'undefined'
+      && typeof navigator.share === 'function'
+      && typeof navigator.canShare === 'function'
+      && navigator.canShare({ files: [file] })
+  } catch {
+    return false
+  }
+}
+
+/** Alguma música tem acordes? (a folha só mostra "Incluir acordes" nesse caso) */
+export function countSongsWithChords(data: PdfData): number {
+  return data.songs.filter(s => !!s.chords?.trim()).length
+}
+
+/**
+ * A lista (alinhamento) tem linhas por baixo dos títulos (intro/final/notas, ou
+ * artista fora de um concerto)? Só então faz sentido a opção "Só títulos".
+ */
+export function hasListNotes(data: PdfData): boolean {
+  const showArtist = (data.meta.context ?? 'concert') !== 'concert'
+  return data.songs.some(s => !!(s.intro?.trim() || s.ending?.trim() || s.notes?.trim() || (showArtist && s.artist?.trim())))
 }

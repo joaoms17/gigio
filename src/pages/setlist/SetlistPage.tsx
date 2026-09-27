@@ -14,7 +14,8 @@ import { useToast } from '../../components/Toast'
 import ProjectPickerModal from '../../components/ProjectPickerModal'
 import SetlistImportModal from '../../components/SetlistImportModal'
 import { supabase } from '../../lib/supabase'
-import { exportSongsPdf } from '../../lib/pdfExport'
+import ExportPdfSheet from '../../components/ExportPdfSheet'
+import type { PdfData, PdfKind } from '../../lib/pdfExport'
 import { fmtSection } from '../../components/LyricsView'
 import { useAuth } from '../../hooks/useAuth'
 import {
@@ -195,7 +196,6 @@ export default function SetlistPage() {
   const autoAddDone = useRef(false)
   const [setlist, setSetlist] = useState<Setlist | null>(null)
   const [projectName, setProjectName] = useState<string | null>(null)
-  const [projectImage, setProjectImage] = useState<string | null>(null)
   const [projectColor, setProjectColor] = useState<string | null>(null)
   const [songs, setSongs] = useState<Row[]>([])
   const [library, setLibrary] = useState<Song[]>([])
@@ -216,6 +216,7 @@ export default function SetlistPage() {
   const [removedSong, setRemovedSong] = useState<Row | null>(null)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [pdfKind, setPdfKind] = useState<PdfKind | null>(null)
   const [isOffline, setIsOffline] = useState(false)
   const [canDelete, setCanDelete] = useState(false)
   // Telemóvel (≤640px): pega de arrasto e ✕ só em modo "Editar" — liberta largura ao texto.
@@ -244,7 +245,6 @@ export default function SetlistPage() {
           setIsOffline(false)
           setSetlist(data)
           setProjectName((data as any).bands?.name ?? null)
-          setProjectImage((data as any).bands?.image_url ?? null)
           setProjectColor(projectLedColor((data as any).bands))
           setName(data.name)
           setVenue(data.venue ?? '')
@@ -267,7 +267,6 @@ export default function SetlistPage() {
             setIsOffline(true)
             setSetlist(cached)
             setProjectName(cached.bands?.name ?? null)
-            setProjectImage(cached.bands?.image_url ?? null)
             setProjectColor(projectLedColor(cached.bands))
             setName(cached.name)
             setVenue(cached.venue ?? '')
@@ -538,23 +537,38 @@ export default function SetlistPage() {
     if (newSl) navigate(`/setlist/${newSl.id}`)
   }
 
+  /** Dados do PDF: tom/notas/intro/final deste concerto + cor e nome do projeto */
+  function pdfData(): PdfData {
+    return {
+      meta: {
+        title: setlist?.name ?? name,
+        subtitle: projectName,
+        date: date || setlist?.date || null,
+        venue: venue || setlist?.venue || null,
+        color: projectColor,
+        context: 'concert',
+      },
+      songs: songs.map(ss => ({
+        title: ss.song?.title ?? '',
+        artist: ss.song?.artist,
+        // Tom do concerto > tom de performance da música > original
+        key: ss.performance_key || ss.song?.performance_key || ss.song?.original_key || null,
+        originalKey: ss.song?.original_key,
+        bpm: ss.song?.bpm,
+        capo: ss.song?.capo,
+        durationSec: ss.song?.duration_sec,
+        lyrics: ss.song?.edited_lyrics ?? ss.song?.lyrics,
+        chords: ss.song?.chords,
+        intro: ss.custom_intro,
+        ending: ss.custom_ending,
+        notes: ss.notes,
+      })),
+    }
+  }
+
   function exportPdf(withLyrics: boolean) {
     if (!setlist) return
-    const ok = exportSongsPdf(
-      songs.map(ss => ({
-        title: ss.song?.title ?? '',
-        lyrics: ss.song?.edited_lyrics ?? ss.song?.lyrics,
-      })),
-      {
-        title: setlist.name,
-        accent: projectColor,
-        logoUrl: projectName ? projectImage : null,
-        logoInitial: projectName,
-        withLyrics,
-      }
-    )
-    // false = pop-up bloqueado; o utilizador pode permitir e tocar de novo
-    if (!ok) toast('Permite pop-ups para exportar o PDF.', { type: 'error' })
+    setPdfKind(withLyrics ? 'repertorio' : 'alinhamento')
   }
 
   const selectedRow = songs.find(s => s.id === selectedId) ?? songs[0] ?? null
@@ -703,8 +717,8 @@ export default function SetlistPage() {
                 Sempre UMA linha, sem scroll. Telemóvel: colunas iguais, ícone por
                 cima do rótulo e "PDF" como micro-etiqueta mono por baixo */}
             <div className={styles.toolbar} role="group" aria-label="Mais ações do concerto">
-              {setlist?.band_id && (
-                <button className={styles.toolBtn} onClick={() => setShowImport(true)} title="Importar alinhamento de um PDF">
+              {setlist && (
+                <button className={styles.toolBtn} onClick={() => setShowImport(true)} title="Importar lista (PDF, foto ou texto)">
                   <Ico size={16}>{P.import}</Ico><span className={styles.toolLabel}>Importar</span>
                 </button>
               )}
@@ -947,10 +961,14 @@ export default function SetlistPage() {
         </div>
       )}
 
-      {showImport && setlist?.band_id && (
+      {pdfKind && setlist && (
+        <ExportPdfSheet kind={pdfKind} data={pdfData()} onClose={() => setPdfKind(null)} />
+      )}
+
+      {showImport && setlist && (
         <SetlistImportModal
           setlistId={id!}
-          projectId={setlist.band_id}
+          projectId={setlist.band_id ?? null}
           currentPosition={songs.length}
           onClose={() => setShowImport(false)}
           onImported={() => { setShowImport(false); loadSongs() }}

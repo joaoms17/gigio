@@ -16,6 +16,7 @@ import InvitePage from './pages/invite/InvitePage'
 import ConcertPage from './pages/concert/ConcertPage'
 import LibraryPage from './pages/library/LibraryPage'
 import SetlistsPage from './pages/setlists/SetlistsPage'
+import NewConcertPage from './pages/newConcert/NewConcertPage'
 import SettingsPage from './pages/settings/SettingsPage'
 import SyncEditorPage from './pages/sync/SyncEditorPage'
 import './index.css'
@@ -44,6 +45,8 @@ function AppRoutes() {
 
         {/* Setlists */}
         <Route path="/setlists" element={<SetlistsPage />} />
+        {/* Novo concerto: importar lista / copiar concerto / repertório / vazio */}
+        <Route path="/concertos/novo" element={<NewConcertPage />} />
         <Route path="/setlist/:id" element={<SetlistPage />} />
 
         {/* Biblioteca pessoal */}

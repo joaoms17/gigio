@@ -1,7 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Breadcrumbs from '../../components/Breadcrumbs'
-import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import styles from './CalendarPage.module.css'
@@ -148,7 +147,6 @@ function IconCalendar() {
 export default function CalendarPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const toast = useToast()
   const todayStr = toYMD(new Date())
 
   const [year, setYear] = useState(() => new Date().getFullYear())
@@ -156,7 +154,6 @@ export default function CalendarPage() {
   const [selected, setSelected] = useState<string | null>(todayStr)
   const [events, setEvents] = useState<Setlist[]>([])
   const [loading, setLoading] = useState(true)
-  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -224,20 +221,10 @@ export default function CalendarPage() {
     setSelected(todayStr)
   }
 
-  async function createOnSelectedDay() {
-    if (!user || !selected || creating) return
-    setCreating(true)
-    const { data, error } = await supabase
-      .from('setlists')
-      .insert({ name: 'Novo Concerto', owner_id: user.id, date: selected, status: 'draft' })
-      .select()
-      .single()
-    setCreating(false)
-    if (error || !data) {
-      toast('Erro ao criar concerto: ' + (error?.message ?? 'erro desconhecido'), { type: 'error' })
-      return
-    }
-    navigate(`/setlist/${data.id}?add=1`)
+  /* Assistente de criação, com a data do dia selecionado pré-preenchida */
+  function createOnSelectedDay() {
+    if (!selected) return
+    navigate(`/concertos/novo?date=${selected}`)
   }
 
   const now = new Date()
@@ -462,12 +449,9 @@ export default function CalendarPage() {
                 <button
                   className={styles.secondaryBtn}
                   onClick={createOnSelectedDay}
-                  disabled={creating}
                 >
                   <IconPlus />
-                  {creating
-                    ? 'A criar…'
-                    : `Criar concerto a ${selectedDate.getDate()} ${monthShort(selected)}`}
+                  {`Criar concerto a ${selectedDate.getDate()} ${monthShort(selected)}`}
                 </button>
               </div>
             </section>
