@@ -157,7 +157,6 @@ const NEW_CONCERT_DRAFT = {
 
 // ── Screenshots ─────────────────────────────────────────────────────────────
 const PAGES = [
-  ['palco', '/'],
   ['concertos', '/setlists'],
   // Novo concerto: passo 1 (origens) e a pré-visualização de "copiar concerto"
   ['novo-concerto', '/concertos/novo'],
@@ -173,7 +172,7 @@ const PAGES = [
   ['repertorio', '/library'],
   ['pesquisa', '/search'],
   ['calendario', '/calendar'],
-  ['projetos', '/projects'],
+  ['projetos', '/'],
   ['dashboard', '/projects/b1'],
   ['musica', '/songs/sg1'],
   ['sync', '/songs/sg2/sync'],
