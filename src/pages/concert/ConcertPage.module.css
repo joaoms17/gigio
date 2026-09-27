@@ -343,6 +343,12 @@
 @media (max-width: 699.98px) {
   .filmStrip { display: none; }
   .controlsRow { justify-content: center; }
+  /* Header em duas linhas sem transbordar: ações ocupam a 2ª linha inteira */
+  .header { flex-wrap: wrap; }
+  .headerActions { margin-left: 0; width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+  .iconBtn { width: 40px; height: 40px; min-width: 40px; }
+  .modeSeg { height: 40px; }
+  .modeSegBtn { padding: 0 8px; font-size: 10px; }
 }
 
 /* Setlist panel */
