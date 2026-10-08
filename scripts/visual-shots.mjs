@@ -83,7 +83,12 @@ const SETLIST_SONGS = SONGS.map((song, i) => ({
   song, setlist: { name: 'Jantar', date: d(1), venue: 'Quinta da Ribeira' },
 }))
 
-const LYRIC_SYNCS = [{ song_id: 'sg2', lines: SAMPLE_LYRICS('Smooth Operator').split('\n').map((text, i) => ({ text, time_ms: i * 4000 })) }]
+// Como o editor de sync grava de facto: sem linhas vazias e só as linhas
+// marcadas (os [Secção] normalmente não levam toque) — expõe o modo concerto
+// a mostrar as linhas do sync em vez da letra formatada.
+const LYRIC_SYNCS = [{ song_id: 'sg2', lines: SAMPLE_LYRICS('Smooth Operator').split('\n')
+  .filter(l => l.trim() && !/^\[.+\]$/.test(l.trim()))
+  .map((text, i) => ({ text, time_ms: 8000 + i * 4000 })) }]
 
 const TABLES = {
   bands: [BAND],
