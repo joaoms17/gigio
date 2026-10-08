@@ -227,10 +227,17 @@
 }
 .joinInput[aria-invalid="true"] { border-color: var(--danger); }
 
+/* Mesmo aviso do ecrã de convite: bloco suave com barra de perigo (as
+   mensagens — "Este código expirou. Pede ao dono…" — ocupam 2–3 linhas) */
 .joinError {
-  margin-top: 8px;
-  font-size: 13px;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  box-shadow: inset 3px 0 0 var(--danger);
+  font-size: 13.5px;
   font-weight: 600;
+  line-height: 1.45;
   color: var(--danger);
 }
 
