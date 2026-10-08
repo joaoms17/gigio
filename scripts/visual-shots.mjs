@@ -75,7 +75,62 @@ function SAMPLE_LYRICS(title) {
   ].join('\n')
 }
 
-const BAND = { id: 'b1', name: 'Casamentos', color: '#7C3AED', image_url: null, owner_id: 'u1', invite_code: 'ABCD1234', created_at: '2026-01-01T00:00:00Z', member_count: 3, type: 'band' }
+const iso = (days) => new Date(Date.now() + days * 86400000).toISOString()
+
+// Código de convite EXPIRADO há 2 dias (o bug "Código de convite expirou…"):
+// o separador Membros mostra "EXPIRADO" + Prolongar / Gerar novo código, e
+// /join?code=CASA-4821 mostra o aviso logo ao espreitar o código.
+const BAND = { id: 'b1', name: 'Casamentos', color: '#7C3AED', image_url: null, owner_id: 'u1', invite_code: 'CASA-4821', invite_expires_at: iso(-2), created_at: '2026-01-01T00:00:00Z', member_count: 3, type: 'band' }
+
+// Convites por link pendentes: um válido, um a expirar amanhã, um expirado
+const PROJECT_INVITES = [
+  ['inv1', 'marta.baixo@exemplo.pt', 'editor', 5],
+  ['inv2', 'rui.bateria@exemplo.pt', 'viewer', 1],
+  ['inv3', 'ines@exemplo.pt', 'admin', -1],
+].map(([id, email, role, days]) => ({
+  id, project_id: 'b1', email, role, token: `${id}-${'a'.repeat(60)}`, status: 'pending',
+  invited_by: 'u1', expires_at: iso(days), created_at: iso(days - 7),
+}))
+
+/** Respostas dos RPCs (supabase/migration_invites_v3.sql) */
+function rpcResponse(route, fn) {
+  const body = route.request().postData() ? JSON.parse(route.request().postData()) : {}
+  const json = (status, data) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) })
+  const bare = (s) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const expired = new Date(BAND.invite_expires_at) < new Date()
+  switch (fn) {
+    // Visto por quem (ainda) não é membro: com o código expirado o id não vem
+    case 'peek_project_code':
+      return json(200, bare(body.p_code) && bare(body.p_code) === bare(BAND.invite_code)
+        ? [{ id: expired ? null : BAND.id, name: BAND.name, type: BAND.type, color: BAND.color, image_url: null, expired, is_member: false }]
+        : [])
+    // Código que não existe → NULL (sem erro, como o SQL)
+    case 'join_project_with_code':
+      return bare(body.p_code) === bare(BAND.invite_code) && expired
+        ? json(400, { code: 'P0001', message: 'expired', details: null, hint: 'Este código expirou.' })
+        : json(200, null)
+    case 'extend_project_code':
+      return json(200, [{ code: BAND.invite_code, expires_at: iso(30) }])
+    case 'regenerate_project_code':
+      return json(200, [{ code: 'CASA-0917', expires_at: iso(30) }])
+    case 'get_project_invite': {
+      const inv = PROJECT_INVITES.find(i => i.token === body.p_token)
+      return json(200, inv ? [{
+        id: inv.id, project_id: 'b1', role: inv.role, status: inv.status, expires_at: inv.expires_at,
+        expired: new Date(inv.expires_at) < new Date(), already_member: false, my_role: null,
+        project_name: BAND.name, project_type: BAND.type, project_color: BAND.color,
+        project_description: 'Banda de casamentos e eventos — pop, soul e clássicos portugueses.',
+        project_image_url: null, invited_by_name: 'João Silva',
+      }] : [])
+    }
+    case 'accept_project_invite':
+      return json(200, 'b1')
+    case 'set_member_role':
+      return json(200, body.p_role ?? 'editor')
+    default:
+      return json(404, { code: 'PGRST202', message: `Could not find the function public.${fn}`, details: null, hint: null })
+  }
+}
 
 // Estados pela data: HOJE (s4), AMANHÃ (s1), EM N DIAS / SEM (s2, s3), pessoal futuro (s7)
 // e dois REALIZADOS (s5, s6). O s1 continua a ser o concerto das outras capturas.
@@ -115,6 +170,7 @@ const TABLES = {
   bands: [BAND],
   band_members: [{ band_id: 'b1', user_id: 'u1', role: 'owner', instrument: 'Voz', bands: BAND, profiles: { display_name: 'João Silva', email: 'joao@teste.pt' } }],
   band_invites: [],
+  project_invites: PROJECT_INVITES,
   setlists: SETLISTS,
   setlist_songs: SETLIST_SONGS,
   songs: SONGS,
@@ -142,6 +198,7 @@ function restResponse(route) {
   const req = route.request()
   const url = new URL(req.url())
   const table = url.pathname.split('/rest/v1/')[1]?.split('/')[0]
+  if (table === 'rpc') return rpcResponse(route, url.pathname.split('/rpc/')[1])
   const rows = TABLES[table] ?? []
   const accept = req.headers()['accept'] ?? ''
   const wantsObject = accept.includes('vnd.pgrst.object')
@@ -208,6 +265,12 @@ const PAGES = [
   ['calendario', '/calendar'],
   ['projetos', '/'],
   ['dashboard', '/projects/b1'],
+  // Membros: código EXPIRADO + Prolongar / Gerar novo código + convites por link pendentes
+  ['dashboard-membros', '/projects/b1?tab=members'],
+  // Entrar com código expirado: o peek mostra o projeto e o aviso antes de entrar
+  ['convite-codigo-expirado', '/join?code=CASA4821'],
+  // Convite por link (get_project_invite)
+  ['convite-link', `/invite/${PROJECT_INVITES[0].token}`],
   ['musica', '/songs/sg1'],
   ['sync', '/songs/sg2/sync'],
   ['definicoes', '/settings'],
@@ -216,6 +279,8 @@ const PAGES = [
 const PUBLIC_PAGES = [
   ['auth', '/auth'],
   ['convite', '/join'],
+  // Link com código, sem sessão: o código fica à vista (para o anotar antes de criar conta)
+  ['convite-codigo-sem-sessao', '/join?code=CASA-4821'],
 ]
 const ALL_VIEWS = {
   'phone': { width: 390, height: 844 },

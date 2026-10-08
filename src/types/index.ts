@@ -51,16 +51,59 @@ export interface ProjectMember {
 
 export type BandMember = ProjectMember
 
+/** Papéis que um convite pode dar (o de dono nunca se convida) */
+export type InviteRole = 'admin' | 'editor' | 'viewer'
+
 export interface ProjectInvite {
   id: string
   project_id: string
   email: string
-  role: 'admin' | 'editor' | 'viewer'
+  role: InviteRole
   token: string
   status: InviteStatus
   invited_by: string
   expires_at: string
   created_at: string
+  /** migration_invites_v3.sql — quem aceitou o convite por link, e quando */
+  accepted_by?: string | null
+  accepted_at?: string | null
+}
+
+/** O que o RPC peek_project_code devolve: só metadados públicos do projeto */
+export interface ProjectCodePeek {
+  /** null quando o código expirou e quem pergunta não é membro (não se revela o id) */
+  id: string | null
+  name: string
+  type: ProjectType | string
+  color: string | null
+  image_url: string | null
+  expired: boolean
+  /** quem pergunta já é membro (só sobre si próprio) — "Abrir projeto" em vez de entrar */
+  is_member: boolean
+}
+
+/** Convite por link visto pelo convidado (RPC get_project_invite — sem emails nem token) */
+export interface ProjectInviteDetails {
+  id: string
+  project_id: string
+  role: InviteRole
+  status: InviteStatus
+  expires_at: string
+  /** pendente mas já fora da validade (ou marcado como expirado) */
+  expired: boolean
+  /** null quando não se sabe (base de dados ainda sem a migração v3) */
+  already_member: boolean | null
+  /** papel de quem abre o convite no projeto (null: não é membro / não se sabe) */
+  my_role: ProjectRole | null
+  invited_by_name: string | null
+  project: {
+    id: string
+    name: string
+    type: ProjectType | string
+    color: string | null
+    description: string | null
+    image_url: string | null
+  }
 }
 
 export interface Song {

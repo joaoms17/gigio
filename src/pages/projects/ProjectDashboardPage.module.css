@@ -242,6 +242,10 @@
   background: var(--warn-soft);
   color: var(--warn-fg);
 }
+.chipDanger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
 
 /* Tom musical — contorno, sem maiúsculas forçadas */
 .keyChip {
@@ -1330,17 +1334,37 @@
   margin-left: auto;
 }
 
-/* Convites pendentes */
+/* Convites pendentes: email + (papel · validade) à esquerda, ações à direita;
+   no telemóvel as ações descem para a linha de baixo */
 .inviteRow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   min-height: 60px;
-  padding: 8px 8px 8px 20px;
+  padding: 10px 8px 10px 20px;
 }
 .inviteRow + .inviteRow { border-top: 1px solid var(--border); }
+.inviteInfo {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.inviteMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.inviteActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.inviteLinkBtn { min-height: 40px; padding: 0 12px; }
 .inviteEmail {
-  flex: 1;
   min-width: 0;
   font-family: var(--font-mono);
   font-size: 14px;
@@ -1362,6 +1386,11 @@
   min-width: 0;
 }
 .inviteRoleWrap { flex-shrink: 0; width: 170px; }
+.inviteInputRow .input:disabled,
+.inviteInputRow .select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
 .hint {
   margin-top: 10px;
@@ -1406,6 +1435,82 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Rótulo + chip de validade ("VÁLIDO ATÉ 15 OUT" / "EXPIRADO") */
+.codeHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+/* Expirado: o leitor fica "apagado" com contorno de perigo */
+.inviteCodeExpired {
+  border-color: var(--danger);
+  color: var(--text3);
+}
+
+/* Aviso por baixo do código (expirado / pede ao dono) — como o erro do convite */
+.codeNote {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  box-shadow: inset 3px 0 0 var(--danger);
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.codeNoteMuted {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--border2);
+  color: var(--text2);
+  font-weight: 500;
+}
+/* Convites por link indisponíveis (SQL por aplicar) — no lugar da dica */
+.inviteBlockedNote { margin-top: 10px; }
+/* Nota solta entre secções (ex.: convites pendentes que não carregaram) */
+.sectionNote { align-self: stretch; }
+
+/* Prolongar / Gerar novo código — fantasmas, abaixo das ações de partilha */
+.codeManage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0 -10px;
+}
+.ghostBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-btn);
+  background: transparent;
+  color: var(--text2);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.ghostBtn svg { flex-shrink: 0; }
+.ghostBtn:active:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.ghostBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@media (hover: hover) {
+  .ghostBtn:hover:not(:disabled) {
+    background: var(--surface-2);
+    color: var(--text);
+  }
 }
 
 /* ── Formulários (definições, convite, modal) ── */
@@ -1953,6 +2058,8 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
   }
+  .shareBtn { grid-column: 1 / -1; }
+  .inviteRow { padding-right: 6px; }
 
   .settingsFooter .primaryBtn { width: 100%; }
   .dangerZone { padding: 16px; }

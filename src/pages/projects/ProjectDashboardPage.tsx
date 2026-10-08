@@ -22,6 +22,23 @@ import {
 import { cacheProjectDashboard, getCachedProjectDashboard } from '../../lib/concertCache'
 import styles from './ProjectDashboardPage.module.css'
 import { mapLegacyProjectColor } from '../../lib/projectColor'
+import {
+  copyToClipboard,
+  extendProjectCode,
+  fetchProjectCode,
+  formatShortDate,
+  INVITE_MESSAGES,
+  inviteLink,
+  invitesRpcAvailable,
+  joinLink,
+  needsRefresh,
+  newInviteToken,
+  regenerateProjectCode,
+  saveMyInstrument,
+  setMemberRole,
+  validityOf,
+  type Validity,
+} from '../../lib/invites'
 
 type Tab = 'overview' | 'repertoire' | 'setlists' | 'members' | 'settings'
 
@@ -289,6 +306,43 @@ function IconLink({ size = 16 }: { size?: number }) {
   )
 }
 
+function IconShare({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
+      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+      <polyline points="16 6 12 2 8 6" />
+      <line x1="12" y1="2" x2="12" y2="15" />
+    </svg>
+  )
+}
+
+function IconClock({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 15 14" />
+    </svg>
+  )
+}
+
+function IconRefresh({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <polyline points="21 3 21 9 15 9" />
+    </svg>
+  )
+}
+
+/** Chip da validade de um código/convite: neutro · aviso (< 3 dias) · perigo (expirado) */
+function ValidityChip({ validity }: { validity: Validity }) {
+  if (validity.state === 'unknown') return null
+  const tone = validity.state === 'expired' ? styles.chipDanger
+    : validity.state === 'expiring' ? styles.chipWarn
+    : styles.chipNeutral
+  return <span className={`${styles.chip} ${tone}`}>{validity.label}</span>
+}
+
 function IconPencil({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...ICON}>
@@ -344,7 +398,18 @@ export default function ProjectDashboardPage() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<'admin' | 'editor' | 'viewer'>('editor')
   const [inviting, setInviting] = useState(false)
+  /** 'code' | 'link' | id de um convite pendente — feedback "Copiado" */
   const [inviteCopied, setInviteCopied] = useState<string | null>(null)
+  const [codeBusy, setCodeBusy] = useState<'extend' | 'regenerate' | null>(null)
+  /**
+   * RPCs da v3 na base de dados? null = a verificar. false → SQL por aplicar:
+   * os convites por link não funcionam e um admin (não dono) não renova o código.
+   */
+  const [codeRpcOk, setCodeRpcOk] = useState<boolean | null>(null)
+  /** A lista de convites pendentes não carregou (rede / SQL por aplicar) */
+  const [invitesLoadError, setInvitesLoadError] = useState(false)
+  /** Última vez que o código foi relido do servidor (evita reler a cada toque) */
+  const codeCheckedAt = useRef(0)
 
   // Edit instrument
   const [editingInstrument, setEditingInstrument] = useState(false)
@@ -443,7 +508,10 @@ export default function ProjectDashboardPage() {
           }
         })
     }
+    // Erro (ex.: SQL antigo → "permission denied" em auth.users) ≠ lista vazia
+    setInvitesLoadError(!!(invitesRes as { error?: unknown }).error)
     setInvites((invitesRes.data ?? []) as unknown as ProjectInvite[])
+    codeCheckedAt.current = Date.now()
     cacheProjectDashboard(projectId, {
       project: proj,
       role: membership.role as ProjectRole,
@@ -491,6 +559,34 @@ export default function ProjectDashboardPage() {
     }
   }, [loading, error, project?.id])
 
+  // Dono/admin: os RPCs da v3 existem? Sem eles os convites por link não
+  // funcionam (para ninguém) e o fallback do código só serve ao dono — avisar
+  // já, em vez de falhar ao tocar
+  useEffect(() => {
+    if (activeTab !== 'members' || !canManage) return
+    let alive = true
+    invitesRpcAvailable().then(ok => { if (alive) setCodeRpcOk(ok) })
+    return () => { alive = false }
+  }, [activeTab, canManage])
+
+  // Voltar a este separador (outra app, outro separador do browser): o código
+  // pode ter sido renovado noutro dispositivo — relê-o
+  useEffect(() => {
+    if (activeTab !== 'members' || !projectId) return
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || !navigator.onLine) return
+      fetchProjectCode(projectId).then(fresh => {
+        if (!fresh) return
+        codeCheckedAt.current = Date.now()
+        setProject(p => (p && p.id === projectId
+          ? { ...p, invite_code: fresh.code, invite_expires_at: fresh.expiresAt ?? undefined }
+          : p))
+      })
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [activeTab, projectId])
+
   async function saveSettings() {
     if (!project || !settingsName.trim()) return
     setSavingSettings(true)
@@ -529,25 +625,56 @@ export default function ProjectDashboardPage() {
     navigate('/')
   }
 
+  function flashCopied(key: string) {
+    setInviteCopied(key)
+    setTimeout(() => setInviteCopied(prev => (prev === key ? null : prev)), 1500)
+  }
+
+  /**
+   * Convite pessoal por link. Não há envio de email: o token é gerado aqui
+   * (para não depender do RETURNING) e o link vai logo para a área de
+   * transferência, pronto a colar no WhatsApp/email.
+   */
   async function sendInvite() {
-    if (!user || !project || !inviteEmail.trim()) return
+    if (!user || !project || !inviteEmail.trim() || inviting) return
     setInviting(true)
-    const { error } = await supabase
-      .from('project_invites')
-      .insert({
-        project_id: project.id,
-        email: inviteEmail.trim().toLowerCase(),
-        role: inviteRole,
-        invited_by: user.id,
-      })
+    // SQL por aplicar: o convidado não conseguiria abrir o convite (nem o
+    // dono o veria na lista) — não criar um convite que nunca funciona
+    if (codeRpcOk !== true) {
+      const ok = await invitesRpcAvailable()
+      setCodeRpcOk(ok)
+      if (!ok) { setInviting(false); toast(INVITE_MESSAGES.linkInvitesUnavailable, { type: 'error' }); return }
+    }
+    const token = newInviteToken()
+    let insertError: { code?: string; message: string } | null = null
+    const link = (async () => {
+      const { error } = await supabase
+        .from('project_invites')
+        .insert({
+          project_id: project.id,
+          email: inviteEmail.trim().toLowerCase(),
+          role: inviteRole,
+          invited_by: user.id,
+          token,
+        })
+      if (error) { insertError = error; throw error }
+      return inviteLink(token)
+    })()
+    const copied = await copyToClipboard(link)
+    await link.catch(() => { /* tratado abaixo */ })
     setInviting(false)
-    if (error) {
-      if (error.code === '23505') toast('Já existe um convite pendente para este email.', { type: 'error' })
-      else toast('Erro ao enviar convite: ' + error.message, { type: 'error' })
+    const err = insertError as { code?: string; message: string } | null
+    if (err) {
+      if (err.code === '23505') toast('Já existe um convite pendente para este email.', { type: 'error' })
+      else toast('Erro ao criar o convite: ' + err.message, { type: 'error' })
       return
     }
+    toast(copied
+      ? 'Convite criado — link copiado. Envia-o ao membro.'
+      : 'Convite criado. Usa "Copiar link" para o enviar ao membro.', { type: 'success' })
+    if (copied) flashCopied(`inv:${token}`)
     setInviteEmail('')
-    await load()
+    await load(true)
   }
 
   async function revokeInvite(inviteId: string) {
@@ -556,19 +683,136 @@ export default function ProjectDashboardPage() {
     setInvites(prev => prev.filter(i => i.id !== inviteId))
   }
 
-  async function copyInviteCode() {
-    if (!project) return
-    await navigator.clipboard.writeText(project.invite_code)
-    setInviteCopied('code')
-    setTimeout(() => setInviteCopied(null), 1500)
+  async function copyPendingInvite(inv: ProjectInvite) {
+    if (await copyToClipboard(inviteLink(inv.token))) flashCopied(`inv:${inv.token}`)
+    else toast('Não foi possível copiar o link.', { type: 'error' })
   }
 
-  async function copyJoinLink() {
+  /* ── Código de convite rápido ── */
+
+  /**
+   * O dono renova sempre (com RPC, ou por update direto no fallback). Um
+   * admin só com os RPCs da v3 (a policy antiga só deixa o dono): enquanto a
+   * sonda não responde, os botões ficam desativados ("a verificar").
+   */
+  const renewBlocked = !isOwner && codeRpcOk === false
+  const renewChecking = canManage && !isOwner && codeRpcOk === null
+  const canRenewCode = canManage && (isOwner || codeRpcOk === true)
+  const linkInvitesBlocked = codeRpcOk === false
+
+  /** Pode renovar? Para um admin, espera pela sonda em vez de adivinhar */
+  async function ensureCanRenew(): Promise<boolean> {
+    if (!canManage) return false
+    if (isOwner || codeRpcOk === true) return true
+    if (codeRpcOk === false) return false
+    const ok = await invitesRpcAvailable()
+    setCodeRpcOk(ok)
+    return ok
+  }
+
+  function applyCode(code: string, expiresAt: string) {
+    setProject(p => (p ? { ...p, invite_code: code, invite_expires_at: expiresAt } : p))
+  }
+
+  /** Prolonga 30 dias (mesmo código). Devolve o código, ou null se falhou (já com toast). */
+  async function extendCode(): Promise<string | null> {
+    if (!project || !user) return null
+    setCodeBusy('extend')
+    const res = await extendProjectCode(project, user.id)
+    setCodeBusy(null)
+    if (!res.ok) {
+      if (res.reason === 'needs_owner') setCodeRpcOk(false)
+      toast(res.message, { type: 'error' })
+      return null
+    }
+    applyCode(res.code, res.expiresAt)
+    toast(`Código prolongado — válido até ${formatShortDate(res.expiresAt)}.`, { type: 'success' })
+    return res.code
+  }
+
+  async function regenerateCode() {
+    if (!project || !user) return
+    // Admin sem os RPCs: nem chega a ver o diálogo de uma ação que não pode fazer
+    if (!await ensureCanRenew()) { toast(INVITE_MESSAGES.needsOwner, { type: 'error' }); return }
+    const ok = await confirmDialog({
+      title: 'Gerar novo código',
+      message: `O código ${project.invite_code} deixa de funcionar — quem ainda não entrou vai precisar do novo, e as cópias que já enviaste deixam de servir. O novo código é válido 30 dias. Se só queres reativar o código atual, usa antes "Prolongar 30 dias".`,
+      confirmLabel: 'Gerar novo código',
+    })
+    if (!ok) return
+    setCodeBusy('regenerate')
+    const res = await regenerateProjectCode(project, user.id)
+    setCodeBusy(null)
+    if (!res.ok) {
+      if (res.reason === 'needs_owner') setCodeRpcOk(false)
+      toast(res.message, { type: 'error' })
+      return
+    }
+    applyCode(res.code, res.expiresAt)
+    toast(`Novo código: ${res.code}`, { type: 'success' })
+  }
+
+  /**
+   * O código pronto a partilhar: se expirou ou expira em < 3 dias, quem pode
+   * prolonga-o primeiro. Rejeita se continuar expirado (não vale a pena copiar).
+   */
+  async function freshCode(): Promise<string> {
+    if (!project) throw new Error('sem projeto')
+    let code = project.invite_code
+    let expiresAt: string | null | undefined = project.invite_expires_at
+    // O código pode ter sido renovado noutro dispositivo / por um admin: relê-o
+    // (barato; no máximo uma vez por minuto, para não atrasar um segundo toque)
+    if (!isOffline && navigator.onLine && Date.now() - codeCheckedAt.current > 60_000) {
+      const fresh = await fetchProjectCode(project.id)
+      if (fresh) {
+        codeCheckedAt.current = Date.now()
+        code = fresh.code
+        expiresAt = fresh.expiresAt
+        if (fresh.code !== project.invite_code || fresh.expiresAt !== project.invite_expires_at) {
+          applyCode(fresh.code, fresh.expiresAt ?? '')
+        }
+      }
+    }
+    if (needsRefresh(expiresAt) && await ensureCanRenew()) {
+      const extended = await extendCode()
+      if (extended) return extended
+    } else if (validityOf(expiresAt).state === 'expired') {
+      // Aqui só chega quem não pode renovar: admin sem os RPCs da v3 (ou não-gestor)
+      toast(canManage ? INVITE_MESSAGES.needsOwner : 'Este código expirou.', { type: 'error' })
+    }
+    if (validityOf(expiresAt).state === 'expired') throw new Error('expired')
+    return code
+  }
+
+  async function copyInvite(kind: 'code' | 'link') {
     if (!project) return
-    const url = `${window.location.origin}/join?code=${project.invite_code}`
-    await navigator.clipboard.writeText(url)
-    setInviteCopied('link')
-    setTimeout(() => setInviteCopied(null), 1500)
+    let aborted = false
+    const text = freshCode()
+      .then(code => (kind === 'code' ? code : joinLink(code)))
+      .catch(e => { aborted = true; throw e })
+    const copied = await copyToClipboard(text)
+    if (copied) {
+      flashCopied(kind)
+      if (isOffline) toast('Sem ligação — o código copiado pode estar desatualizado.')
+    } else if (!aborted) toast('Não foi possível copiar. Seleciona o código e copia à mão.', { type: 'error' })
+  }
+
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+
+  async function shareInvite() {
+    if (!project) return
+    let code: string
+    try { code = await freshCode() } catch { return }
+    try {
+      await navigator.share({
+        title: `Entra em ${project.name} no gigio`,
+        text: `Código de convite para "${project.name}": ${code}`,
+        url: joinLink(code),
+      })
+    } catch (e) {
+      // Depois de prolongar, alguns browsers já não aceitam o gesto — pedir novo toque
+      if ((e as Error)?.name === 'NotAllowedError') toast('Código pronto — toca outra vez em Partilhar.', { type: 'success' })
+    }
   }
 
   async function removeMember(userId: string, displayName: string) {
@@ -580,18 +824,23 @@ export default function ProjectDashboardPage() {
   }
 
   async function changeRole(userId: string, role: ProjectRole) {
-    if (!project) return
-    const { error } = await supabase.from('band_members').update({ role }).eq('band_id', project.id).eq('user_id', userId)
-    if (error) { toast('Erro ao alterar o papel: ' + error.message, { type: 'error' }); return }
+    if (!project || role === 'owner') return
+    // Servidor (set_member_role): só dono/admin, nunca o dono. Antes o update
+    // "passava" sem mudar nada e o papel antigo voltava ao recarregar.
+    const res = await setMemberRole(project.id, userId, role)
+    if (!res.ok) { toast(res.message, { type: 'error' }); return }
     setMembers(prev => prev.map(m => m.user_id === userId ? { ...m, role } : m))
   }
 
   async function saveInstrument() {
     if (!project || !user) return
-    const { error } = await supabase.from('band_members').update({ instrument: instrumentInput.trim() || null }).eq('band_id', project.id).eq('user_id', user.id)
-    if (error) { toast('Erro ao guardar o instrumento: ' + error.message, { type: 'error' }); setEditingInstrument(false); return }
-    setMembers(prev => prev.map(m => m.user_id === user.id ? { ...m, instrument: instrumentInput.trim() || undefined } : m))
+    const value = instrumentInput.trim() || null
+    const current = members.find(m => m.user_id === user.id)?.instrument ?? null
     setEditingInstrument(false)
+    if (value === current) return
+    const res = await saveMyInstrument(project.id, user.id, value)
+    if (!res.ok) { toast(res.message, { type: 'error' }); return }
+    setMembers(prev => prev.map(m => m.user_id === user.id ? { ...m, instrument: value ?? undefined } : m))
   }
 
   async function deleteSong(songId: string, title: string) {
@@ -1296,15 +1545,44 @@ export default function ProjectDashboardPage() {
                     {headCount(invites.length)}
                   </div>
                   <div className={styles.panel}>
-                    {invites.map(inv => (
-                      <div key={inv.id} className={styles.inviteRow}>
-                        <div className={styles.inviteEmail}>{inv.email}</div>
-                        <span className={`${styles.chip} ${styles.chipNeutral}`}>{ROLE_LABELS[inv.role] ?? inv.role}</span>
-                        <button className={styles.ghostDangerBtn} onClick={() => revokeInvite(inv.id)}>Revogar</button>
-                      </div>
-                    ))}
+                    {invites.map(inv => {
+                      const v = validityOf(inv.expires_at)
+                      const copied = inviteCopied === `inv:${inv.token}`
+                      return (
+                        <div key={inv.id} className={styles.inviteRow}>
+                          <div className={styles.inviteInfo}>
+                            <div className={styles.inviteEmail}>{inv.email}</div>
+                            <div className={styles.inviteMeta}>
+                              <span className={`${styles.chip} ${styles.chipNeutral}`}>{ROLE_LABELS[inv.role] ?? inv.role}</span>
+                              <ValidityChip validity={v.state === 'valid' ? { ...v, label: `Expira a ${formatShortDate(inv.expires_at)}` } : v} />
+                            </div>
+                          </div>
+                          <div className={styles.inviteActions} aria-live="polite">
+                            {v.state !== 'expired' && (
+                              <button
+                                className={`${styles.secondaryBtn} ${styles.inviteLinkBtn} ${copied ? styles.copied : ''}`}
+                                onClick={() => copyPendingInvite(inv)}
+                                aria-label={`Copiar link do convite para ${inv.email}`}
+                              >
+                                {copied ? <><IconCheck /> Copiado</> : <><IconLink /> Copiar link</>}
+                              </button>
+                            )}
+                            <button className={styles.ghostDangerBtn} onClick={() => revokeInvite(inv.id)}>
+                              {v.state === 'expired' ? 'Remover' : 'Revogar'}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </section>
+              )}
+
+              {/* A lista de convites não carregou: dizê-lo, em vez de a mostrar vazia */}
+              {canManage && invitesLoadError && codeRpcOk === true && !isOffline && (
+                <p className={`${styles.codeNote} ${styles.codeNoteMuted} ${styles.sectionNote}`} role="status">
+                  {INVITE_MESSAGES.invitesLoadFailed}
+                </p>
               )}
 
               {/* Convidar */}
@@ -1324,6 +1602,8 @@ export default function ProjectDashboardPage() {
                         onChange={e => setInviteEmail(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && sendInvite()}
                         aria-label="Email do membro"
+                        disabled={linkInvitesBlocked}
+                        aria-describedby={linkInvitesBlocked ? 'invite-link-blocked' : undefined}
                       />
                       <div className={`${styles.selectWrap} ${styles.inviteRoleWrap}`}>
                         <select
@@ -1331,6 +1611,7 @@ export default function ProjectDashboardPage() {
                           value={inviteRole}
                           onChange={e => setInviteRole(e.target.value as typeof inviteRole)}
                           aria-label="Papel do convidado"
+                          disabled={linkInvitesBlocked}
                         >
                           <option value="admin">{ROLE_LABELS.admin}</option>
                           <option value="editor">{ROLE_LABELS.editor}</option>
@@ -1341,35 +1622,102 @@ export default function ProjectDashboardPage() {
                       <button
                         className={`${styles.primaryBtn} ${styles.inviteBtn}`}
                         onClick={sendInvite}
-                        disabled={inviting || !inviteEmail.trim()}
+                        disabled={inviting || !inviteEmail.trim() || linkInvitesBlocked}
                       >
                         {inviting ? 'A convidar…' : 'Convidar'}
                       </button>
                     </div>
-                    <p className={styles.hint}>
-                      O membro receberá um convite por email para entrar no projeto.
-                    </p>
+                    {linkInvitesBlocked ? (
+                      <p id="invite-link-blocked" className={`${styles.codeNote} ${styles.codeNoteMuted} ${styles.inviteBlockedNote}`} role="status">
+                        {INVITE_MESSAGES.linkInvitesUnavailable}
+                      </p>
+                    ) : (
+                      <p className={styles.hint}>
+                        Cria um convite pessoal com o papel escolhido. O link fica copiado para o
+                        enviares ao membro (WhatsApp, email…) e vale 7 dias.
+                      </p>
+                    )}
 
-                    <div className={styles.codeBox}>
-                      <span className={styles.label}>Código de convite rápido</span>
-                      <div className={styles.codeRow}>
-                        <code className={styles.inviteCode}>{project.invite_code}</code>
-                        <div className={styles.codeActions} aria-live="polite">
-                          <button
-                            className={`${styles.secondaryBtn} ${inviteCopied === 'code' ? styles.copied : ''}`}
-                            onClick={copyInviteCode}
-                          >
-                            {inviteCopied === 'code' ? <><IconCheck /> Copiado</> : <><IconCopy /> Copiar código</>}
-                          </button>
-                          <button
-                            className={`${styles.secondaryBtn} ${inviteCopied === 'link' ? styles.copied : ''}`}
-                            onClick={copyJoinLink}
-                          >
-                            {inviteCopied === 'link' ? <><IconCheck /> Link copiado</> : <><IconLink /> Copiar link</>}
-                          </button>
+                    {(() => {
+                      const v = validityOf(project.invite_expires_at)
+                      const expired = v.state === 'expired'
+                      return (
+                        <div className={styles.codeBox}>
+                          <div className={styles.codeHead}>
+                            <span className={styles.label} id="invite-code-label">Código de convite rápido</span>
+                            <ValidityChip validity={v} />
+                          </div>
+                          <div className={styles.codeRow}>
+                            <code
+                              className={`${styles.inviteCode} ${expired ? styles.inviteCodeExpired : ''}`}
+                              aria-labelledby="invite-code-label"
+                              aria-describedby={expired ? 'invite-code-expired' : undefined}
+                            >
+                              {project.invite_code}
+                            </code>
+                            <div className={styles.codeActions} aria-live="polite">
+                              <button
+                                className={`${styles.secondaryBtn} ${inviteCopied === 'code' ? styles.copied : ''}`}
+                                onClick={() => copyInvite('code')}
+                                disabled={codeBusy !== null}
+                              >
+                                {inviteCopied === 'code' ? <><IconCheck /> Copiado</> : <><IconCopy /> Copiar código</>}
+                              </button>
+                              <button
+                                className={`${styles.secondaryBtn} ${inviteCopied === 'link' ? styles.copied : ''}`}
+                                onClick={() => copyInvite('link')}
+                                disabled={codeBusy !== null}
+                              >
+                                {inviteCopied === 'link' ? <><IconCheck /> Link copiado</> : <><IconLink /> Copiar link</>}
+                              </button>
+                              {canShare && (
+                                <button
+                                  className={`${styles.secondaryBtn} ${styles.shareBtn}`}
+                                  onClick={shareInvite}
+                                  disabled={codeBusy !== null}
+                                >
+                                  <IconShare /> Partilhar
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {expired && (
+                            <p id="invite-code-expired" className={styles.codeNote} role="status">
+                              Ninguém consegue entrar com este código.
+                              {canRenewCode || renewChecking
+                                ? ' Prolonga-o (mantém o mesmo código) — ao copiar ou partilhar, é prolongado automaticamente.'
+                                : ' Pede ao dono do projeto para o prolongar.'}
+                            </p>
+                          )}
+
+                          {canRenewCode || renewChecking ? (
+                            <div className={styles.codeManage} aria-busy={renewChecking || undefined}>
+                              <button
+                                className={styles.ghostBtn}
+                                onClick={() => extendCode()}
+                                disabled={codeBusy !== null || renewChecking}
+                              >
+                                <IconClock />
+                                {codeBusy === 'extend' ? 'A prolongar…' : 'Prolongar 30 dias'}
+                              </button>
+                              <button
+                                className={styles.ghostBtn}
+                                onClick={regenerateCode}
+                                disabled={codeBusy !== null || renewChecking}
+                              >
+                                <IconRefresh />
+                                {codeBusy === 'regenerate' ? 'A gerar…' : 'Gerar novo código'}
+                              </button>
+                            </div>
+                          ) : renewBlocked && !expired && (
+                            <p className={`${styles.codeNote} ${styles.codeNoteMuted}`}>
+                              {INVITE_MESSAGES.needsOwner}
+                            </p>
+                          )}
                         </div>
-                      </div>
-                    </div>
+                      )
+                    })()}
                   </div>
                 </section>
               )}

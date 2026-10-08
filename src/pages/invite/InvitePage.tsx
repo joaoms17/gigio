@@ -1,27 +1,55 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useToast } from '../../components/Toast'
 import { PROJECT_TYPE_LABELS, ROLE_LABELS } from '../../types'
-import type { ProjectType, ProjectRole } from '../../types'
+import type { ProjectType, ProjectCodePeek, ProjectInviteDetails } from '../../types'
+import {
+  acceptProjectInvite,
+  bareInviteCode,
+  clearPendingInvite,
+  extractInviteCode,
+  getProjectInvite,
+  INVITE_MESSAGES,
+  type InviteLookup,
+  isCompleteInviteCode,
+  joinProjectWithCode,
+  peekProjectCode,
+  roleRank,
+  savePendingInvite,
+} from '../../lib/invites'
+import { mapLegacyProjectColor } from '../../lib/projectColor'
 import styles from './InvitePage.module.css'
 import Wordmark from '../../components/Wordmark'
 
-interface InviteData {
-  id: string
-  project_id: string
-  email: string
-  role: ProjectRole
-  status: string
-  expires_at: string
-  bands: {
-    id: string
-    name: string
-    type: string
-    color: string
-    description?: string
-  }
+/** Ecrã de erro/estado do convite por link (inválido, expirado, já aceite…) */
+interface InviteProblem {
+  title: string
+  message: string
+  /** Já faz parte do projeto → oferecer "Abrir projeto" em vez de um beco sem saída */
+  projectId?: string
+  /** Nota secundária (ex.: "este convite é para outra pessoa?") */
+  note?: string
+  /** Falha de rede / servidor → "Tentar outra vez" */
+  retry?: boolean
+  /** Sessão terminou → "Entrar outra vez" */
+  login?: boolean
+}
+
+const PROBLEM_TITLES = {
+  invalid_token: 'Convite inválido',
+  expired: 'Convite expirado',
+  revoked: 'Convite revogado',
+  already_accepted: 'Convite já aceite',
+} as const
+
+/** LED do projeto: paleta v2 (remapeia cores antigas guardadas nos dados) */
+function ledColor(c: string | null | undefined): string {
+  return c ? mapLegacyProjectColor(c) : 'var(--text3)'
+}
+
+function typeLabelOf(type: string): string {
+  return PROJECT_TYPE_LABELS[type as ProjectType] ?? type
 }
 
 /* Benefícios — a mesma setlist impressa do login (01/02/03): o convite é,
@@ -33,13 +61,6 @@ const BENEFITS = [
 ]
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
-
-/** Códigos de convite têm o formato "ABCD-1234" (migration_bands.sql):
- *  normaliza o que o utilizador escreve/cola e insere o hífen sozinho. */
-function formatCode(raw: string) {
-  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
-  return clean.length > 4 ? `${clean.slice(0, 4)}-${clean.slice(4)}` : clean
-}
 
 /* ── Ícones v2: traço 1.8, cantos secos, currentColor ── */
 
@@ -133,120 +154,168 @@ export default function InvitePage() {
   const navigate = useNavigate()
   const toast = useToast()
 
-  const [invite, setInvite] = useState<InviteData | null>(null)
-  const [inviteError, setInviteError] = useState<string | null>(null)
+  /** Código que veio no link (/join?code=…), já normalizado — "" se não veio */
+  const linkCode = extractInviteCode(inviteCode ?? '')
+
+  const [invite, setInvite] = useState<ProjectInviteDetails | null>(null)
+  const [inviteProblem, setInviteProblem] = useState<InviteProblem | null>(null)
+  /** Muda para voltar a pedir o convite ("Tentar outra vez") */
+  const [inviteAttempt, setInviteAttempt] = useState(0)
   const [accepting, setAccepting] = useState(false)
   const [done, setDone] = useState(false)
-  const [codeInput, setCodeInput] = useState(formatCode(inviteCode ?? ''))
+  const [codeInput, setCodeInput] = useState(linkCode)
   const [codeError, setCodeError] = useState<string | null>(null)
   const [joiningByCode, setJoiningByCode] = useState(false)
+  /** Projeto do código escrito/colado (peek) — mostrado antes de entrar; só vale para esse código */
+  const [peeked, setPeeked] = useState<{ code: string; project: ProjectCodePeek } | null>(null)
+  const preview = peeked && peeked.code === bareInviteCode(codeInput) ? peeked.project : null
+  /** Código ainda é o do link (não foi escrito à mão) → mensagens a falar do link */
+  const codeFromLink = !!linkCode && bareInviteCode(codeInput) === bareInviteCode(linkCode)
+  const invalidMessage = codeFromLink ? INVITE_MESSAGES.invalidLink : INVITE_MESSAGES.invalidCode
+
+  const authRedirect = `/auth?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`
+
+  // Sem sessão: guarda o convite para o retomar depois de criar conta (a
+  // confirmação por email pode trazer a pessoa de volta à página inicial).
+  // Com sessão: já está aqui — o pendente deixa de ser preciso.
+  useEffect(() => {
+    if (authLoading) return
+    if (user) clearPendingInvite()
+    else if (token) savePendingInvite('token', token)
+    else if (linkCode) savePendingInvite('code', linkCode)
+  }, [authLoading, user, token, linkCode])
+
+  // Código completo → espreita o projeto: mostra o nome e, se expirou, avisa logo
+  useEffect(() => {
+    if (token || !user || !isCompleteInviteCode(codeInput)) return
+    let alive = true
+    const code = bareInviteCode(codeInput)
+    const timer = setTimeout(async () => {
+      const res = await peekProjectCode(code, user.id)
+      if (!alive) return
+      if (res.status === 'found') {
+        setPeeked({ code, project: res.project })
+        // Já é membro: abre o projeto, mesmo com o código expirado
+        setCodeError(res.project.expired && !res.project.is_member ? INVITE_MESSAGES.expiredCode : null)
+      } else if (res.status === 'not_found') {
+        setPeeked(null)
+        setCodeError(invalidMessage)
+      } else if (res.reason === 'rate_limited' || res.reason === 'not_authenticated') {
+        setPeeked(null)
+        setCodeError(res.message)
+      }
+      // erro de rede: fica calado — o botão "Entrar" volta a tentar e explica
+    }, 250)
+    return () => { alive = false; clearTimeout(timer) }
+  }, [codeInput, token, user, invalidMessage])
+
+  /** Resultado de get_project_invite → ecrã de aceitar, ou o estado (inválido, expirado, já aceite…) */
+  function showInvite(res: InviteLookup) {
+    if (res.status === 'not_found') {
+      setInviteProblem({ title: PROBLEM_TITLES.invalid_token, message: INVITE_MESSAGES.inviteInvalid })
+      return
+    }
+    if (res.status === 'error') {
+      setInviteProblem(res.reason === 'not_authenticated'
+        ? { title: 'Sessão terminada', message: res.message, login: true }
+        : { title: res.reason === 'network' ? 'Sem ligação' : 'Convite indisponível', message: res.message, retry: true })
+      return
+    }
+    const inv = res.invite
+    if (inv.status === 'accepted') {
+      setInviteProblem(inv.already_member
+        ? { title: PROBLEM_TITLES.already_accepted, message: `Já fazes parte de ${inv.project.name}.`, projectId: inv.project_id }
+        : { title: PROBLEM_TITLES.already_accepted, message: INVITE_MESSAGES.inviteAccepted })
+      return
+    }
+    if (inv.status === 'revoked') {
+      setInviteProblem({ title: PROBLEM_TITLES.revoked, message: INVITE_MESSAGES.inviteRevoked })
+      return
+    }
+    // Já é membro e o convite não lhe dá nada (ex.: o dono a testar o link):
+    // abre o projeto e NÃO aceita — o convite fica para quem foi convidado
+    if (inv.already_member && roleRank(inv.my_role) >= roleRank(inv.role)) {
+      setInviteProblem({
+        title: 'Já fazes parte',
+        message: `Já és membro de ${inv.project.name}.`,
+        projectId: inv.project_id,
+        note: inv.status === 'pending' && !inv.expired ? INVITE_MESSAGES.inviteForSomeoneElse : undefined,
+      })
+      return
+    }
+    if (inv.expired) {
+      setInviteProblem({ title: PROBLEM_TITLES.expired, message: INVITE_MESSAGES.inviteExpired })
+      return
+    }
+    setInviteProblem(null)
+    setInvite(inv)
+  }
 
   useEffect(() => {
-    if (!token || authLoading) return
-    fetchInvite()
-  }, [token, authLoading, user])
+    if (!token || authLoading || !user) return
+    let alive = true
+    getProjectInvite(token).then(res => { if (alive) showInvite(res) })
+    return () => { alive = false }
+  }, [token, authLoading, user, inviteAttempt])
 
-  async function fetchInvite() {
-    if (!token) return
-    const { data, error } = await supabase
-      .from('project_invites')
-      .select('*, bands(id, name, type, color, description)')
-      .eq('token', token)
-      .single()
-
-    if (error || !data) {
-      setInviteError('Convite inválido ou já utilizado.')
-      return
-    }
-    if (data.status === 'accepted') {
-      setInviteError('Este convite já foi aceite.')
-      return
-    }
-    if (data.status === 'revoked') {
-      setInviteError('Este convite foi revogado.')
-      return
-    }
-    if (new Date(data.expires_at) < new Date()) {
-      setInviteError('Este convite expirou.')
-      return
-    }
-    setInvite(data as InviteData)
+  function retryInvite() {
+    setInviteProblem(null)
+    setInvite(null)
+    setInviteAttempt(n => n + 1)
   }
 
   async function acceptInvite() {
-    if (!invite || !user) return
+    if (!invite || !user || !token || accepting) return
     setAccepting(true)
-
-    // Already a member? Don't touch the existing role (re-accepting an old
-    // invite must never downgrade an admin back to the invited role).
-    const { data: existing } = await supabase
-      .from('band_members')
-      .select('role')
-      .eq('band_id', invite.project_id)
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    if (!existing) {
-      const { error: insertErr } = await supabase
-        .from('band_members')
-        .insert({ band_id: invite.project_id, user_id: user.id, role: invite.role })
-      if (insertErr) { toast('Erro ao entrar no projeto: ' + insertErr.message, { type: 'error' }); setAccepting(false); return }
+    // Servidor: valida o convite, nunca baixa o papel de quem já é membro e marca-o como aceite
+    const res = await acceptProjectInvite(token, invite, user.id)
+    if (!res.ok) {
+      setAccepting(false)
+      switch (res.reason) {
+        case 'not_authenticated':
+          setInviteProblem({ title: 'Sessão terminada', message: res.message, login: true })
+          return
+        case 'invalid_token':
+        case 'expired':
+        case 'revoked':
+        case 'already_accepted':
+          setInviteProblem({ title: PROBLEM_TITLES[res.reason], message: res.message })
+          return
+        default:  // rede / outro: fica no ecrã, pode tocar outra vez
+          toast(res.message, { type: 'error' })
+          return
+      }
     }
-
-    await supabase.from('project_invites').update({ status: 'accepted' }).eq('id', invite.id)
-
     setDone(true)
-    setTimeout(() => navigate(`/projects/${invite.project_id}`), 1800)
+    setTimeout(() => navigate(`/projects/${res.projectId}`), 1800)
   }
 
   async function joinByCode() {
-    if (!user || !codeInput.trim()) return
+    if (!user || !codeInput.trim() || joiningByCode) return
+    // Já é membro (o peek disse): abre o projeto sem passar pelo "entrar"
+    if (preview?.is_member && preview.id) { navigate(`/projects/${preview.id}`); return }
     setJoiningByCode(true)
     setCodeError(null)
 
-    // Formato atual "ABCD-1234"; aceita também códigos antigos sem hífen
-    const code = formatCode(codeInput)
-    const bare = code.replace('-', '')
-    const { data: band, error } = await supabase
-      .from('bands')
-      .select('id, name, type, color, invite_code, invite_expires_at')
-      .in('invite_code', code === bare ? [code] : [code, bare])
-      .limit(1)
-      .maybeSingle()
+    // O botão "Entrar" já é a confirmação explícita — sem confirm redundante.
+    // Código, validade e já-membro são validados no servidor (src/lib/invites.ts).
+    const res = await joinProjectWithCode(codeInput, user.id)
+    if (res.ok) { navigate(`/projects/${res.projectId}`); return }
 
-    if (error || !band) {
-      setCodeError('Código inválido.')
-      setJoiningByCode(false)
+    setJoiningByCode(false)
+    if (res.reason === 'already_member' && res.projectId) {
+      // Já é membro: entra — sem mexer no papel
+      toast(res.message)
+      navigate(`/projects/${res.projectId}`)
       return
     }
-
-    if (band.invite_expires_at && new Date(band.invite_expires_at) < new Date()) {
-      setCodeError('Este código de convite expirou.')
-      setJoiningByCode(false)
+    if (res.reason === 'invalid_code') {
+      // O código deixou de existir (ex.: o dono gerou um novo) — esquece o projeto mostrado
+      setPeeked(null)
+      setCodeError(invalidMessage)
       return
     }
-
-    // Already a member? Just go in — don't reset the role.
-    const { data: existing } = await supabase
-      .from('band_members')
-      .select('role')
-      .eq('band_id', band.id)
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    if (existing) {
-      navigate(`/projects/${band.id}`)
-      return
-    }
-
-    // O botão "Entrar no projeto" já é a confirmação explícita — sem confirm redundante.
-    const { error: joinErr } = await supabase
-      .from('band_members')
-      .insert({ band_id: band.id, user_id: user.id, role: 'editor' })
-
-    if (joinErr) { setCodeError('Erro ao entrar: ' + joinErr.message); setJoiningByCode(false); return }
-
-    navigate(`/projects/${band.id}`)
+    setCodeError(res.message)
   }
 
   if (authLoading) {
@@ -258,10 +327,27 @@ export default function InvitePage() {
       <Shell>
         <div className={styles.label}>Convite</div>
         <h1 className={styles.title}>Tens um convite!</h1>
+        {/* O código à vista: se a conta for criada noutro browser (link do email
+            de confirmação), dá para o anotar e escrever depois */}
+        {linkCode && !token ? (
+          <div className={styles.codeCard}>
+            <span className={styles.codeCardLabel}>Código de convite</span>
+            <span className={styles.codeCardValue}>{linkCode}</span>
+          </div>
+        ) : token ? (
+          <div className={styles.codeCard}>
+            <span className={styles.codeCardLabel}>Convite pessoal</span>
+            <span className={styles.codeCardHint}>Depois de entrares, volta a abrir este link se não fores levado ao convite.</span>
+          </div>
+        ) : null}
         <p className={styles.sub}>Faz login ou cria uma conta para aceitar o convite e entrar no projeto.</p>
         <button
           className={styles.btn}
-          onClick={() => navigate(`/auth?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`)}
+          onClick={() => {
+            if (token) savePendingInvite('token', token)
+            else if (linkCode) savePendingInvite('code', linkCode)
+            navigate(authRedirect)
+          }}
         >
           Entrar / Criar conta
           <IconArrowRight />
@@ -272,13 +358,39 @@ export default function InvitePage() {
 
   // Token-based invite flow
   if (token) {
-    if (inviteError) {
+    if (inviteProblem) {
+      const member = !!inviteProblem.projectId
       return (
         <Shell>
-          <div className={`${styles.stateIcon} ${styles.stateError}`}><IconX /></div>
-          <h1 className={styles.title}>Convite inválido</h1>
-          <p className={styles.sub}>{inviteError}</p>
-          <button className={styles.btnSecondary} onClick={() => navigate('/')}>Ir para o início</button>
+          <div className={`${styles.stateIcon} ${member ? styles.stateSuccess : styles.stateError}`}>
+            {member ? <IconCheck /> : <IconX />}
+          </div>
+          <h1 className={styles.title}>{inviteProblem.title}</h1>
+          <p className={styles.sub}>{inviteProblem.message}</p>
+          {inviteProblem.note && <p className={styles.note}>{inviteProblem.note}</p>}
+          <div className={styles.actions}>
+            {member ? (
+              <button className={styles.btn} onClick={() => navigate(`/projects/${inviteProblem.projectId}`)}>
+                Abrir projeto<IconArrowRight />
+              </button>
+            ) : inviteProblem.login ? (
+              <button className={styles.btn} onClick={() => navigate(authRedirect)}>
+                Entrar outra vez<IconArrowRight />
+              </button>
+            ) : inviteProblem.retry ? (
+              <>
+                <button className={styles.btn} onClick={retryInvite}>Tentar outra vez</button>
+                <button className={styles.btnSecondary} onClick={() => navigate('/join')}>
+                  Tenho um código de convite
+                </button>
+              </>
+            ) : (
+              <button className={styles.btnSecondary} onClick={() => navigate('/join')}>
+                Tenho um código de convite
+              </button>
+            )}
+            <button className={styles.btnGhost} onClick={() => navigate('/')}>Ir para o início</button>
+          </div>
         </Shell>
       )
     }
@@ -292,34 +404,38 @@ export default function InvitePage() {
         <Shell>
           <div className={`${styles.stateIcon} ${styles.stateSuccess}`}><IconCheck /></div>
           <h1 className={styles.title}>Bem-vindo ao projeto!</h1>
-          <p className={styles.metaLine} role="status">A redirecionar para {invite.bands.name}…</p>
+          <p className={styles.metaLine} role="status">A redirecionar para {invite.project.name}…</p>
         </Shell>
       )
     }
 
-    const projectColor = invite.bands.color || 'var(--text3)'
-    const typeLabel = PROJECT_TYPE_LABELS[invite.bands.type as ProjectType] ?? invite.bands.type
+    const typeLabel = typeLabelOf(invite.project.type)
     const expiry = new Date(invite.expires_at).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' })
+    const roleLabel = ROLE_LABELS[invite.role] ?? invite.role
 
     return (
       <Shell>
         <div className={styles.label}>Convite para projeto</div>
         <div className={styles.project}>
-          <span className={styles.led} style={{ background: projectColor }} aria-hidden="true" />
-          <h1 className={styles.projectName}>{invite.bands.name}</h1>
+          <span className={styles.led} style={{ background: ledColor(invite.project.color) }} aria-hidden="true" />
+          <h1 className={styles.projectName}>{invite.project.name}</h1>
         </div>
         <p className={styles.metaLine}>
           {typeLabel}
           <span className={styles.sep} aria-hidden="true">·</span>
-          {ROLE_LABELS[invite.role]}
+          {roleLabel}
           <span className={styles.sep} aria-hidden="true">·</span>
           Expira a {expiry}
         </p>
         <p className={styles.inviteMsg}>
-          Foste convidado para entrar neste projeto como <strong>{ROLE_LABELS[invite.role]}</strong>.
+          {invite.already_member && invite.my_role
+            ? <>Já és membro como <strong>{ROLE_LABELS[invite.my_role] ?? invite.my_role}</strong>. Aceitar muda o teu papel para <strong>{roleLabel}</strong>.</>
+            : invite.invited_by_name
+              ? <>{invite.invited_by_name} convidou-te para entrar neste projeto como <strong>{roleLabel}</strong>.</>
+              : <>Foste convidado para entrar neste projeto como <strong>{roleLabel}</strong>.</>}
         </p>
-        {invite.bands.description && (
-          <p className={styles.projectDesc}>{invite.bands.description}</p>
+        {invite.project.description && (
+          <p className={styles.projectDesc}>{invite.project.description}</p>
         )}
         <div className={styles.actions}>
           <button
@@ -327,7 +443,11 @@ export default function InvitePage() {
             onClick={acceptInvite}
             disabled={accepting}
           >
-            {accepting ? 'A entrar…' : <>Entrar em {invite.bands.name}<IconArrowRight /></>}
+            {accepting
+              ? 'A entrar…'
+              : invite.already_member
+                ? <>Aceitar papel de {roleLabel}<IconArrowRight /></>
+                : <>Entrar em {invite.project.name}<IconArrowRight /></>}
           </button>
           <button className={styles.btnGhost} onClick={() => navigate('/')}>
             Recusar
@@ -338,18 +458,21 @@ export default function InvitePage() {
   }
 
   // Code-based join
+  const canEnterPreview = preview && !preview.expired && !preview.is_member
+  const memberPreview = preview?.is_member && preview.id ? preview : null
   return (
     <Shell>
       <div className={styles.label}>Código de convite</div>
       <h1 className={styles.title}>Entrar num projeto</h1>
       <p className={styles.sub}>Introduz o código de convite que recebeste.</p>
       <div className={styles.codeForm}>
+        {/* Sem maxLength: o browser cortava o que se colava (" ABCD-1234",
+            a mensagem partilhada, o link) antes de extractInviteCode o ler */}
         <input
           className={styles.codeInput}
           value={codeInput}
-          onChange={e => setCodeInput(formatCode(e.target.value))}
+          onChange={e => { setCodeInput(extractInviteCode(e.target.value)); setCodeError(null) }}
           placeholder="XXXX-0000"
-          maxLength={9}
           autoCapitalize="characters"
           autoCorrect="off"
           autoComplete="off"
@@ -357,15 +480,31 @@ export default function InvitePage() {
           onKeyDown={e => e.key === 'Enter' && joinByCode()}
           aria-label="Código de convite"
           aria-invalid={codeError ? true : undefined}
-          aria-describedby={codeError ? 'invite-code-error' : undefined}
+          aria-describedby={codeError ? 'invite-code-error' : preview ? 'invite-code-preview' : undefined}
         />
+        {preview && (
+          <div id="invite-code-preview" className={styles.codePreview}>
+            <span className={styles.led} style={{ background: ledColor(preview.color) }} aria-hidden="true" />
+            <span className={styles.codePreviewName}>{preview.name}</span>
+            <span
+              className={`${styles.codePreviewTag} ${
+                preview.is_member ? styles.codePreviewMember : preview.expired ? styles.codePreviewExpired : ''}`}
+            >
+              {preview.is_member ? 'Já és membro' : preview.expired ? 'Expirado' : typeLabelOf(preview.type)}
+            </span>
+          </div>
+        )}
         {codeError && <p id="invite-code-error" className={styles.codeError} role="alert">{codeError}</p>}
         <button
           className={styles.btn}
           onClick={joinByCode}
           disabled={joiningByCode || !codeInput.trim()}
         >
-          {joiningByCode ? 'A verificar…' : <>Entrar no projeto<IconArrowRight /></>}
+          {joiningByCode
+            ? 'A verificar…'
+            : memberPreview
+              ? <>Abrir {memberPreview.name}<IconArrowRight /></>
+              : <>{canEnterPreview ? `Entrar em ${preview.name}` : 'Entrar no projeto'}<IconArrowRight /></>}
         </button>
       </div>
       <button className={styles.backLink} onClick={() => navigate('/')}>

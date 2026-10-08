@@ -339,6 +339,98 @@
 }
 .codeInput[aria-invalid="true"] { border-color: var(--danger); }
 
+/* Projeto do código (peek): LED + nome + tipo — confirma ANTES de entrar */
+.codePreview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  background: var(--surface-2);
+}
+.codePreviewName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.codePreviewTag {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.codePreviewExpired {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+/* Quem já é membro: o código (mesmo expirado) só abre o projeto */
+.codePreviewMember {
+  background: var(--success-soft);
+  color: var(--success-fg);
+}
+
+/* Sem sessão: o código do link à vista (leitor LCD), para o poder anotar */
+.codeCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  background: var(--surface-2);
+}
+.codeCardLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.codeCardValue {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  user-select: all;
+  -webkit-user-select: all;
+}
+.codeCardHint {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text2);
+}
+
+/* Nota secundária no ecrã de estado (ex.: "este convite é para outra pessoa?") */
+.note {
+  margin: -10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--border2);
+  color: var(--text2);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 .codeError {
   margin: 0;
   padding: 10px 12px;

@@ -14,6 +14,7 @@ import {
 import { cacheProjects, getCachedProjects } from '../../lib/concertCache'
 import styles from './ProjectsPage.module.css'
 import { mapLegacyProjectColor } from '../../lib/projectColor'
+import { extractInviteCode, joinProjectWithCode, takePendingInvite } from '../../lib/invites'
 
 interface ProjectWithCounts extends Project {
   memberCount: number
@@ -172,6 +173,14 @@ export default function ProjectsPage() {
     if (user) loadProjects()
   }, [user])
 
+  // Convite aberto antes de ter conta (ex.: criou conta e confirmou o email,
+  // e o link de confirmação trouxe-o para aqui): retoma-o uma vez
+  useEffect(() => {
+    if (!user) return
+    const pending = takePendingInvite()
+    if (pending) navigate(pending)
+  }, [user, navigate])
+
   async function loadProjects() {
     if (!user) return
     setLoading(true)
@@ -261,35 +270,26 @@ export default function ProjectsPage() {
   }
 
   async function joinByCode() {
-    if (!user || !joinCode.trim()) return
+    if (!user || !joinCode.trim() || joining) return
     setJoining(true)
     setJoinError(null)
-    const { data: band, error } = await supabase
-      .from('bands')
-      .select('id, name, invite_expires_at')
-      .eq('invite_code', joinCode.trim().toUpperCase())
-      .single()
-    if (error || !band) { setJoinError('Código inválido.'); setJoining(false); return }
-    if (band.invite_expires_at && new Date(band.invite_expires_at) < new Date()) {
-      setJoinError('Este código expirou.'); setJoining(false); return
-    }
-    // Already a member? Just navigate — never reset the existing role.
-    const { data: existing } = await supabase
-      .from('band_members')
-      .select('role')
-      .eq('band_id', band.id)
-      .eq('user_id', user.id)
-      .maybeSingle()
-    if (!existing) {
-      // O botão de entrada já é a confirmação explícita — sem confirm redundante.
-      const { error: joinErr } = await supabase
-        .from('band_members')
-        .insert({ band_id: band.id, user_id: user.id, role: 'editor' })
-      if (joinErr) { setJoinError('Erro ao entrar: ' + joinErr.message); setJoining(false); return }
-    }
+    // O botão de entrada já é a confirmação explícita — sem confirm redundante.
+    // Validação (código, validade, já-membro) no servidor: src/lib/invites.ts
+    const res = await joinProjectWithCode(joinCode, user.id)
     setJoining(false)
-    setJoinCode('')
-    navigate(`/projects/${band.id}`)
+    if (res.ok) {
+      setJoinCode('')
+      navigate(`/projects/${res.projectId}`)
+      return
+    }
+    if (res.reason === 'already_member' && res.projectId) {
+      // Já é membro: abre o projeto — nunca mexe no papel
+      setJoinCode('')
+      toast(res.message)
+      navigate(`/projects/${res.projectId}`)
+      return
+    }
+    setJoinError(res.message)
   }
 
   function resetCreateForm() {
@@ -347,15 +347,16 @@ export default function ProjectsPage() {
                 <input
                   className={styles.joinInput}
                   value={joinCode}
-                  onChange={e => { setJoinCode(e.target.value.toUpperCase()); setJoinError(null) }}
+                  onChange={e => { setJoinCode(extractInviteCode(e.target.value)); setJoinError(null) }}
                   onKeyDown={e => e.key === 'Enter' && joinByCode()}
                   placeholder="XXXX-0000"
-                  maxLength={9}
                   autoCapitalize="characters"
                   autoCorrect="off"
+                  autoComplete="off"
                   spellCheck={false}
                   aria-label="Código de convite"
                   aria-invalid={joinError ? true : undefined}
+                  aria-describedby={joinError ? 'projects-join-error' : undefined}
                 />
                 <button
                   className={styles.secondaryBtn}
@@ -366,7 +367,7 @@ export default function ProjectsPage() {
                   {!joining && <IconArrowRight size={16} />}
                 </button>
               </div>
-              {joinError && <p className={styles.joinError} role="alert">{joinError}</p>}
+              {joinError && <p id="projects-join-error" className={styles.joinError} role="alert">{joinError}</p>}
             </div>
           </section>
         </div>
