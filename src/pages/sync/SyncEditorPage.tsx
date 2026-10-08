@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
 import type { LyricLine } from '../../types'
+import { restoreSyncTimes, stageLyricsText } from '../../lib/lyricsTiming'
 import styles from './SyncEditorPage.module.css'
 
 function msToStr(ms: number): string {
@@ -204,17 +205,24 @@ export default function SyncEditorPage() {
 
   useEffect(() => {
     if (!id || !user) return
-    supabase.from('songs').select('title, artist, lyrics').eq('id', id).single()
+    supabase.from('songs').select('title, artist, lyrics, edited_lyrics').eq('id', id).single()
       .then(({ data }) => {
         if (!data) { setLoading(false); return }
         setSong({ title: data.title, artist: data.artist })
-        const rawLines = (data.lyrics ?? '').split('\n').filter((l: string) => l.trim())
+        // A letra em uso (a editada, se houver) — a mesma que o palco desenha
+        const written: string = data.edited_lyrics ?? data.lyrics ?? ''
         supabase.from('lyric_syncs').select('lines').eq('song_id', id).maybeSingle()
           .then(({ data: sync }) => {
             const existing = (sync?.lines ?? []) as LyricLine[]
+            // Sem letra escrita mas com sync: as linhas do sync, como no palco.
+            // Fins de linha partidos como no palco (\n, \r\n e \r sozinho)
+            const text = stageLyricsText(written, existing)
+            const rawLines = text.split(/\r\n?|\n/).filter((l: string) => l.trim())
+            // Pelo texto, e com os tempos repetidos/fora de ordem à vista
+            const times = restoreSyncTimes(rawLines, existing)
             setLines(rawLines.map((text: string, i: number) => ({
               text,
-              time_ms: existing[i]?.time_ms ?? null,
+              time_ms: times[i] ?? null,
             })))
             setLoading(false)
           })

@@ -141,11 +141,36 @@ function IconLinesLoose() {
   )
 }
 
+/* Alinhamento da letra: linhas encostadas à esquerda / centradas */
+function IconAlignLeft() {
+  return (
+    <svg {...ICON} width="16" height="16">
+      <path d="M4 6h16M4 10h10M4 14h16M4 18h10" />
+    </svg>
+  )
+}
+
+function IconAlignCenter() {
+  return (
+    <svg {...ICON} width="16" height="16">
+      <path d="M4 6h16M7 10h10M4 14h16M7 18h10" />
+    </svg>
+  )
+}
+
+type LyricAlign = NonNullable<ConcertTheme['align']>
+
+const ALIGN_OPTIONS: [LyricAlign, string, ReactNode][] = [
+  ['left', 'Esquerda', <IconAlignLeft key="i" />],
+  ['center', 'Centro', <IconAlignCenter key="i" />],
+]
+
 /* ── Mini-ecrã de palco: espelha o modo concerto (ConcertPage) ── */
 
 function StagePreview({ theme }: { theme: ConcertTheme }) {
   const ink = theme.active_color
   const accent = theme.accent_color
+  const alignClass = theme.align === 'center' ? styles.stageCenter : styles.stageLeft
   const vars = {
     background: theme.bg,
     color: ink,
@@ -166,16 +191,16 @@ function StagePreview({ theme }: { theme: ConcertTheme }) {
         </span>
       </div>
 
-      <div className={styles.stageLyrics} aria-hidden="true">
-        <div className={`${styles.stageLine} ${styles.stagePast}`}>De tudo que a gente foi</div>
+      <div className={`${styles.stageLyrics} ${alignClass}`} aria-hidden="true">
+        <div className={`${styles.stageLine} ${styles.stagePast}`}>Acordo cedo com o rio a passar</div>
         <div className={styles.stageSection} style={{ color: accent }}>Refrão</div>
         <div
           className={`${styles.stageLine} ${styles.stageActive}`}
           style={{ background: withAlpha(accent, 0.14), boxShadow: `inset 3px 0 0 ${accent}` }}
         >
-          Let me play among the stars
+          Leva-me contigo, leva-me daqui
         </div>
-        <div className={styles.stageLine}>Let me see what spring is like</div>
+        <div className={styles.stageLine}>Leva-me contigo até ao fim da linha</div>
       </div>
     </div>
   )
@@ -450,6 +475,30 @@ export default function SettingsPage() {
                 />
                 <span className={styles.sliderIcon} aria-hidden="true"><IconLinesLoose /></span>
                 <span className={styles.sliderVal}>{(theme.line_height ?? 1.6).toFixed(1)}</span>
+              </div>
+            </div>
+
+            <div className={styles.row}>
+              <div className={styles.rowText}>
+                <div className={styles.rowTitle}>Alinhamento da letra</div>
+                <div className={styles.rowHint}>À esquerda, a letra aparece como foi escrita</div>
+              </div>
+              <div className={styles.segmented} role="group" aria-label="Alinhamento da letra">
+                {ALIGN_OPTIONS.map(([v, label, icon]) => {
+                  const on = (theme.align ?? 'left') === v
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      className={`${styles.segOption} ${on ? styles.segOptionActive : ''}`}
+                      aria-pressed={on}
+                      onClick={() => { if (!on) pick('align', v) }}
+                    >
+                      {icon}
+                      {label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           </div>

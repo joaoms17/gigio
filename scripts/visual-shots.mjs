@@ -51,7 +51,28 @@ const SONGS = [
 }))
 
 function SAMPLE_LYRICS(title) {
-  return `[Verso 1]\nI don't drink coffee, I take tea, my dear\nI like my toast done on one side\nAnd you can hear it in my accent when I talk\nI'm an Englishman in New York\n\n[Refrão]\nOh, I'm an alien, I'm a legal alien\nI'm an Englishman in New York\nOh, I'm an alien, I'm a legal alien\nI'm an Englishman in New York\n\n[Verso 2]\nSee me walking down Fifth Avenue\nA walking cane here at my side\n(${title})`
+  // Letra ORIGINAL (inventada) — nunca letras reais nos fixtures. Cobre os
+  // casos de formatação: secções, estrofes, indentação, linha longa e duas
+  // linhas vazias seguidas.
+  return [
+    '[Verso 1]',
+    'Acordo cedo com o rio a passar',
+    'Há café na mesa e o sol a entrar',
+    'Guardo as chaves no bolso do casaco',
+    'E saio para a rua sem olhar para trás',
+    '',
+    '[Refrão]',
+    'Leva-me contigo, leva-me daqui',
+    '    (leva-me daqui)',
+    'Leva-me contigo até ao fim da linha',
+    '    (até ao fim)',
+    '',
+    '',
+    '[Verso 2]',
+    'Uma linha muito comprida que não cabe inteira no ecrã do telemóvel e tem de quebrar sem perder o sentido do verso',
+    'Os dias passam devagar',
+    `(${title})`,
+  ].join('\n')
 }
 
 const BAND = { id: 'b1', name: 'Casamentos', color: '#7C3AED', image_url: null, owner_id: 'u1', invite_code: 'ABCD1234', created_at: '2026-01-01T00:00:00Z', member_count: 3, type: 'band' }
@@ -83,7 +104,12 @@ const SETLIST_SONGS = SONGS.map((song, i) => ({
   song, setlist: { name: 'Jantar', date: d(1), venue: 'Quinta da Ribeira' },
 }))
 
-const LYRIC_SYNCS = [{ song_id: 'sg2', lines: SAMPLE_LYRICS('Smooth Operator').split('\n').map((text, i) => ({ text, time_ms: i * 4000 })) }]
+// Como o editor de sync grava de facto: sem linhas vazias e só as linhas
+// marcadas (os [Secção] normalmente não levam toque) — expõe o modo concerto
+// a mostrar as linhas do sync em vez da letra formatada.
+const LYRIC_SYNCS = [{ song_id: 'sg2', lines: SAMPLE_LYRICS('Smooth Operator').split('\n')
+  .filter(l => l.trim() && !/^\[.+\]$/.test(l.trim()))
+  .map((text, i) => ({ text, time_ms: 8000 + i * 4000 })) }]
 
 const TABLES = {
   bands: [BAND],

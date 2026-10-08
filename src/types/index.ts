@@ -137,6 +137,8 @@ export interface ConcertTheme {
   accent_color: string
   font_size: number
   line_height?: number
+  /** Alinhamento da letra no palco — 'left' (como foi escrita) por omissão */
+  align?: 'left' | 'center'
 }
 
 export interface SearchResult {
