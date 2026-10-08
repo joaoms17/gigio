@@ -359,14 +359,30 @@
   font-weight: 400;
   line-height: 1.22;
   padding: calc(max(0px, (var(--lyric-lh, 1.6) - 1.22) * 0.5em) + 4px) 16px;
-  text-align: center;
-  text-wrap: balance;
+  /* A letra como foi escrita: indentação e espaços mantidos; as quebras
+     só onde a largura obriga (nada de redistribuir a frase) */
+  white-space: pre-wrap;
+  tab-size: 4;
   color: var(--stage-ink);
   overflow-wrap: break-word;
   cursor: pointer;
   transition: opacity 0.15s, background 0.18s, box-shadow 0.18s;
 }
 .lyricLine:active { opacity: 0.6; }
+
+/* Alinhamento (concert_theme.align). À esquerda (por omissão): uma frase
+   longa que quebra continua com recuo pendente — lê-se como UMA linha da
+   letra. A indentação escrita vem do JS em colunas (--indent-cols, TAB = 4;
+   o texto chega sem ela) e recua a linha inteira: as quebras ficam 0.7em à
+   direita do texto indentado, não da margem. 0.28em ≈ um espaço da Archivo;
+   nunca mais de 30% da largura (indentações enormes num telemóvel).
+   Ao centro a indentação não se aplica (descentrava a linha) */
+.alignLeft .lyricLine {
+  text-align: left;
+  padding-left: calc(16px + 0.7em + min(var(--indent-cols, 0) * 0.28em, 30%));
+  text-indent: -0.7em;
+}
+.alignCenter .lyricLine { text-align: center; }
 
 /* Linha ativa — faixa de leitura (teleponto): fundo tintado + barra de acento */
 .lyricActive {
@@ -586,6 +602,16 @@
   background: currentColor;
   opacity: 0.5;
   flex-shrink: 0;
+}
+/* À esquerda: o rótulo começa na margem da letra, o traço fica depois */
+.alignLeft .sectionLabel {
+  justify-content: flex-start;
+  text-align: left;
+}
+.alignLeft .sectionLabel::before { display: none; }
+.alignLeft .cueHint {
+  justify-content: flex-start;
+  text-align: left;
 }
 
 .emptyLyrics {
@@ -1174,6 +1200,10 @@ button.rowMain:active { background: rgba(255, 255, 255, 0.08); }
   font-weight: 600;
   color: var(--stage-ink-3);
 }
+/* Sync feita para outra versão da letra: aviso no acento (há algo a fazer
+   — voltar a sincronizar); a letra segue em scroll manual */
+.deckNoteWarn .deckMain { color: var(--stage-accent); }
+.deckNoteWarn .deckHint { color: var(--stage-ink-2); }
 
 /* Film strip: próximas 1-2 músicas, toque para saltar — ranhuras de
    largura igual, encostadas ao › */
@@ -1337,6 +1367,7 @@ button.rowMain:active { background: rgba(255, 255, 255, 0.08); }
 
   /* Letra alinhada às margens de 24px do header/footer */
   .lyricLine { padding-left: 24px; padding-right: 24px; }
+  .alignLeft .lyricLine { padding-left: calc(24px + 0.7em + min(var(--indent-cols, 0) * 0.28em, 30%)); }
   .sectionLabel { font-size: 15px; padding: 14px 24px 4px; }
   .sectionLabel::before,
   .sectionLabel::after { width: 32px; }

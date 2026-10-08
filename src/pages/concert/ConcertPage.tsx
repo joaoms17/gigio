@@ -13,10 +13,14 @@ import AnnotatedLyrics from '../../components/AnnotatedLyrics'
 import { loadAnnotations, pullAnnotations } from '../../components/AnnotationLayer'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
-import { fmtSection, parseRgb, withAlpha } from '../../components/LyricsView'
+import { parseRgb, withAlpha } from '../../components/LyricsView'
 import type { SetlistSong, Song, ConcertTheme, LyricLine } from '../../types'
 import styles from './ConcertPage.module.css'
 import { DEFAULT_CONCERT_THEME, normalizeConcertTheme } from '../../lib/concertTheme'
+import {
+  parseStageLines, stageLyricsText, resolveStageTiming, activeLineAt, lineStartMs,
+  nextLyricLine, prevLyricLine, type StageLine,
+} from '../../lib/lyricsTiming'
 
 type Row = SetlistSong & { song: Song }
 type ContentView = 'lyrics' | 'chords' | 'annotations'
@@ -47,6 +51,8 @@ const RESUME_WINDOW_MS = 2 * 60 * 1000
 const PLAYED_MIN_MS = 45 * 1000
 /** LINHA › logo depois de o relógio acender uma linha = confirmar essa linha */
 const LINE_GRACE_MS = 800
+/** Uma linha ancorada por nós (toque, ‹ ›) conta como a atual durante isto (›› e ‹‹ rápidos) */
+const ANCHOR_HOLD_MS = 1500
 /** Janela do 2.º toque que confirma mudar de música pelo pedal/setas */
 const ARM_MS = 2000
 /** Janela do 2.º toque numa linha da coluna com a música a tocar */
@@ -62,27 +68,11 @@ function pad2(n: number) {
   return String(n).padStart(2, '0')
 }
 
-/** Linha "cantável" — ignora entradas de sync vazias e marcadores [Secção] */
-function isLyricText(text: string) {
-  const t = text.trim()
-  return t !== '' && !/^\[.+\]$/.test(t)
-}
-
-/** Última entrada de sync já alcançada em `ms` (-1 = ainda antes da 1.ª) */
-function syncIndexAt(sl: LyricLine[], ms: number) {
-  let idx = -1
-  for (let i = 0; i < sl.length; i++) {
-    if (sl[i].time_ms <= ms) idx = i
-  }
-  return idx
-}
-
-/** Linha de letra seguinte (dir 1) ou anterior (dir -1) a `from`, exclusivo; -1 se não houver */
-function findLyric(sl: LyricLine[], from: number, dir: 1 | -1) {
-  for (let j = from + dir; j >= 0 && j < sl.length; j += dir) {
-    if (isLyricText(sl[j].text)) return j
-  }
-  return -1
+/** Tempo (ms) da última linha com tempo; -1 se não houver */
+function lastTimeMs(times: readonly (number | null)[] | null) {
+  let last = -1
+  if (times) for (const t of times) if (t != null && t > last) last = t
+  return last
 }
 
 /** matchMedia com o evento change (addListener no Safari antigo) */
@@ -295,7 +285,9 @@ export default function ConcertPage() {
   const chipTimerRef          = useRef<ReturnType<typeof setTimeout> | null>(null)
   const armRowTimerRef        = useRef<ReturnType<typeof setTimeout> | null>(null)
   const seqRef                = useRef(0)
-  const syncLinesRef          = useRef<LyricLine[] | null>(null)
+  // Linhas desenhadas (a letra) e o tempo de cada uma (null = sem sync utilizável)
+  const stageLinesRef         = useRef<StageLine[]>([])
+  const lineTimesRef          = useRef<(number | null)[] | null>(null)
   const currentRowIdRef       = useRef<string | undefined>(undefined)
   const progressTrackRef      = useRef<HTMLDivElement>(null)
   const scrubRef              = useRef<{ x: number; active: boolean; seeked: boolean } | null>(null)
@@ -338,8 +330,32 @@ export default function ConcertPage() {
   }, [currentSong?.id, currentSong?.has_sync])
   const syncLines: LyricLine[] | null =
     (currentSong?.has_sync ? syncById[currentSong.id] : undefined) ?? cachedSync
-  // Lido pelo setInterval e pelos atalhos — sempre a versão deste render
-  syncLinesRef.current = syncLines
+  // O palco desenha SEMPRE a letra, tal como foi escrita (vazias, [Secções],
+  // indentação). A sincronização só lhe dá tempos: cada entrada é
+  // emparelhada com a sua linha pelo texto — nunca se desenham as linhas do
+  // sync (sem vazias, sem as secções não marcadas, texto antigo).
+  // Exceção: sem letra escrita mas com sync (LRCLIB só com syncedLyrics),
+  // desenham-se as linhas do sync — antes "Sem letra" com a sync carregada.
+  const lyricsText = stageLyricsText(currentSong?.edited_lyrics ?? currentSong?.lyrics, syncLines)
+  const stageLines = useMemo(() => parseStageLines(lyricsText), [lyricsText])
+  const songDurMs = currentSong?.duration_sec ? currentSong.duration_sec * 1000 : undefined
+  const timing = useMemo(
+    () => resolveStageTiming(stageLines, syncLines, songDurMs),
+    [stageLines, syncLines, songDurMs],
+  )
+  // Tempo de cada linha desenhada (as de letra todas com tempo, próprio ou
+  // estimado); null = música tratada como sem sync (scroll manual)
+  const lineTimes = timing.times
+  const hasTiming = !!lineTimes
+  // Há sync, mas foi feita para outra versão da letra. Sem letra não há o que
+  // sincronizar: o deck diz "Sem letra" (voltar a sincronizar não resolveria).
+  // Sem letra escrita e a sync ainda a chegar, o texto pode vir dela: "Sync a carregar"
+  const syncPending = !!currentSong?.has_sync && !syncLines && !syncMissing[currentSong.id]
+  const noLyrics = stageLines.length === 0 && !syncPending
+  const syncStale = !!syncLines && !hasTiming && !noLyrics
+  // Lidos pelo setInterval e pelos atalhos — sempre a versão deste render
+  stageLinesRef.current = stageLines
+  lineTimesRef.current = lineTimes
 
   // ── Persist position per setlist ──────────────────────────────────────────
   useEffect(() => {
@@ -514,14 +530,12 @@ export default function ConcertPage() {
     // Voltou há pouco? Retoma (a tocar: onde a música vai agora)
     const mem = posMemoryRef.current.get(row.id)
     posMemoryRef.current.delete(row.id)
-    const sl = syncLinesRef.current
+    const times = lineTimesRef.current
     let resumeAt: number | null = null
     if (mem && now - mem.at < RESUME_WINDOW_MS) {
       const t = mem.playing ? mem.t + (now - mem.at) / 1000 : mem.t
-      const end = Math.max(
-        row.song.duration_sec ?? 0,
-        sl && sl.length > 0 ? sl[sl.length - 1].time_ms / 1000 + 5 : 0,
-      )
+      const lastMs = lastTimeMs(times)
+      const end = Math.max(row.song.duration_sec ?? 0, lastMs >= 0 ? lastMs / 1000 + 5 : 0)
       // Uma música que entretanto já teria acabado volta ao cue
       if (!(mem.playing && end > 0 && t >= end)) resumeAt = t
     }
@@ -529,7 +543,7 @@ export default function ConcertPage() {
     if (mem && resumeAt != null) {
       elapsedRef.current = resumeAt
       setElapsed(resumeAt)
-      setLineIdx(sl ? Math.max(0, syncIndexAt(sl, resumeAt * 1000)) : 0)
+      setLineIdx(times ? Math.max(0, activeLineAt(resumeAt * 1000, times)) : 0)
       startedRef.current = true
       setStarted(true)
       if (mem.playing) runClock(resumeAt)
@@ -584,9 +598,9 @@ export default function ConcertPage() {
   // A sincronização chegou (ou mudou) com o relógio já a meio: a linha ativa
   // passa a vir dela, não do 0 com que a música abriu
   useEffect(() => {
-    if (!syncLines || !startedRef.current) return
-    setLineIdx(Math.max(0, syncIndexAt(syncLines, currentTime() * 1000)))
-  }, [syncLines])
+    if (!lineTimes || !startedRef.current) return
+    setLineIdx(Math.max(0, activeLineAt(currentTime() * 1000, lineTimes)))
+  }, [lineTimes])
 
   function markPlayed(rowId: string) {
     setPlayed(s => (s.has(rowId) ? s : new Set(s).add(rowId)))
@@ -599,8 +613,8 @@ export default function ConcertPage() {
     const secs = (Date.now() - startRef.current) / 1000
     elapsedRef.current = secs
     setElapsed(secs)
-    const sl = syncLinesRef.current
-    if (sl) setLineIdx(Math.max(0, syncIndexAt(sl, secs * 1000)))
+    const times = lineTimesRef.current
+    if (times) setLineIdx(Math.max(0, activeLineAt(secs * 1000, times)))
   }
 
   /** Posição real agora (com o timer a correr, mais fresca que o último tick) */
@@ -643,8 +657,8 @@ export default function ConcertPage() {
       const secs = (Date.now() - startRef.current) / 1000
       elapsedRef.current = secs
       setElapsed(secs)
-      const sl = syncLinesRef.current
-      if (sl) setLineIdx(Math.max(0, syncIndexAt(sl, secs * 1000)))
+      const times = lineTimesRef.current
+      if (times) setLineIdx(Math.max(0, activeLineAt(secs * 1000, times)))
     }
     setPlaying(false)
   }
@@ -687,21 +701,24 @@ export default function ConcertPage() {
     elapsedRef.current = t
     setElapsed(t)
     startRef.current = Date.now() - t * 1000
-    const sl = syncLinesRef.current
-    if (sl) setLineIdx(Math.max(0, syncIndexAt(sl, t * 1000)))
+    const times = lineTimesRef.current
+    if (times) setLineIdx(Math.max(0, activeLineAt(t * 1000, times)))
     return t
   }
 
   /**
-   * "Estamos aqui": põe o relógio no início da entrada `i` dos syncLines.
-   * `start` arranca o timer se estiver parado (toque na letra); os ajustes
-   * ‹ LINHA › não mexem no play/pausa.
+   * "Estamos aqui": põe o relógio no início da linha `i` da letra (o tempo
+   * da sync ou, numa linha que a sync não conhece, o estimado entre as
+   * vizinhas). `start` arranca o timer se estiver parado (toque na letra);
+   * os ajustes ‹ LINHA › não mexem no play/pausa.
    */
   function syncToLine(i: number, start: boolean) {
-    const entry = syncLinesRef.current?.[i]
-    if (!entry) return
-    // +1ms: o índice calculado a partir do tempo cai nesta linha (arredondamentos)
-    const t = seekTo((entry.time_ms + 1) / 1000)
+    const times = lineTimesRef.current
+    // Uma folga mínima depois do tempo: a linha calculada a partir do
+    // relógio cai nesta (arredondamentos), nunca na seguinte
+    const ms = times ? lineStartMs(i, times) : null
+    if (ms == null) return
+    const t = seekTo(ms / 1000)
     setLineIdx(i)
     // O tempo vai explícito — nunca o `elapsed` do render anterior
     if (start && !timerRef.current) startTimer(t)
@@ -718,16 +735,22 @@ export default function ConcertPage() {
    * as teclas ficam apagadas e as ‹ › de música estão ao lado).
    */
   function stepLine(dir: 1 | -1, fromKey = false) {
-    const sl = syncLinesRef.current
-    if (!sl) return
+    const times = lineTimesRef.current
+    if (!times) return
+    // Anda pelas linhas de LETRA desenhadas (secções e vazias não contam);
+    // uma linha que a sync não conhece usa o tempo estimado
+    const stage = stageLinesRef.current
     const nowMs = currentTime() * 1000
-    const cur = syncIndexAt(sl, nowMs)
-    const first = findLyric(sl, -1, 1)
+    const cur = activeLineAt(nowMs, times)
+    const first = nextLyricLine(stage, -1)
+    // Cue: parado em 0, à espera da entrada
+    const inCueNow = !startedRef.current && !timerRef.current
 
     if (dir > 0) {
-      // Cue: o 1.º avanço é a ENTRADA — igual a tocar na 1.ª linha (seek +
-      // arranca), seja a tecla do ecrã seja o pedal
-      if (!startedRef.current && !timerRef.current && first >= 0 && cur <= first) {
+      // Cue: o 1.º avanço é SEMPRE a entrada — igual a tocar na 1.ª linha
+      // (seek + arranca), seja a tecla do ecrã seja o pedal, e seja qual for
+      // a linha que o relógio parado em 0 já acende (sync a começar a 0 ms)
+      if (inCueNow && first >= 0) {
         syncToLine(first, true)
         return
       }
@@ -736,23 +759,33 @@ export default function ConcertPage() {
       // fugir uma linha à frente. Não se aplica a uma linha que acabámos de
       // ancorar nós (›› rápidos continuam a avançar).
       const a = anchorRef.current
-      const justAnchored = !!a && a.idx === cur && Date.now() - a.at < 1500
-      if (timerRef.current && cur >= 0 && isLyricText(sl[cur].text) &&
-          nowMs - sl[cur].time_ms < LINE_GRACE_MS && !justAnchored) {
+      const justAnchored = !!a && a.idx === cur && Date.now() - a.at < ANCHOR_HOLD_MS
+      const curMs = cur >= 0 ? times[cur] : null
+      if (timerRef.current && cur >= 0 && stage[cur]?.kind === 'lyric' && curMs != null &&
+          nowMs - curMs < LINE_GRACE_MS && !justAnchored) {
         syncToLine(cur, false)
         return
       }
-      const j = findLyric(sl, cur, 1)
+      const j = nextLyricLine(stage, cur)
       if (j >= 0) syncToLine(j, false)
       else if (fromKey) armOrGo(songIdx + 1, 'Pedal de novo')
       return
     }
 
-    const j = findLyric(sl, cur, -1)
+    // Em cue já se está no início: ‹ só pode ser a música anterior (pedal)
+    if (inCueNow) {
+      if (fromKey) armOrGo(songIdx - 1, 'Pedal de novo')
+      return
+    }
+    // ‹‹ rápidos continuam a recuar: a linha que acabámos de ancorar conta
+    // como a atual, mesmo que o relógio já tenha acendido a seguinte (linhas
+    // a 1 ms umas das outras nunca prendem o recuo)
+    const a = anchorRef.current
+    const from = a && a.idx < cur && Date.now() - a.at < ANCHOR_HOLD_MS ? a.idx : cur
+    const j = prevLyricLine(stage, from)
     if (j >= 0) { syncToLine(j, false); return }
     // Na 1.ª linha (ou na intro): volta a esperar a entrada
-    if (startedRef.current || timerRef.current) backToCue()
-    else if (fromKey) armOrGo(songIdx - 1, 'Pedal de novo')
+    backToCue()
   }
 
   /** Pedal ← / PageUp mantido (auto-repeat): pausa ou retoma, uma vez por pressão */
@@ -760,7 +793,7 @@ export default function ConcertPage() {
     const h = holdRef.current
     if (!h || h.key !== k || h.done) return
     h.done = true
-    if (!startedRef.current || !syncLinesRef.current) return
+    if (!startedRef.current || !lineTimesRef.current) return
     // O 1.º keydown já recuou uma linha — segurar não era "recuar"
     if (h.wasPlaying) {
       const t = seekTo(h.pre + (Date.now() - h.at) / 1000)
@@ -851,7 +884,7 @@ export default function ConcertPage() {
     if (viewMode !== 'semi' || contentView !== 'lyrics') return
     // Sem sync não há nada a seguir: a página fica onde o cantor a deixou
     // (o toque numa linha centra-a diretamente)
-    if (!syncLines) return
+    if (!hasTiming) return
     const el = activeLineRef.current
     if (!el) return
     // Em cue a letra fica encostada ao topo — só se garante que se vê
@@ -992,7 +1025,7 @@ export default function ConcertPage() {
     // incluído), nunca mexe num relógio escondido
     if (contentView === 'chords') { pageTurn(dir); return }
 
-    if (viewMode === 'semi' && syncLinesRef.current) {
+    if (viewMode === 'semi' && lineTimesRef.current) {
       if (activate) { togglePlay(); return }
       holdRef.current = back && startedRef.current
         ? { key: k, pre: currentTime(), at: Date.now(), wasPlaying: !!timerRef.current, done: false }
@@ -1140,9 +1173,13 @@ export default function ConcertPage() {
   /** Toque numa linha (modo semi) */
   function tapLine(i: number, e: React.MouseEvent<HTMLElement>) {
     if (!isRealTap(e)) return
-    if (syncLinesRef.current?.[i]) {
-      // "Estamos aqui": seek + arranca se estiver parado
-      syncToLine(i, true)
+    const times = lineTimesRef.current
+    if (times) {
+      // "Estamos aqui": seek + arranca se estiver parado. Uma linha que a
+      // sync não conhece tem o tempo estimado; uma [Secção] sem tempo
+      // vale pela 1.ª linha dela
+      const target = times[i] != null ? i : nextLyricLine(stageLinesRef.current, i)
+      if (target >= 0) syncToLine(target, true)
       return
     }
     // Sem sync: marcador manual — acende e centra a linha tocada
@@ -1257,8 +1294,6 @@ export default function ConcertPage() {
   }
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const plainLines  = (currentSong?.edited_lyrics ?? currentSong?.lyrics ?? '').split('\n')
-  const lines       = syncLines ? syncLines.map(l => l.text) : plainLines
   const prevSong    = songs[songIdx - 1]?.song
   const nextSong    = songs[songIdx + 1]?.song
   const afterSong   = songs[songIdx + 2]?.song
@@ -1274,37 +1309,45 @@ export default function ConcertPage() {
   const hasAnnotations = annAvailable
   const bpm = currentSong?.bpm ?? null
 
-  // Progress bar: song duration, falling back to the last synced line
+  // Progress bar: song duration, falling back to the last timed line
   const songDur = currentSong?.duration_sec ?? 0
-  const duration = songDur > 0
-    ? songDur
-    : (syncLines && syncLines.length > 0 ? syncLines[syncLines.length - 1].time_ms / 1000 + 5 : 0)
+  const lastLineMs = lastTimeMs(lineTimes)
+  const duration = songDur > 0 ? songDur : (lastLineMs >= 0 ? lastLineMs / 1000 + 5 : 0)
   const progressPct = duration > 0 ? Math.min(100, (elapsed / duration) * 100) : 0
 
   // Playback UI only makes sense with sync + semi mode (chords view hides it)
   const playbackContext = contentView !== 'chords' && viewMode === 'semi'
-  const showProgress = playbackContext && !!syncLines && duration > 0
-  const hasTransport = playbackContext && !!syncLines
+  const showProgress = playbackContext && hasTiming && duration > 0
+  const hasTransport = playbackContext && hasTiming
 
   // Visor do transporte quando não há play: diz em que estado o palco está
-  // (e nunca "sem sincronização" numa música que a tem e ainda está a chegar)
+  // (e nunca "sem sincronização" numa música que a tem e ainda está a chegar).
+  // Uma sync feita para outra versão da letra não serve: scroll manual e aviso
   const deckStatus = playbackContext
-    ? (currentSong?.has_sync
-        ? (syncMissing[currentSong.id] ? 'Sync indisponível' : 'Sync a carregar')
-        : 'Sem sincronização')
+    ? (noLyrics
+        ? 'Sem letra'
+        : syncStale
+          ? 'Sync desatualizado'
+          : currentSong?.has_sync
+            ? (syncMissing[currentSong.id] ? 'Sync indisponível' : 'Sync a carregar')
+            : 'Sem sincronização')
     : contentView === 'chords' ? 'Acordes' : 'Modo manual'
+  const deckHint = playbackContext && noLyrics
+    ? 'Acrescenta a letra'
+    : playbackContext && syncStale ? 'Volta a sincronizar' : 'Usa o scroll'
 
-  // Sync position → cue, ‹ LINHA ›, active line
+  // Posição no relógio → cue, ‹ LINHA ›, linha ativa (índices da letra desenhada)
   const elapsedMs     = elapsed * 1000
-  const curSyncIdx    = syncLines ? syncIndexAt(syncLines, elapsedMs) : -1
-  const prevLyricIdx  = syncLines ? findLyric(syncLines, curSyncIdx, -1) : -1
-  const nextLyricIdx  = syncLines ? findLyric(syncLines, curSyncIdx, 1) : -1
-  const firstLyricIdx = syncLines ? findLyric(syncLines, -1, 1) : -1
-  const semiSync      = viewMode === 'semi' && !!syncLines
+  const curTimedIdx   = lineTimes ? activeLineAt(elapsedMs, lineTimes) : -1
+  const prevLyricIdx  = lineTimes ? prevLyricLine(stageLines, curTimedIdx) : -1
+  const nextLyricIdx  = lineTimes ? nextLyricLine(stageLines, curTimedIdx) : -1
+  const firstLyricIdx = lineTimes ? nextLyricLine(stageLines, -1) : -1
+  const firstLyricMs  = firstLyricIdx >= 0 ? (lineTimes?.[firstLyricIdx] ?? 0) : 0
+  const semiSync      = viewMode === 'semi' && hasTiming
   // Cue: música ainda não arrancou — dica + letra encostada ao topo
-  const inCue = semiSync && contentView === 'lyrics' && !started && lines.length > 0
+  const inCue = semiSync && contentView === 'lyrics' && !started && stageLines.length > 0
   // Intro a tocar, antes da 1.ª linha de letra
-  const preRoll = semiSync && started && firstLyricIdx >= 0 && elapsedMs < syncLines![firstLyricIdx].time_ms
+  const preRoll = semiSync && started && firstLyricIdx >= 0 && elapsedMs < firstLyricMs
   // Em cue/intro: nada aceso, a 1.ª linha de letra pulsa (mesmo com sync a 0 ms)
   const cueLineIdx = (inCue || preRoll) ? firstLyricIdx : -1
   // Linha que o scroll segue (em cue/intro, a 1.ª linha que vai entrar)
@@ -1314,25 +1357,13 @@ export default function ConcertPage() {
   // ‹ LINHA na 1.ª linha = voltar a esperar a entrada
   const lineBackToCue = started && prevLyricIdx < 0
 
-  // Map the active sync line onto the plain-lyrics line shown in the
-  // annotations view (occurrence-aware so repeated chorus lines resolve
-  // to the right verse).
+  // Linha ativa na vista de anotações: a mesma linha da letra (o LyricsView
+  // parte o texto cru por '\n' — `src` é o índice nesse texto)
   let annActiveLine = -1
-  if (contentView === 'annotations' && viewMode === 'semi' && syncLines && started) {
-    const target = syncLines[lineIdx]?.text.trim()
-    if (target) {
-      let occ = 0
-      for (let i = 0; i < lineIdx; i++) {
-        if (syncLines[i].text.trim() === target) occ++
-      }
-      let seen = 0
-      for (let i = 0; i < plainLines.length; i++) {
-        if (plainLines[i].trim() === target) {
-          if (seen === occ) { annActiveLine = i; break }
-          seen++
-        }
-      }
-    }
+  if (contentView === 'annotations' && viewMode === 'semi' && lineTimes && started) {
+    const line = stageLines[lineIdx]
+    const t = lineTimes[lineIdx]
+    if ((line?.kind === 'lyric' || line?.kind === 'mark') && t != null && elapsedMs >= t) annActiveLine = line.src
   }
 
   // Follow the active line in the annotations view — same semantics as the
@@ -1409,7 +1440,18 @@ export default function ConcertPage() {
   // Com a coluna aberta, a film strip do footer é redundante
   const showFilmStrip = !!nextSong && !(isWide && sidebarOpen)
 
+  // Cada linha vazia escrita = um espaço de estrofe (duas seguidas = dois)
   const stanzaGap = `${Math.round(displayFontSize * 0.9)}px`
+  // À esquerda (por omissão) a letra aparece como foi escrita
+  const alignClass = theme.align === 'center' ? styles.alignCenter : styles.alignLeft
+  // Indentação escrita → recuo da linha inteira (o CSS só a usa à esquerda;
+  // ao centro descentrava a linha). O texto desenha-se sem ela: o recuo
+  // pendente das quebras conta a partir do texto indentado, e um TAB vale
+  // sempre as suas 4 colunas
+  const indentVars = (line: StageLine) =>
+    line.indent > 0 ? ({ '--indent-cols': line.indent } as CSSProperties) : undefined
+  /** [Secção] tal como foi escrita (o CSS passa a maiúsculas) — sem traduzir nem separar números */
+  const sectionText = (line: StageLine) => line.label ?? ''
 
   /** Cabeçalho + lista do alinhamento — partilhado pela coluna e pela folha */
   function renderSetlist(inSheet: boolean) {
@@ -1506,7 +1548,9 @@ export default function ConcertPage() {
     )
   }
 
-  const emptyLyrics = (
+  // Sem letra escrita e a sync ainda a chegar: o texto pode vir dela — nada
+  // de "Sem letra" a piscar até lá (o deck diz "Sync a carregar")
+  const emptyLyrics = syncPending ? null : (
     <div className={styles.emptyLyrics}>
       <span className={styles.emptyTitle}>Sem letra disponível</span>
       <span className={styles.emptyHint}>Desliza ou usa as setas para mudar de música</span>
@@ -1707,7 +1751,7 @@ export default function ConcertPage() {
             ) : viewMode === 'semi' ? (
               <div
                 ref={lyricsScrollRef}
-                className={styles.lyricsScroll}
+                className={`${styles.lyricsScroll} ${alignClass}`}
                 style={lyricVars}
                 onScroll={handleScroll}
                 onPointerDown={handleLyricsPointerDown}
@@ -1730,35 +1774,43 @@ export default function ConcertPage() {
                     </div>
                   </div>
                 ) : (
-                  <div ref={topSpacerRef} style={{ height: syncLines ? '40vh' : '12px', flexShrink: 0 }} />
+                  <div ref={topSpacerRef} style={{ height: hasTiming ? '40vh' : '12px', flexShrink: 0 }} />
                 )}
-                {lines.length === 0 ? emptyLyrics : lines.map((line, i) => {
-                  const t = line.trim()
-                  if (t === '') {
-                    // Stanza gap ≈ 0.9× the font — anything bigger reads as a page break
-                    return <div key={i} style={{ height: stanzaGap, flexShrink: 0 }} />
+                {stageLines.length === 0 ? emptyLyrics : stageLines.map((line, i) => {
+                  if (line.kind === 'blank') {
+                    // Stanza gap ≈ 0.9× the font — anything bigger reads as a page break.
+                    // Pode ser a âncora: uma pausa marcada na sync (LRC) acende o intervalo
+                    return (
+                      <div
+                        key={i}
+                        ref={i === anchorIdx ? activeLineRef : null}
+                        style={{ height: stanzaGap, flexShrink: 0 }}
+                      />
+                    )
                   }
                   // Com sync: só depois de arrancar e de o relógio chegar à
                   // entrada (em cue/intro nada fica aceso). Sem sync: só a
                   // linha que o cantor tocou (nunca a 1.ª "encravada").
-                  const active = syncLines
-                    ? started && i === lineIdx && elapsedMs >= (syncLines[i]?.time_ms ?? 0)
+                  const lineMs = lineTimes?.[i]
+                  const active = lineTimes
+                    ? started && i === lineIdx && lineMs != null && elapsedMs >= lineMs
                     : tapMarked && i === lineIdx
                   const flashEl = flash?.idx === i
                     ? <span key={flash.n} className={styles.flashRing} aria-hidden="true" />
                     : null
-                  const sec = t.match(/^\[(.+?)\]$/)
-                  if (sec) return (
+                  if (line.kind === 'section') return (
                     <div
                       key={i}
                       ref={i === anchorIdx ? activeLineRef : null}
                       className={`${styles.sectionLabel} ${i < lineIdx ? styles.past : ''}`}
                       onClick={e => tapLine(i, e)}
                     >
-                      {fmtSection(sec[1])}
+                      {sectionText(line)}
                       {flashEl}
                     </div>
                   )
+                  // Letra e linhas só de símbolos ("—", "..."): desenhadas como
+                  // foram escritas; os símbolos só acendem se a sync os marcou
                   return (
                     <div
                       key={i}
@@ -1770,9 +1822,10 @@ export default function ConcertPage() {
                         i < lineIdx ? styles.past : '',
                         i === cueLineIdx ? styles.lyricCue : '',
                       ].join(' ')}
+                      style={indentVars(line)}
                       onClick={e => tapLine(i, e)}
                     >
-                      {line}
+                      {line.text.trimStart()}
                       {flashEl}
                     </div>
                   )
@@ -1782,7 +1835,7 @@ export default function ConcertPage() {
             ) : (
               <div
                 ref={lyricsScrollRef}
-                className={styles.lyricsScroll}
+                className={`${styles.lyricsScroll} ${alignClass}`}
                 style={lyricVars}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
@@ -1791,23 +1844,22 @@ export default function ConcertPage() {
               >
                 {/* Manual: sem linha a centrar, a letra começa no topo */}
                 <div style={{ height: '12px', flexShrink: 0 }} />
-                {lines.length === 0 ? emptyLyrics : lines.map((line, i) => {
-                  const t = line.trim()
-                  if (t === '') {
+                {stageLines.length === 0 ? emptyLyrics : stageLines.map((line, i) => {
+                  if (line.kind === 'blank') {
                     return <div key={i} style={{ height: stanzaGap, flexShrink: 0 }} />
                   }
-                  const sec = t.match(/^\[(.+?)\]$/)
-                  if (sec) return (
+                  if (line.kind === 'section') return (
                     <div key={i} className={`${styles.sectionLabel} ${styles.isStatic}`}>
-                      {fmtSection(sec[1])}
+                      {sectionText(line)}
                     </div>
                   )
                   return (
                     <div
                       key={i}
                       className={`${styles.lyricLine} ${styles.isStatic}`}
+                      style={indentVars(line)}
                     >
-                      {line}
+                      {line.text.trimStart()}
                     </div>
                   )
                 })}
@@ -1847,7 +1899,7 @@ export default function ConcertPage() {
           </div>
 
           {/* ── Re-sync button (só há o que seguir com sincronização) ── */}
-          {contentView !== 'chords' && viewMode === 'semi' && !!syncLines && !scrollFollowing && (
+          {contentView !== 'chords' && viewMode === 'semi' && hasTiming && !scrollFollowing && (
             <div className={styles.resyncWrap}>
               <button className={styles.resyncBtn} onClick={() => setScrollFollowing(true)}>
                 {ICONS.follow}
@@ -1942,12 +1994,15 @@ export default function ConcertPage() {
                     </button>
                   </div>
                 ) : (
-                  <div className={styles.deckNote}>
+                  <div className={`${styles.deckNote} ${playbackContext && syncStale ? styles.deckNoteWarn : ''}`}>
                     <span className={styles.deckMain}>
                       <span className={styles.deckLed} aria-hidden="true" />
                       <span className={styles.deckText}>{deckStatus}</span>
                     </span>
-                    <span className={`${styles.deckText} ${styles.deckHint}`}>Usa o scroll</span>
+                    <span className={`${styles.deckText} ${styles.deckHint}`}>
+                      <span className={styles.srOnly}> — </span>
+                      {deckHint}
+                    </span>
                   </div>
                 )}
               </div>

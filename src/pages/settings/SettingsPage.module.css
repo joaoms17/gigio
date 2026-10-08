@@ -498,15 +498,29 @@
 
 .stageLine {
   padding: 2px 16px;
-  text-align: center;
   font-size: var(--pv-size, 32px);
   line-height: var(--pv-lh, 1.6);
   font-weight: 400;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
   transition: font-size 0.15s ease, line-height 0.15s ease;
 }
 .stageActive { font-weight: 800; }
 .stagePast { opacity: 0.35; }
+
+/* Alinhamento da letra — o mesmo do palco: recuo pendente de 0.7em à
+   esquerda (o mesmo valor de .alignLeft .lyricLine no ConcertPage.module.css) */
+.stageCenter .stageLine { text-align: center; }
+.stageLeft .stageLine {
+  text-align: left;
+  padding-left: calc(16px + 0.7em);
+  text-indent: -0.7em;
+}
+.stageLeft .stageSection {
+  justify-content: flex-start;
+  padding: 0 16px;
+}
+.stageLeft .stageSection::before { display: none; }
 
 /* ── Telemóvel ── */
 

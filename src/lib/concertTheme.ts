@@ -2,7 +2,9 @@ import type { ConcertTheme } from '../types'
 
 // Defaults v2 do palco (o concert_theme guardado do utilizador continua a mandar)
 export const DEFAULT_CONCERT_THEME: ConcertTheme = {
-  bg: '#0B0B0C', active_color: '#F2F1EC', accent_color: '#FF6A26', font_size: 32, line_height: 1.6
+  bg: '#0B0B0C', active_color: '#F2F1EC', accent_color: '#FF6A26', font_size: 32, line_height: 1.6,
+  // A letra aparece como foi escrita (o editor e o PDF também alinham à esquerda)
+  align: 'left',
 }
 
 // Cores de marca da v1 (rosa/roxo). O default da BD (profiles.concert_theme)
@@ -26,6 +28,7 @@ export function normalizeConcertTheme(saved: Partial<ConcertTheme> | null | unde
     accent_color: lc(s.accent_color) ? s.accent_color! : DEFAULT_CONCERT_THEME.accent_color,
     font_size: typeof s.font_size === 'number' && s.font_size > 0 ? s.font_size : DEFAULT_CONCERT_THEME.font_size,
     line_height: typeof s.line_height === 'number' && s.line_height > 0 ? s.line_height : DEFAULT_CONCERT_THEME.line_height,
+    align: s.align === 'center' ? 'center' : 'left',
   }
   if (LEGACY_ACCENTS.includes(lc(t.accent_color))) {
     t.accent_color = DEFAULT_CONCERT_THEME.accent_color
