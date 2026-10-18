@@ -1452,23 +1452,45 @@ function isSavedLines(v: unknown): v is SavedLines {
 
 /** Inverso de encodeAnchored; descarta entradas inválidas em vez de rebentar */
 export function decodeAnchored(raw: unknown): AnchoredStroke[] {
-  if (!Array.isArray(raw)) return []
+  return decodeAnchoredParts(raw).strokes
+}
+
+/**
+ * decodeAnchored + as entradas de uma versão FUTURA (modo ou código de Y
+ * que esta não conhece), guardadas em bruto em `extra`: quem grava volta a
+ * escrevê-las tal como vieram (buildPayload), para um cliente mais antigo
+ * nunca apagar o que não sabe desenhar. Entradas estragadas saem.
+ */
+export function decodeAnchoredParts(raw: unknown): { strokes: AnchoredStroke[]; extra: unknown[] } {
   const out: AnchoredStroke[] = []
+  const extra: unknown[] = []
+  if (!Array.isArray(raw)) return { strokes: out, extra }
   for (const e of raw) {
-    if (!Array.isArray(e) || e.length < 8) continue
+    if (!Array.isArray(e) || e.length < 4) continue
     const [id, color, w, mode, runs, cs, xs, ys, lines] = e as unknown[]
     if ((typeof id !== 'string' || !id) && !fin(id)) continue
-    if (mode !== MODE_TEXT && mode !== MODE_MARGIN && mode !== MODE_MARGIN_ROW) continue
+    if (typeof mode !== 'number' || !Number.isInteger(mode) || mode < 0) continue
+    if (KNOWN_MODES.indexOf(mode) < 0) {
+      extra.push(e)
+      continue
+    }
+    if (e.length < 8) continue
     if (!fin(w) || !intArray(runs) || !intArray(cs) || !intArray(xs) || !intArray(ys)) continue
     const n = cs.length
     if (xs.length !== n || ys.length !== n || runs.length % 3 !== 0) continue
     let total = 0
     let valid = true
+    let future = false
     for (let r = 0; r < runs.length; r += 3) {
-      if (runs[r] < 0 || runs[r + 1] < 0 || runs[r + 1] > MAX_CODE || runs[r + 2] < 1) valid = false
+      if (runs[r] < 0 || runs[r + 1] < 0 || runs[r + 2] < 1) valid = false
+      if (runs[r + 1] > MAX_CODE) future = true
       total += runs[r + 2]
     }
     if (!valid || total !== n) continue
+    if (future) {
+      extra.push(e)
+      continue
+    }
     const deltaX = mode !== MODE_TEXT
     const p = new Array<number>(n * P_STRIDE)
     let i = 0
@@ -1495,13 +1517,13 @@ export function decodeAnchored(raw: unknown): AnchoredStroke[] {
       id: String(id),
       color: typeof color === 'string' && color ? color : DEFAULT_COLOR,
       w: w / 1000,
-      mode,
+      mode: mode as StrokeMode,
       p,
     }
     if (isSavedLines(lines)) s.lines = lines
     out.push(s)
   }
-  return out
+  return { strokes: out, extra }
 }
 
 /** Traço antigo, em px do Ensaio: o que os clientes antigos (PWA em cache) leem */
