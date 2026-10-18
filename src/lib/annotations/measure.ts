@@ -82,6 +82,11 @@ export function measureLayout(container: HTMLElement | null, base: HTMLElement |
   }
   if (!em) em = parseFloat(getComputedStyle(block).fontSize) || 16
 
+  // Altura máxima de uma row por linha: um carácter com uma caixa mais alta
+  // do que isto apanhou duas linhas de ecrã (ver charRect)
+  const rowH = new Map<number, number>()
+  rowMap.forEach((rs, ln) => rowH.set(ln, Math.max(...rs.map(b => b.bottom - b.top))))
+
   const chars = new Map<number, Map<number, Box | null>>()
   function charRect(ln: number, c: number): Box | null {
     const node = nodes.get(ln)
@@ -95,7 +100,12 @@ export function measureLayout(container: HTMLElement | null, base: HTMLElement |
     try {
       range.setStart(node, c)
       range.setEnd(node, c + 1)
-      box = shifted(pickCharRect(range.getClientRects()), ox, oy)
+      // O normal: um carácter = uma caixa, e a união é essa caixa (mais
+      // barato do que a lista). Mais alta do que uma row = duas caixas (ex.:
+      // na quebra) → a lista, e fica a mais larga
+      const b = range.getBoundingClientRect()
+      const one = b.width > 0 && b.height > 0 && b.height <= (rowH.get(ln) ?? 0) * 1.25 + 1
+      box = shifted(one ? b : pickCharRect(range.getClientRects()), ox, oy)
     } catch {
       // O nó mudou depois da medição (este retrato já vai ser substituído): sem caixa
     }
@@ -105,7 +115,8 @@ export function measureLayout(container: HTMLElement | null, base: HTMLElement |
 
   const blockLeft = bRect.left - ox
   const blockRight = bRect.right - ox
-  const parts: (string | number)[] = [r2(em), r2(blockLeft), r2(blockRight), r2(cRect.width), r2(cRect.height)]
+  const blockTop = bRect.top - oy
+  const parts: (string | number)[] = [r2(em), r2(blockLeft), r2(blockRight), r2(blockTop), r2(cRect.width), r2(cRect.height)]
   for (const ln of lines) {
     parts.push('|', ln, texts.get(ln) as string)
     for (const b of rowMap.get(ln) as Box[]) parts.push(r2(b.left), r2(b.top), r2(b.right), r2(b.bottom))
@@ -115,6 +126,7 @@ export function measureLayout(container: HTMLElement | null, base: HTMLElement |
     em,
     blockLeft,
     blockRight,
+    blockTop,
     centerX: (blockLeft + blockRight) / 2,
     lines,
     rows: ln => rowMap.get(ln) ?? EMPTY,

@@ -64,3 +64,13 @@
   .section::before,
   .section::after { width: 28px; }
 }
+
+/* Medidas dos rótulos fixas (data-metrics), seja qual for o ecrã: o layout
+   de referência das anotações antigas reproduz o aparelho onde se desenhou */
+.root[data-metrics='phone'] .section { font-size: 11px; margin: 18px 0 6px; }
+.root[data-metrics='phone'] .section::before,
+.root[data-metrics='phone'] .section::after { width: 20px; }
+.root[data-metrics='tablet'] .section { font-size: 13px; margin: 22px 0 8px; }
+.root[data-metrics='tablet'] .section::before,
+.root[data-metrics='tablet'] .section::after { width: 28px; }
+.root[data-metrics] .section:first-child { margin-top: 0; }

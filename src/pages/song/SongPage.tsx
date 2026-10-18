@@ -261,6 +261,9 @@ export default function SongPage() {
   // Bloco da letra no ensaio — o AnnotationLayer mede o texto que lá está e
   // prende cada traço aos caracteres (redesenha-os quando o texto re-flui)
   const lyricsContentRef = useRef<HTMLDivElement>(null)
+  // Calha lateral pedida pelas chavetas de margem que deixaram de caber no
+  // bloco (A+, rodar): o texto quebra dentro dela em vez de passar por baixo
+  const [annGutter, setAnnGutter] = useState(0)
 
   const [rehearsalFont, setRehearsalFont] = useState(loadRehearsalFont)
   const changeRehearsalFont = useCallback((delta: number) => {
@@ -748,7 +751,7 @@ export default function SongPage() {
                   <div className={`${styles.previewPane} ${!annScrollMode ? styles.previewPaneLocked : ''}`}>
                     <div className={styles.previewInner}>
                       <div ref={lyricsContentRef}>
-                        <LyricsView lyrics={lyrics} fontSize={rehearsalFont} lineHeight={REHEARSAL_LINE_HEIGHT} />
+                        <LyricsView lyrics={lyrics} fontSize={rehearsalFont} lineHeight={REHEARSAL_LINE_HEIGHT} gutter={annGutter} />
                       </div>
                       {song && (
                         <AnnotationLayer
@@ -763,6 +766,8 @@ export default function SongPage() {
                           strokeWidth={annWidth}
                           disabled={annScrollMode}
                           contentRef={lyricsContentRef}
+                          gutter={annGutter}
+                          onGutter={setAnnGutter}
                         />
                       )}
                     </div>

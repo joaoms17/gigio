@@ -967,6 +967,243 @@ test('mergeRowRects / pickCharRect', () => {
   eq(pickCharRect([]), null, 'pickCharRect: nenhum')
 })
 
+/* ═══ 11. Revisão: notas no intervalo, círculos largos, calha, órfãos, folha sem letra, formato ═══ */
+// Concerto do tablet como o ConcertPage o monta (tema 32 × 1.45 ≈ 46px, até 900px)
+const CONCERTO46 = { em: 46, lh: 1.6, width: 900 }
+
+/** Nota "x2" em zigue-zague (px) com o topo `off` em abaixo da linha e `h` em de altura */
+function gapNote(L, ln, { off = 0.25, h = 0.55, n = 30, below = true } = {}) {
+  const rs = L.rows(ln)
+  const r = below ? rs[rs.length - 1] : rs[0]
+  const cx = (r.left + r.right) / 2
+  const y0 = below ? r.bottom + off * L.em : r.top - (off + h) * L.em
+  const pts = []
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1)
+    pts.push(cx - 0.6 * L.em + t * 1.2 * L.em, y0 + (i % 2 ? 0 : h * L.em) * (0.5 + 0.5 * Math.sin(t * 6)))
+  }
+  return pts
+}
+const ysOf = res => allPts(res).map(p => p[1])
+const xsOf = res => allPts(res).map(p => p[0])
+
+test('desvio 8: nota no intervalo entre estrofes não se achata quando o verso re-quebra', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const pts = gapNote(S, 4)
+  const h0 = Math.max(...pairs(pts).map(p => p[1])) - Math.min(...pairs(pts).map(p => p[1]))
+  const a = anchorStroke(pts, YELLOW, 3, S, 'x2')
+  eq(a.mode, MODE_GAP, 'nota entre estrofes: modo intervalo')
+  ok(a.p.every((v, i) => i % P_STRIDE !== 0 || v === 4), 'nota: presa à linha 4 (a de cima do intervalo)')
+  const literal = anchorStroke(pts, YELLOW, 3, S, 'x2-lit', { noGap: true })
+  eq(literal.mode, MODE_TEXT, 'sem o desvio 8: modo texto')
+  for (const [name, cfg] of Object.entries({ CONCERTO46, ESTREITO, TELEMOVEL, GRANDE })) {
+    const D = makeLayout(LYRICS, cfg)
+    const rows4 = D.rows(4)
+    if (name !== 'GRANDE') eq(rows4.length >= 2, true, `${name}: a linha 4 re-quebra (pré-condição)`)
+    const r = resolveStroke(a, D)
+    eq(r.subpaths.length, 1, `${name}: nota num só caminho`)
+    const ys = ysOf(r)
+    const h = Math.max(...ys) - Math.min(...ys)
+    const want = h0 * D.em / S.em
+    ok(Math.abs(h - want) <= 0.2 * want, `${name}: nota mantém a altura (±20%)`, [h, want])
+    const lastBottom = rows4[rows4.length - 1].bottom
+    const next = D.rows(6)[0].top
+    ok(ys.every(y => y > lastBottom - 0.01 && y < next), `${name}: nota toda abaixo da última row do verso e acima do rótulo`, [Math.min(...ys), Math.max(...ys), lastBottom, next])
+    // X: preso a um carácter do verso (fica por baixo dele, dentro do bloco)
+    const xs = xsOf(r)
+    ok(Math.min(...xs) >= D.blockLeft && Math.max(...xs) <= D.blockRight, `${name}: nota dentro do bloco`)
+  }
+  // O defeito do modo texto: no concerto a nota cai no intervalo pequeno dentro do verso
+  const D = makeLayout(LYRICS, CONCERTO46)
+  const lit = resolveStroke(literal, D)
+  const ly = ysOf(lit)
+  ok(Math.max(...ly) - Math.min(...ly) < 0.2 * h0 * D.em / S.em || Math.min(...ly) < D.rows(4)[1].top,
+    'modo texto (literal): a nota achata-se / cai dentro do verso — o defeito', [Math.min(...ly), Math.max(...ly), D.rows(4).map(r => [r.top, r.bottom])])
+})
+
+test('desvio 8: nota abaixo da última linha e acima da 1.ª, com a linha re-quebrada', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const fim = gapNote(S, 18, { off: 0.6, h: 0.9 })
+  const topo = gapNote(S, 0, { off: 0.4, h: 0.6, below: false })
+  const a = anchorStroke(fim, YELLOW, 3, S, 'fim')
+  const b = anchorStroke(topo, YELLOW, 3, S, 'topo')
+  eq([a.mode, b.mode], [MODE_GAP, MODE_GAP], 'FIM e nota no topo: modo intervalo')
+  for (const [name, cfg] of Object.entries({ ESTREITO, TELEMOVEL })) {
+    const D = makeLayout(LYRICS, cfg)
+    eq(D.rows(18).length >= 2, true, `${name}: a última linha re-quebra (pré-condição)`)
+    const ra = resolveStroke(a, D)
+    const last = D.rows(18)[D.rows(18).length - 1]
+    const ya = ysOf(ra)
+    ok(ra.subpaths.length === 1 && ya.every(y => y > last.bottom + 0.5 * D.em), `${name}: FIM continua abaixo da última row`, [Math.min(...ya), last.bottom])
+    const ha = Math.max(...ya) - Math.min(...ya)
+    ok(Math.abs(ha - 0.9 * D.em * 0.75) <= 0.35 * D.em, `${name}: FIM mantém a altura`, [ha, D.em])
+    const rb = resolveStroke(b, D)
+    ok(ysOf(rb).every(y => y < D.rows(0)[0].top), `${name}: nota do topo continua acima da 1.ª row`)
+  }
+  // Um sublinhado (perto da row, nunca a mais de 0.5em) continua em modo texto
+  eq(anchorStroke(underline(S, 4, ...visible(S, 4), { off: 0.3 }), YELLOW, 3, S).mode, MODE_TEXT, 'sublinhado a 0.3em no intervalo grande: modo texto')
+})
+
+test('desvio 9: círculo largo cujo topo entra na linha de cima fica à volta da palavra', () => {
+  const LYR = [
+    'Caminho pela praia ao fim da tarde muito azul',   // 0 (longa: re-quebra no concerto)
+    'Levo conchas no bolso',                          // 1
+    'Volto a casa quando a lua se acender',           // 2
+  ].join('\n')
+  const S = makeLayout(LYR, ENSAIO)
+  const [c0, c1] = word(S, 1, 'conchas')
+  for (const padY of [0.45, 0.55]) {
+    const pts = circle(S, 1, c0, c1, { padY, padX: 0.3 })
+    ok(Math.min(...pairs(pts).map(p => p[1])) < S.rows(0)[S.rows(0).length - 1].bottom, `padY ${padY}: o topo entra na caixa da linha 0 (pré-condição)`)
+    const a = anchorStroke(pts, YELLOW, 3, S, 'o')
+    eq(a.mode, MODE_TEXT, `padY ${padY}: modo texto`)
+    ok(a.p.every((v, i) => i % P_STRIDE !== 0 || v === 1), `padY ${padY}: todos os pontos presos à linha 1 (a da palavra)`)
+    const back = resolveStroke(a, S)
+    ok(back.subpaths.length === 1 && maxDev(back.subpaths[0], pts) <= 0.5, `padY ${padY}: identidade ±0.5px`, maxDev(back.subpaths[0] ?? [], pts))
+    const lit = anchorStroke(pts, YELLOW, 3, S, 'o2', { perRowExcursions: true })
+    for (const [name, cfg] of Object.entries({ CONCERTO46, TELEMOVEL })) {
+      const D = makeLayout(LYR, cfg)
+      eq(D.rows(0).length >= 2, true, `${name}: a linha de cima re-quebra (pré-condição)`)
+      const w0 = D.charRect(1, c0)
+      const w1 = D.charRect(1, c1)
+      const r = resolveStroke(a, D)
+      const bb = bbox(allPts(r))
+      ok(r.subpaths.length === 1 && bb.left >= w0.left - D.em && bb.right <= w1.right + D.em, `${name} (padY ${padY}): o círculo fica à volta de "conchas"`, [bb, w0.left, w1.right])
+      let enclosed = true
+      for (let c = c0; c <= c1; c++) {
+        const b = D.charRect(1, c)
+        if (!insidePolygon(allPts(r), (b.left + b.right) / 2, (b.top + b.bottom) / 2)) enclosed = false
+      }
+      ok(enclosed, `${name} (padY ${padY}): a palavra fica dentro do círculo`)
+      ok(bbox(allPts(r)).top < D.rows(1)[0].top, `${name} (padY ${padY}): o topo continua acima da palavra`)
+      if (name === 'CONCERTO46' && padY === 0.55) {
+        const lb = bbox(allPts(resolveStroke(lit, D)))
+        ok(lb.right > w1.right + D.em, 'sem o desvio 9: o topo foge para o lado — o defeito', [lb.right, w1.right])
+      }
+    }
+  }
+})
+
+test('desvio 10: chaveta empurrada para dentro do bloco → calha lateral, sem tocar no texto', () => {
+  const LYR = [
+    'Caminho pela praia ao fim da tarde azul',   // 39
+    'Levo no bolso as conchas que apanhei ao',   // 39
+    'O vento sopra forte e eu sigo sem pressa',  // 40
+    'Volto a casa quando a lua se acende já',    // 38
+  ].join('\n')
+  const S = makeLayout(LYR, ENSAIO)
+  const rs = [0, 1, 2, 3].flatMap(ln => S.rows(ln))
+  const top = Math.min(...rs.map(r => r.top))
+  const bottom = Math.max(...rs.map(r => r.bottom))
+  const x0 = Math.min(...rs.map(r => r.left)) - 0.3 * S.em
+  const pts = []
+  for (let i = 0; i < 60; i++) { const t = i / 59; pts.push(x0 - 0.25 * S.em * Math.pow(1 - Math.abs(2 * t - 1), 3), top + t * (bottom - top)) }
+  const a = anchorStroke(pts, YELLOW, 3, S, 'chaveta')
+  eq(a.mode, MODE_MARGIN, 'chaveta: modo margem')
+  ok(marginGutter([resolveStroke(a, S)], S) === 0, 'no Ensaio onde se desenhou: sem calha')
+  const textLeft = (L, list) => Math.min(...[0, 1, 2, 3].flatMap(ln => L.rows(ln)).map(r => r.left))
+  for (const cfg of [CONCERTO46, TELEMOVEL, ESTREITO]) {
+    const D0 = makeLayout(LYR, cfg)
+    const r0 = resolveStroke(a, D0)
+    eq(r0.edge, 1, `em ${cfg.em}/${cfg.width}: a chaveta vinha de fora (empurrada para dentro)`)
+    const bb0 = bbox(allPts(r0))
+    if (cfg !== ESTREITO) ok(bb0.right + r0.width / 2 > textLeft(D0), `em ${cfg.em}/${cfg.width}: sem calha a chaveta passa por cima das letras (o defeito)`, [bb0.right, textLeft(D0)])
+    const g = marginGutter([r0], D0)
+    ok(g > 0 && g <= 0.2 * cfg.width + 0.5, `em ${cfg.em}/${cfg.width}: calha de ${g}px`, g)
+    const D1 = makeLayout(LYR, { ...cfg, pad: g })
+    const r1 = resolveStroke(a, D1)
+    const bb1 = bbox(allPts(r1))
+    ok(maxDev(allPts(r1).map(p => p[0]), allPts(r0).map(p => p[0])) < 1e-9, `em ${cfg.em}/${cfg.width}: o X da chaveta não muda com a calha`)
+    eq(marginGutter([r1], D1), g, `em ${cfg.em}/${cfg.width}: a calha volta a dar o mesmo valor (sem ciclo)`)
+    ok(bb1.right + r1.width / 2 < textLeft(D1), `em ${cfg.em}/${cfg.width}: com a calha a chaveta fica à esquerda do texto`, [bb1.right + r1.width / 2, textLeft(D1)])
+    ok(bb1.left - r1.width / 2 >= D1.blockLeft - 0.01, `em ${cfg.em}/${cfg.width}: a tinta não sai do bloco`)
+    const t = D1.rows(0)[0].top
+    const lastRows = D1.rows(3)
+    ok(Math.abs(bb1.top - t) <= 0.3 * D1.em && Math.abs(bb1.bottom - lastRows[lastRows.length - 1].bottom) <= 0.3 * D1.em, `em ${cfg.em}/${cfg.width}: do topo da 1.ª linha à base da 4.ª`)
+  }
+  // Nota à margem perto do centro (cabe no bloco) não pede calha
+  const SL = makeLayout(LYRICS, ENSAIO)
+  const note = anchorStroke(marginNote(SL, 13), YELLOW, 3, SL, 'nota')
+  const G = makeLayout(LYRICS, GRANDE)
+  eq(marginGutter([resolveStroke(note, G)], G), 0, 'margem que cabe: sem calha')
+})
+
+test('desvio 11: órfão de um refrão apagado não reaparece no refrão que ficou', () => {
+  const V1 = ['[Verso 1]', 'Acordo cedo com o rio a passar', 'Há café na mesa e o sol a entrar', '']
+  const R = ['[Refrão]', 'Leva-me contigo, leva-me daqui', 'Leva-me contigo até ao fim da linha', '']
+  const V2 = ['[Verso 2]', 'Os dias passam devagar', 'E eu fico à janela a ver', '']
+  const before = [...V1, ...R, ...V2, ...R].join('\n')
+  const after = [...V1, ...V2, ...R].join('\n')   // 1.º refrão apagado no Editar
+  const E0 = makeLayout(before, ENSAIO)
+  const s1 = anchorStroke(underline(E0, 5, ...word(E0, 5, 'daqui')), YELLOW, 3, E0, 'r1')    // só no 1.º refrão
+  const s2 = anchorStroke(underline(E0, 13, ...word(E0, 13, 'contigo')), YELLOW, 3, E0, 'r2') // só no 2.º
+  // Gravar e ler como o AnnotationLayer (buildPayload → JSON → readPayload)
+  const save = (strokes, lyrics) => {
+    const L = makeLayout(lyrics, ENSAIO)
+    return readPayload(JSON.parse(JSON.stringify(buildPayload({ w: 780, h: L.height, strokes: toLegacyStrokes(resolveAll(strokes, L)), em: 32, anchored: strokes, lyrics }))))
+  }
+  let p = save([s1, s2], before)
+  const load1 = rebaseStrokes(p.anchored, p.lines, after)
+  ok(load1.changed && load1.strokes[0].lines && !load1.strokes[1].lines && load1.strokes[1].p[0] === 9, 'carregamento 1: r1 órfão, r2 na linha 9')
+  p = save(load1.strokes, after)
+  const load2 = rebaseStrokes(p.anchored, p.lines, after)
+  ok(!load2.changed && load2.strokes[0].lines, 'carregamento 2: r1 continua órfão (não cai no refrão que ficou)', load2.strokes.map(s => s.lines ? 'órfão' : s.p[0]))
+  ok(resolveAll(load2.strokes, makeLayout(after, CONCERTO)).filter(r => !r.hidden).length === 1, 'carregamento 2: só um traço visível no concerto')
+  // Também só com órfãos no payload
+  p = save([load1.strokes[0]], after)
+  ok(rebaseStrokes(p.anchored, p.lines, after).strokes[0].lines, 'só órfãos: continua órfão no carregamento seguinte')
+  // O refrão volta a ser inserido → o órfão volta para ele
+  p = save(load2.strokes, after)
+  const back = rebaseStrokes(p.anchored, p.lines, before)
+  ok(back.changed && !back.strokes[0].lines && back.strokes[0].p[0] === 5 && back.strokes[1].p[0] === 13, 'refrão reinserido: o órfão volta ao 1.º refrão', back.strokes.map(s => s.lines ? 'órfão' : s.p[0]))
+  // Uma só ocorrência de uma linha repetida mudada: o traço dela não salta para a outra
+  const changed1 = before.replace('Leva-me contigo, leva-me daqui', 'Leva-me contigo, leva-me já')
+  p = save([s1, s2], before)
+  const c1 = rebaseStrokes(p.anchored, p.lines, changed1)
+  p = save(c1.strokes, changed1)
+  const c2 = rebaseStrokes(p.anchored, p.lines, changed1)
+  ok(c1.strokes[0].lines && c2.strokes[0].lines, 'ocorrência mudada: o traço fica órfão nos dois carregamentos', c2.strokes.map(s => s.lines ? 'órfão' : s.p[0]))
+})
+
+test('folha sem letra (MODE_FREE): traços livres escalam com a largura', () => {
+  const E = makeLayout('', { ...ENSAIO, width: 600 })
+  ok(isLayoutEmpty(E), 'sem letra: layout vazio')
+  const pts = [100, 50, 140, 90, 200, 300]
+  const a = anchorFree(pts, YELLOW, 4, E, 'livre')
+  eq(a.mode, MODE_FREE, 'livre: modo livre')
+  const r = resolveStroke(a, E)
+  ok(!r.hidden && maxDev(r.subpaths[0], pts) <= 0.01 && Math.abs(r.width - 4) < 0.01, 'livre: identidade', r)
+  const W = makeLayout('', { ...ENSAIO, width: 900, left: 30 })
+  const rw = resolveStroke(a, W)
+  ok(maxDev(rw.subpaths[0], pts.map((v, i) => (i % 2 ? v * 1.5 : 30 + v * 1.5))) <= 0.02 && Math.abs(rw.width - 6) < 0.01, 'livre: escala com a largura do bloco (sem deformar)', rw.subpaths[0])
+  ok(!resolveStroke(a, makeLayout(LYRICS, ENSAIO)).hidden, 'livre: continua visível se a letra aparecer')
+  const rb = rebaseStrokes([a], { 0: 'Linha inventada' }, 'Outra coisa')
+  ok(!rb.changed && rb.strokes[0] === a, 'livre: a letra editada não lhe mexe')
+  eq(decodeAnchored(JSON.parse(JSON.stringify(encodeAnchored([a])))), [a], 'livre: encode/decode exato')
+  eq(collectLines([a], LYRICS), {}, 'livre: sem retrato das linhas')
+  eq(anchorFree([NaN, 1], YELLOW, 3, E), null, 'livre: sem pontos válidos → null')
+})
+
+test('formato: entradas de uma versão futura e "por juntar" sobrevivem a ler/gravar', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const u = anchorStroke(underline(S, 2, 3, 12), YELLOW, 4, S, 'u')
+  const future = ['f1', '#ff0000', 3000, 9, [0, 0, 1], [0], [0], [0], { novo: true }]
+  const futureCode = ['f2', '#00ff00', 3000, 0, [2, 40, 1], [0], [0], [0]]
+  const raw = { w: 780, h: 900, strokes: [], v: 2, anchored: [...encodeAnchored([u]), future, futureCode, ['lixo'], 7], lines: collectLines([u], LYRICS), pend: 1 }
+  const p = readPayload(JSON.parse(JSON.stringify(raw)))
+  eq(p.anchored.map(s => s.id), ['u'], 'futuro: só o traço conhecido é desenhado')
+  eq(p.extra, [future, futureCode], 'futuro: modo e código desconhecidos guardados em bruto (lixo sai)')
+  ok(p.pend === true, 'pend: lido')
+  const again = buildPayload({ w: 780, h: 900, strokes: [], em: 32, anchored: p.anchored, lyrics: LYRICS, extra: p.extra, pend: p.pend })
+  eq(again.anchored.slice(1), [future, futureCode], 'futuro: reescritas tal como vieram')
+  eq(again.pend, 1, 'pend: gravado')
+  eq(buildPayload({ w: 1, h: 1, strokes: [], em: 32, anchored: [], lyrics: '' }).pend, undefined, 'pend: só quando pedido')
+  eq(decodeAnchoredParts(raw.anchored).strokes.length, 1, 'decodeAnchoredParts: um traço')
+  const v = anchorStroke(underline(S, 3, 3, 12), YELLOW, 4, S, 'v')
+  eq(unionById([u], [u, v]).map(s => s.id), ['u', 'v'], 'unionById: sem repetidos, a base primeiro')
+  eq(unionExtra([future], [future, futureCode]).map(e => e[0]), ['f1', 'f2'], 'unionExtra: sem repetidos')
+})
+
 /* ── resultado ── */
 for (const f of failures) console.log(f)
 console.log(`\n${pass} passaram, ${fail} falharam`)

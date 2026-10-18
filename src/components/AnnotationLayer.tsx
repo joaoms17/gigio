@@ -1,14 +1,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { createPortal } from 'react-dom'
-import LyricsView from './LyricsView'
+import LyricsView, { type SectionMetrics } from './LyricsView'
 import { supabase } from '../lib/supabase'
 import {
-  anchorLegacy, anchorStroke, buildPayload, collectLines, isLayoutEmpty, pathFromSubpaths,
-  payloadHasStrokes, readPayload, rebaseStrokes, resolveAll, smoothPath, strokesAt, toLegacyStrokes,
+  anchorFree, anchorLegacy, anchorStroke, buildPayload, collectLines, isLayoutEmpty, marginGutter, pathFromSubpaths,
+  payloadHasStrokes, readPayload, rebaseStrokes, resolveAll, smoothPath, strokesAt, toLegacyStrokes, unionById, unionExtra,
   type AnchoredStroke, type AnnPayload, type ParsedPayload,
 } from '../lib/annotations/anchor'
 import { measureLayout, watchFonts, whenFontsReady, type MeasuredLayout } from '../lib/annotations/measure'
-import { REHEARSAL_LINE_HEIGHT, loadRehearsalFont, rehearsalFontCandidates } from '../lib/rehearsalFont'
+import {
+  LEGACY_NO_H_FONT, LEGACY_TABLET_MIN_W, REHEARSAL_LINE_HEIGHT, loadRehearsalFont, rehearsalFontCandidates,
+} from '../lib/rehearsalFont'
 import styles from './AnnotationLayer.module.css'
 
 /** Traço em curso, em px da camada — só existe entre o pointerdown e o pointerup */
@@ -36,6 +38,14 @@ interface Props {
    * Sem ele usa-se o pai da camada.
    */
   contentRef?: { current: HTMLElement | null }
+  /** Calha lateral que o LyricsView tem agora (ver onGutter) — ao mudar, re-mede */
+  gutter?: number
+  /**
+   * Calha lateral (px) que o texto deve deixar para não passar por baixo das
+   * chavetas de margem empurradas para dentro do bloco (A+, rodar): quem usa
+   * dá-a ao LyricsView (prop gutter) e devolve-a aqui
+   */
+  onGutter?: (px: number) => void
 }
 
 export interface AnnotationHandle {
@@ -54,7 +64,15 @@ export function loadAnnotations(songId: string): ParsedPayload | null {
   } catch { return null }
 }
 
-export async function pullAnnotations(songId: string, userId: string): Promise<ParsedPayload | null> {
+/**
+ * Lê a cópia da cloud. ok = false quando não foi possível ler (rede, erro):
+ * não é o mesmo que "não há nada na cloud" — sem a ler, não se pode gravar
+ * por cima dela.
+ */
+export async function fetchAnnotations(
+  songId: string,
+  userId: string,
+): Promise<{ ok: boolean; payload: ParsedPayload | null }> {
   try {
     const { data, error } = await supabase
       .from('song_annotations')
@@ -62,9 +80,13 @@ export async function pullAnnotations(songId: string, userId: string): Promise<P
       .eq('song_id', songId)
       .eq('user_id', userId)
       .maybeSingle()
-    if (error || !data?.strokes) return null
-    return readPayload(data.strokes)
-  } catch { return null }
+    if (error) return { ok: false, payload: null }
+    return { ok: true, payload: data?.strokes ? readPayload(data.strokes) : null }
+  } catch { return { ok: false, payload: null } }
+}
+
+export async function pullAnnotations(songId: string, userId: string): Promise<ParsedPayload | null> {
+  return (await fetchAnnotations(songId, userId)).payload
 }
 
 export async function pushAnnotations(
@@ -86,11 +108,23 @@ export async function pushAnnotations(
 }
 
 const ERASER_RADIUS = 18
+/** Nova tentativa de ler a cloud depois de uma falha (ms); a última repete-se */
+const PULL_RETRY_MS = [3000, 8000, 20000, 45000, 60000]
 
 /* O que a próxima gravação faz: nada, só este dispositivo, ou também a cloud */
 const SAVE_NONE = 0
 const SAVE_LOCAL = 1
 const SAVE_ALL = 2
+
+/**
+ * O que este aparelho tinha guardado ao abrir:
+ *  none   — nada (ou vazio): a cloud entra
+ *  v2     — âncoras: o local ganha à cloud
+ *  pend   — âncoras ainda por juntar à cloud (gravadas sem a conseguir ler)
+ *  legacy — px antigos (cliente antigo): a v2 da cloud, se existir, é mais
+ *           recente (um cliente antigo que gravasse depois tinha-a apagado)
+ */
+type LocalKind = 'none' | 'v2' | 'pend' | 'legacy'
 
 /** Nearest scrollable ancestor — the pane the two-finger pan should move. */
 function getScrollParent(el: HTMLElement | null): HTMLElement | null {
@@ -126,46 +160,90 @@ function uniqueIds(list: AnchoredStroke[]): AnchoredStroke[] {
   })
 }
 
+/* ═══ Traços antigos (px, sem âncoras): layout de referência ═══ */
+
+/** Medidas dos rótulos que quem desenhou tinha, deduzidas da largura do bloco */
+function legacyMetricsFor(width: number): SectionMetrics {
+  return width >= LEGACY_TABLET_MIN_W ? 'tablet' : 'phone'
+}
+
 /**
- * Tamanho do Ensaio cuja altura do bloco mais se aproxima de `h`. Primeiro o
- * atual (o caso normal); senão pesquisa binária — a altura cresce com o
- * tamanho da letra. Mexe só no LyricsView escondido da referência.
+ * Tamanho do Ensaio e medidas dos rótulos (telemóvel/tablet) que reproduzem
+ * o bloco onde os traços antigos foram desenhados. Com a altura guardada (h):
+ * o par cuja altura mais se aproxima de h — primeiro o tamanho atual com as
+ * medidas deduzidas da largura (o caso normal), depois, para cada medida,
+ * pesquisa binária nos tamanhos (a altura cresce com eles). Os rótulos têm
+ * px fixos por media query: medidos no aparelho que VÊ (telemóvel) e não no
+ * que desenhou (iPad), a altura de 3 rótulos falhava ~21px e escolhia-se 30px
+ * para um desenho a 28px. Sem h: 32px (ver LEGACY_NO_H_FONT).
+ * Mexe só no LyricsView escondido da referência.
  */
-function bestRehearsalSize(box: HTMLElement, root: HTMLElement, h: number, current: number): number {
-  const heightAt = (s: number) => {
+function fitLegacyReference(box: HTMLElement, root: HTMLElement, h: number | undefined, current: number, guess: SectionMetrics) {
+  const set = (m: SectionMetrics, s: number) => {
+    root.setAttribute('data-metrics', m)
     root.style.setProperty('--lyric-size', `${s}px`)
+  }
+  if (!(h && h > 0)) {
+    set(guess, LEGACY_NO_H_FONT)
+    return
+  }
+  const heightAt = (m: SectionMetrics, s: number) => {
+    set(m, s)
     return box.getBoundingClientRect().height
   }
-  let best = current
-  let bestD = Math.abs(heightAt(current) - h)
-  if (bestD <= 1) return best
-  const list = rehearsalFontCandidates(current)
-  let lo = 0
-  let hi = list.length - 1
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1
-    if (heightAt(list[mid]) >= h) hi = mid
-    else lo = mid + 1
-  }
-  for (const k of [lo - 1, lo]) {
-    if (k < 0) continue
-    const d = Math.abs(heightAt(list[k]) - h)
-    // Empate (meio px) → fica o anterior: o atual foi o primeiro
-    if (d < bestD - 0.5) {
-      bestD = d
-      best = list[k]
+  let best = { m: guess, s: current, d: Math.abs(heightAt(guess, current) - h) }
+  if (best.d > 1) {
+    const list = rehearsalFontCandidates(current)
+    const other: SectionMetrics = guess === 'tablet' ? 'phone' : 'tablet'
+    for (const m of [guess, other]) {
+      let lo = 0
+      let hi = list.length - 1
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if (heightAt(m, list[mid]) >= h) hi = mid
+        else lo = mid + 1
+      }
+      for (const k of [lo - 1, lo]) {
+        if (k < 0) continue
+        const d = Math.abs(heightAt(m, list[k]) - h)
+        // Empate (meio px) → fica o que veio antes (o atual, as medidas deduzidas)
+        if (d < best.d - 0.5) best = { m, s: list[k], d }
+      }
     }
   }
-  return best
+  set(best.m, best.s)
+}
+
+/* Migrações já feitas nesta sessão (o concerto não grava: sem isto, cada
+   abertura da vista de anotações voltava a montar e a medir a referência) */
+const legacyCache = new Map<string, AnchoredStroke[]>()
+const LEGACY_CACHE_MAX = 24
+
+/** Chave da migração de um payload antigo para uma letra (o tamanho guardado entra no desempate) */
+export function legacyKey(p: ParsedPayload, lyrics: string): string {
+  return JSON.stringify([p.w, p.h ?? 0, p.strokes, lyrics, loadRehearsalFont()])
+}
+
+/** Traços antigos já ancorados para esta chave nesta sessão (ver legacyKey) */
+export function cachedLegacy(key: string): AnchoredStroke[] | null {
+  return legacyCache.get(key) ?? null
+}
+
+function rememberLegacy(key: string, strokes: AnchoredStroke[]) {
+  if (legacyCache.size >= LEGACY_CACHE_MAX) {
+    const first = legacyCache.keys().next()
+    if (!first.done) legacyCache.delete(first.value)
+  }
+  legacyCache.set(key, strokes)
 }
 
 /**
  * Layout de referência para traços antigos (px do Ensaio, sem âncoras): um
- * LyricsView com as definições do Ensaio (tamanho guardado, entrelinha 1.6)
- * e a largura guardada (w), fora do ecrã e fora do fluxo. Com a altura
- * guardada (h) escolhe o tamanho do Ensaio que a reproduz. Ancora os traços
- * contra ele e entrega-os em onReady, com a letra usada — quem usa
- * desmonta-o logo a seguir. Não grava nada.
+ * LyricsView com as definições do Ensaio onde foram desenhados — a largura
+ * guardada (w), entrelinha 1.6, o tamanho e as medidas dos rótulos que dão a
+ * altura guardada (fitLegacyReference) —, fora do ecrã e fora do fluxo.
+ * Ancora os traços contra ele e entrega-os em onReady, com a letra usada —
+ * quem usa desmonta-o logo a seguir. Não grava nada.
  */
 export function LegacyReference({ payload, lyrics, width, onReady }: {
   payload: ParsedPayload
@@ -175,6 +253,7 @@ export function LegacyReference({ payload, lyrics, width, onReady }: {
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
   const [size] = useState(loadRehearsalFont)
+  const guess = legacyMetricsFor(width)
 
   useLayoutEffect(() => {
     const box = boxRef.current
@@ -184,12 +263,14 @@ export function LegacyReference({ payload, lyrics, width, onReady }: {
     box.getBoundingClientRect()
     return whenFontsReady(() => {
       const root = box.firstElementChild as HTMLElement | null
-      const h = payload.h
-      if (h && h > 0 && root) root.style.setProperty('--lyric-size', `${bestRehearsalSize(box, root, h, size)}px`)
+      // Sem letra ("Sem letra") não há tamanho a acertar: os traços ficam livres
+      if (root && root.querySelector('[data-ln]')) fitLegacyReference(box, root, payload.h, size, guess)
       const L = measureLayout(box, box)
-      onReady(L && !isLayoutEmpty(L) ? anchorLegacy(payload, L, L.width, L.height) : [], lyrics)
+      const out = L ? anchorLegacy(payload, L, L.width, L.height) : []
+      rememberLegacy(legacyKey(payload, lyrics), out)
+      onReady(out, lyrics)
     })
-  }, [payload, lyrics, size, onReady])
+  }, [payload, lyrics, size, guess, onReady])
 
   return createPortal(
     <div
@@ -200,30 +281,48 @@ export function LegacyReference({ payload, lyrics, width, onReady }: {
         ref={boxRef}
         style={{ position: 'absolute', left: 0, top: 0, width, visibility: 'hidden', pointerEvents: 'none' }}
       >
-        <LyricsView lyrics={lyrics} fontSize={size} lineHeight={REHEARSAL_LINE_HEIGHT} />
+        <LyricsView
+          lyrics={lyrics}
+          fontSize={payload.h ? size : LEGACY_NO_H_FONT}
+          lineHeight={REHEARSAL_LINE_HEIGHT}
+          metrics={guess}
+        />
       </div>
     </div>,
     document.body,
   )
 }
 
+/* ═══ Camada de desenho do Ensaio ═══ */
+
 interface Initial {
   strokes: AnchoredStroke[]
+  /** Entradas de uma versão futura (em bruto) — regravadas tal como vieram */
+  extra: unknown[]
   /** Payload antigo (px, sem âncoras) à espera do DOM e das fontes para ser ancorado */
   legacy: ParsedPayload | null
   save: number
+  kind: LocalKind
 }
 
 /** O que está guardado neste dispositivo, já na numeração da letra atual */
 function initialLoad(songId: string, lyrics: string): Initial {
   const p = loadAnnotations(songId)
-  if (!p) return { strokes: [], legacy: null, save: SAVE_NONE }
+  if (!p) return { strokes: [], extra: [], legacy: null, save: SAVE_NONE, kind: 'none' }
   if (p.anchored) {
     const r = rebaseStrokes(p.anchored, p.lines, lyrics)
-    // Letra editada desde que se gravou: grava já a nova numeração
-    return { strokes: uniqueIds(r.strokes), legacy: null, save: r.changed ? SAVE_ALL : SAVE_NONE }
+    const has = r.strokes.length > 0 || p.extra.length > 0
+    return {
+      strokes: uniqueIds(r.strokes),
+      extra: p.extra,
+      legacy: null,
+      // Letra editada desde que se gravou: grava já a nova numeração
+      save: r.changed ? SAVE_ALL : SAVE_NONE,
+      kind: p.pend ? 'pend' : has ? 'v2' : 'none',
+    }
   }
-  return { strokes: [], legacy: payloadHasStrokes(p) ? p : null, save: SAVE_NONE }
+  const has = payloadHasStrokes(p)
+  return { strokes: [], extra: [], legacy: has ? p : null, save: SAVE_NONE, kind: has ? 'legacy' : 'none' }
 }
 
 /**
@@ -232,9 +331,16 @@ function initialLoad(songId: string, lyrics: string): Initial {
  * carácter de uma linha da letra. Desenha-se sempre a partir dela, resolvida
  * contra a medição atual do LyricsView — A+/A−, rotação, resize e letra
  * editada só re-medem e re-resolvem; nada é re-escalado por rácios.
+ * Sem letra ("Sem letra") os traços ficam livres na folha (MODE_FREE).
+ *
+ * Cloud: o local ganha, exceto (1) uma cópia antiga em px deste aparelho,
+ * que perde para uma v2 da cloud (é mais velha), e (2) o que se desenhou
+ * antes de a cloud ser lida (ou sem a conseguir ler): junta-se por id à
+ * cópia da cloud quando ela chegar, e só então se envia — nunca se grava por
+ * cima do que não se leu.
  */
 const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationLayer(
-  { songId, userId, lyrics, fontSize, tool, color, strokeWidth, disabled = false, contentRef },
+  { songId, userId, lyrics, fontSize, tool, color, strokeWidth, disabled = false, contentRef, gutter = 0, onGutter },
   ref
 ) {
   const layerRef = useRef<HTMLDivElement>(null)
@@ -251,21 +357,35 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
 
   // Espelhos do estado para os handlers e efeitos (sempre o mais recente)
   const strokesRef = useRef<AnchoredStroke[]>(init.strokes)
+  const extraRef = useRef<unknown[]>(init.extra)
   const layoutRef = useRef<MeasuredLayout | null>(null)
   // Letra a que os traços (e os snapshots de Desfazer) estão numerados
   const lyricsRef = useRef(lyrics)
   const saveRef = useRef(init.save)
-  // O utilizador já mexeu nesta montagem — o remoto já não se sobrepõe
+  // O utilizador já mexeu nesta montagem
   const touchedRef = useRef(false)
+  // Ids dos traços desenhados nesta montagem
+  const addedRef = useRef<Set<string>>(new Set())
+  // Sincronização com a cloud (ver LocalKind)
+  const kindRef = useRef<LocalKind>(init.kind)
+  const pullOkRef = useRef(false)
+  const pendRef = useRef(init.kind === 'pend')
+  // Cópia antiga deste aparelho à espera: null quando a cloud a substituiu
+  const localLegacyRef = useRef<ParsedPayload | null>(init.legacy)
+  const localMigratedRef = useRef(false)
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Payload à espera do debounce — para flush em pagehide/visibilitychange
   const pendingPushRef = useRef<AnnPayload | null>(null)
   const historyRef = useRef<AnchoredStroke[][]>([])  // undo snapshots (listas ancoradas)
+  // Limpar também apaga as entradas de versões futuras; Desfazer devolve-as
+  const clearedExtraRef = useRef(new WeakMap<AnchoredStroke[], unknown[]>())
   // Borracha: o snapshot de Desfazer só entra quando o gesto apaga alguma coisa
   const eraseSnapRef = useRef(false)
   // Pan com 2 dedos: posições dos pointers ativos + estado do gesto de scroll
   const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
   const panRef = useRef<{ el: HTMLElement | null; lastY: number } | null>(null)
+  const onGutterRef = useRef(onGutter)
+  onGutterRef.current = onGutter
 
   /**
    * Mede o LyricsView agora. Mesma geometria que a medição anterior → fica a
@@ -295,32 +415,48 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     commit(next, SAVE_ALL)
   }, [commit])
 
-  /** Traços antigos já ancorados: passam a v2 e gravam-se */
-  const finishLegacy = useCallback((list: AnchoredStroke[], save: number) => {
-    // Sem texto onde ancorar não se toca em nada: o payload antigo fica como está
+  /**
+   * Traços antigos já ancorados. Da cloud: juntam-se (por id) ao que já há
+   * aqui e gravam-se. Deste aparelho: mostram-se já, mas só se gravam depois
+   * de a cloud responder (se ela tiver uma v2, ganha — ver reconcile).
+   */
+  const finishLegacy = useCallback((list: AnchoredStroke[], origin: 'local' | 'remote') => {
+    // Sem nada ancorado não se toca em nada: o payload antigo fica como está
     if (!list.length) return
+    if (origin === 'local') {
+      if (!localLegacyRef.current) return
+      localMigratedRef.current = true
+    }
     historyRef.current = []
+    const save = origin === 'remote' || !userId || pullOkRef.current ? SAVE_ALL : SAVE_NONE
     // Desenhado entretanto (as fontes demoraram): junta, não substitui
-    commit(uniqueIds(touchedRef.current ? [...list, ...strokesRef.current] : list), save)
-  }, [commit])
+    commit(uniqueIds(unionById(list, strokesRef.current)), save)
+  }, [commit, userId])
 
   // Migração à espera do layout de referência (ver adoptLegacy)
-  const [legacyJob, setLegacyJob] = useState<{ payload: ParsedPayload; save: number; width: number } | null>(null)
+  const [legacyJob, setLegacyJob] = useState<{ payload: ParsedPayload; origin: 'local' | 'remote'; width: number } | null>(null)
 
   /**
    * Traços antigos (px do Ensaio, sem âncoras). Guardados neste mesmo layout
    * ({w, h} = o bloco agora): adotar como antes e ancorar logo contra o DOM.
    * Guardados com outro tamanho de letra ou outra largura — o tamanho é
-   * global (A± noutra música), rodar o iPad, outro aparelho — re-escalar
-   * por rácios punha os sublinhados a riscar o texto: ancoram-se contra o
-   * layout de referência (LegacyReference), como no concerto.
+   * global (A± noutra música), rodar o iPad, outro aparelho — ou sem h (era
+   * sempre 32px): re-escalar por rácios punha os sublinhados a riscar o
+   * texto, por isso ancoram-se contra o layout de referência
+   * (LegacyReference), como no concerto. Sem letra: ficam livres.
    */
-  const adoptLegacy = useCallback((p: ParsedPayload, save: number) => {
+  const adoptLegacy = useCallback((p: ParsedPayload, origin: 'local' | 'remote') => {
     const L = measure()
-    if (!L || isLayoutEmpty(L)) return
-    const same = p.w > 0 && Math.abs(L.width - p.w) <= 1 && (!p.h || Math.abs(L.height - p.h) <= 1)
-    if (same) finishLegacy(anchorLegacy(p, L, L.width, L.height), save)
-    else setLegacyJob({ payload: p, save, width: p.w > 0 ? p.w : L.width })
+    if (!L) return
+    const empty = isLayoutEmpty(L)
+    const same = !empty && p.w > 0 && !!p.h && Math.abs(L.width - p.w) <= 1 && Math.abs(L.height - p.h) <= 1
+    if (empty || same) {
+      finishLegacy(anchorLegacy(p, L, L.width, L.height), origin)
+      return
+    }
+    const cached = cachedLegacy(legacyKey(p, lyricsRef.current))
+    if (cached) finishLegacy(cached, origin)
+    else setLegacyJob({ payload: p, origin, width: p.w > 0 ? p.w : L.width })
   }, [measure, finishLegacy])
 
   const onLegacyReady = useCallback((list: AnchoredStroke[], usedLyrics: string) => {
@@ -329,8 +465,52 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     // A letra mudou enquanto a referência media: passa para a numeração atual
     const now = lyricsRef.current
     const out = usedLyrics === now ? list : rebaseStrokes(list, collectLines(list, usedLyrics), now).strokes
-    finishLegacy(out, legacyJob.save)
+    finishLegacy(out, legacyJob.origin)
   }, [legacyJob, finishLegacy])
+
+  /**
+   * A cloud respondeu (R = o que lá está, null se nada). Decide o que fica,
+   * segundo o que este aparelho tinha ao abrir (LocalKind). Devolve a função
+   * que cancela uma migração ainda à espera das fontes.
+   */
+  const reconcile = useCallback((R: ParsedPayload | null): (() => void) => {
+    const kind = kindRef.current
+    const remote = R && (payloadHasStrokes(R) || R.extra.length > 0) ? R : null
+    if (kind === 'v2') return () => {}
+    // Uma v2 na cloud — mesmo vazia (Limpar noutro aparelho) — é mais recente
+    // do que uma cópia antiga daqui
+    const v2 = R?.anchored && (remote || kind === 'legacy') ? R : null
+    if (v2?.anchored) {
+      const r = rebaseStrokes(v2.anchored, v2.lines, lyricsRef.current)
+      const base = uniqueIds(r.strokes)
+      let mine = strokesRef.current
+      if (kind === 'legacy') {
+        // A cópia antiga daqui é mais velha do que a v2 da cloud: fica a da
+        // cloud + o que se desenhou agora
+        localLegacyRef.current = null
+        mine = mine.filter(s => addedRef.current.has(s.id))
+      }
+      const next = unionById(base, mine)
+      extraRef.current = unionExtra(v2.extra, kind === 'legacy' ? [] : extraRef.current)
+      historyRef.current = []
+      const ownChanges = next.length > base.length || kind === 'pend'
+      // Re-numerado (letra editada noutro lado) ou com traços daqui → devolve-se à cloud
+      commit(next, ownChanges || r.changed ? SAVE_ALL : SAVE_LOCAL)
+      return () => {}
+    }
+    if (kind === 'legacy') {
+      // Cloud vazia ou também antiga: o local ganha — grava-se a migração
+      // daqui (se ainda não acabou, grava-se quando acabar: pullOk já é true)
+      // (cópia do array: com o mesmo, o React não voltava a renderizar e não se gravava)
+      if (localMigratedRef.current) commit(strokesRef.current.slice(), SAVE_ALL)
+      return () => {}
+    }
+    // Cloud com o formato antigo: migra-se e junta-se ao que há aqui
+    if (remote) return whenFontsReady(() => adoptLegacy(remote, 'remote'))
+    // Cloud vazia: o que ficou à espera (desenhado antes, ou por juntar) segue agora
+    if (pendRef.current || touchedRef.current) commit(strokesRef.current.slice(), SAVE_ALL)
+    return () => {}
+  }, [commit, adoptLegacy])
 
   useImperativeHandle(ref, () => ({
     undo() {
@@ -338,17 +518,21 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
       if (h.length === 0) return
       const prev = h[h.length - 1]
       historyRef.current = h.slice(0, -1)
+      const ex = clearedExtraRef.current.get(prev)
+      if (ex) extraRef.current = ex
       touchedRef.current = true
       commit(prev, SAVE_ALL)
     },
     clear() {
+      clearedExtraRef.current.set(strokesRef.current, extraRef.current)
+      extraRef.current = []
       edit([])
     },
   }), [commit, edit])
 
-  // Letra mudou (re-numerar os traços e os snapshots) e/ou A+/A− (o texto
-  // re-fluiu): re-mede antes de pintar — os traços nunca aparecem um frame
-  // fora do sítio
+  // Letra mudou (re-numerar os traços e os snapshots), A+/A− (o texto
+  // re-fluiu) ou a calha lateral mudou: re-mede antes de pintar — os traços
+  // nunca aparecem um frame fora do sítio
   useLayoutEffect(() => {
     const prev = lyricsRef.current
     if (prev !== lyrics) {
@@ -359,39 +543,51 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
       if (r.changed) commit(r.strokes, SAVE_ALL)
     }
     measure()
-  }, [lyrics, fontSize, measure, commit])
+  }, [lyrics, fontSize, gutter, measure, commit])
 
   // Payload antigo neste dispositivo: ancora quando as fontes estiverem
   // prontas (medido com a fonte de recurso, o texto tinha outra largura)
   useEffect(() => {
     const legacy = init.legacy
     if (!legacy) return
-    return whenFontsReady(() => adoptLegacy(legacy, SAVE_ALL))
+    return whenFontsReady(() => { if (localLegacyRef.current) adoptLegacy(legacy, 'local') })
   }, [init, adoptLegacy])
 
-  // Cloud: o local ganha — o remoto só entra se aqui não há nada (nem foi
-  // desenhado entretanto)
+  // Cloud: lida ao abrir; se falhar, volta a tentar (e quando a rede volta).
+  // Enquanto não for lida, nada do que se grava aqui segue para lá
   useEffect(() => {
     if (!userId) return
     let alive = true
-    let cancelFonts = () => {}
-    pullAnnotations(songId, userId).then(remote => {
-      if (!alive || !remote || !payloadHasStrokes(remote)) return
-      if (touchedRef.current || strokesRef.current.length > 0 || payloadHasStrokes(loadAnnotations(songId))) return
-      if (remote.anchored) {
-        const r = rebaseStrokes(remote.anchored, remote.lines, lyricsRef.current)
-        historyRef.current = []
-        // Re-numerado (letra editada noutro lado) → devolve-se à cloud também
-        commit(uniqueIds(r.strokes), r.changed ? SAVE_ALL : SAVE_LOCAL)
-      } else {
-        cancelFonts = whenFontsReady(() => adoptLegacy(remote, SAVE_ALL))
-      }
-    })
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let attempt = 0
+    let cancel = () => {}
+    const run = () => {
+      timer = null
+      fetchAnnotations(songId, userId).then(res => {
+        if (!alive) return
+        if (!res.ok) {
+          timer = setTimeout(run, PULL_RETRY_MS[Math.min(attempt++, PULL_RETRY_MS.length - 1)])
+          return
+        }
+        pullOkRef.current = true
+        window.removeEventListener('online', onOnline)
+        cancel = reconcile(res.payload)
+      })
+    }
+    const onOnline = () => {
+      if (pullOkRef.current || !timer) return
+      clearTimeout(timer)
+      run()
+    }
+    window.addEventListener('online', onOnline)
+    run()
     return () => {
       alive = false
-      cancelFonts()
+      if (timer) clearTimeout(timer)
+      window.removeEventListener('online', onOnline)
+      cancel()
     }
-  }, [songId, userId, commit, adoptLegacy])
+  }, [songId, userId, reconcile])
 
   // Gravar: v2 ancorado + a cópia antiga em px do Ensaio ({w, h, strokes}),
   // para os clientes antigos (PWA em cache) continuarem a ver alguma coisa
@@ -403,17 +599,25 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     // gravava-se a lista antiga (ex.: vazia) por cima dos traços migrados
     if (strokes !== strokesRef.current) return
     saveRef.current = SAVE_NONE
+    // Para a cloud só depois de a ler (o local v2 ganha sempre: segue já)
+    const push = mode === SAVE_ALL && !!userId && (pullOkRef.current || kindRef.current === 'v2')
+    if (push) pendRef.current = false
+    else if (mode === SAVE_ALL && userId) pendRef.current = true
     const L = layoutRef.current
-    const payload = buildPayload({
+    const base = {
       w: L ? L.width : 0,
       h: L ? L.height : 0,
       strokes: L ? toLegacyStrokes(resolveAll(strokes, L)) : [],
       em: L ? L.em : NaN,
       anchored: strokes,
       lyrics: lyricsRef.current,
-    })
+      extra: extraRef.current,
+    }
+    const payload = buildPayload({ ...base, pend: pendRef.current })
     try { localStorage.setItem(ANN_STORAGE_KEY(songId), JSON.stringify(payload)) } catch { /* storage cheio/bloqueado */ }
-    if (mode === SAVE_ALL && userId) {
+    // A cópia antiga deste aparelho foi substituída por uma v2: já não há nada a migrar
+    if (kindRef.current === 'legacy' && localLegacyRef.current === null) kindRef.current = 'v2'
+    if (push && userId) {
       if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
       pendingPushRef.current = payload
       pushTimerRef.current = setTimeout(() => {
@@ -476,13 +680,28 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   // Fontes carregadas: o texto muda de largura sem o bloco mudar de tamanho
   useEffect(() => watchFonts(() => { measure() }), [measure])
 
-  // Caminhos resolvidos no layout atual (cache por traço e por layout em anchor.ts)
-  const paths = useMemo(() => {
-    if (!layout) return []
-    return resolveAll(strokes, layout)
-      .filter(s => !s.hidden)
-      .map(s => ({ id: s.id, color: s.color, width: s.width, d: pathFromSubpaths(s.subpaths) }))
+  // Caminhos resolvidos no layout atual (cache por traço e por layout em
+  // anchor.ts), a calha que as margens pedem e até onde os traços descem
+  const view = useMemo(() => {
+    if (!layout) return { paths: [], gutter: 0, bottom: 0 }
+    const resolved = resolveAll(strokes, layout)
+    let bottom = 0
+    const paths: { id: string; color: string; width: number; d: string }[] = []
+    for (const s of resolved) {
+      if (s.hidden) continue
+      for (const sp of s.subpaths) for (let i = 1; i < sp.length; i += 2) bottom = Math.max(bottom, sp[i] + s.width / 2)
+      paths.push({ id: s.id, color: s.color, width: s.width, d: pathFromSubpaths(s.subpaths) })
+    }
+    return { paths, gutter: marginGutter(resolved, layout), bottom }
   }, [strokes, layout])
+
+  // Calha pedida pelas margens → quem usa aplica-a ao LyricsView e devolve-a
+  // em `gutter` (o efeito de cima re-mede). Só depende do X das margens, que
+  // a calha não muda: estabiliza à primeira
+  useLayoutEffect(() => {
+    if (view.gutter !== gutter) onGutterRef.current?.(view.gutter)
+  }, [view.gutter, gutter])
+  useEffect(() => () => onGutterRef.current?.(0), [])
 
   const getXY = useCallback((e: React.PointerEvent) => {
     const rect = layerRef.current!.getBoundingClientRect()
@@ -598,25 +817,38 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     setCurrent(null)
 
     if (tool !== 'eraser' && finished && finished.pts.length >= 4) {
-      // Ancora contra o DOM de agora (o que o músico viu ao desenhar)
+      // Ancora contra o DOM de agora (o que o músico viu ao desenhar); sem
+      // texto onde ancorar ("Sem letra") fica livre na folha
       const L = measure()
-      const a = L ? anchorStroke(finished.pts, finished.color, finished.width, L) : null
-      // Sem texto onde ancorar ("Sem letra"), o traço não se guarda
-      if (a) edit([...strokesRef.current, a])
+      const a = !L ? null
+        : isLayoutEmpty(L) ? anchorFree(finished.pts, finished.color, finished.width, L)
+          : anchorStroke(finished.pts, finished.color, finished.width, L)
+      if (a) {
+        addedRef.current.add(a.id)
+        edit([...strokesRef.current, a])
+      }
     }
   }
+
+  // Traços abaixo do fim da camada (uma nota depois da última linha, e a
+  // letra encolheu com A−… ou cresceu e a camada acaba no texto): a SVG
+  // estende-se até eles, para se verem, apagarem e chegar-lhes com o scroll
+  const svgHeight = view.bottom > svgH ? Math.ceil(view.bottom) : undefined
 
   return (
     <div ref={layerRef} className={styles.layer}>
       {svgW > 0 && (
+        // Sem viewBox: as unidades são os px da própria SVG (o referencial
+        // dos pontos). Com um viewBox posto pelo ResizeObserver, durante um
+        // frame depois de A±/rodar os traços certos eram esticados ao novo tamanho
         <svg
           className={styles.svg}
-          viewBox={`0 0 ${svgW} ${svgH}`}
-          preserveAspectRatio="none"
           style={{
             cursor: disabled ? 'default' : tool === 'eraser' ? 'none' : 'crosshair',
             pointerEvents: disabled ? 'none' : 'all',
             touchAction: disabled ? 'auto' : 'none',
+            height: svgHeight,
+            overflow: 'visible',
           }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -624,7 +856,7 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
           onPointerCancel={onPointerUp}
           onPointerLeave={onPointerUp}
         >
-          {paths.map(s => (
+          {view.paths.map(s => (
             <path key={s.id} d={s.d}
               stroke={s.color} strokeWidth={s.width}
               fill="none" strokeLinecap="round" strokeLinejoin="round" />

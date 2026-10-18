@@ -15,6 +15,19 @@ export const REHEARSAL_FONT_DEFAULT = 32
 /** Entrelinha da letra no Ensaio (o LyricsView recebe-a como lineHeight) */
 export const REHEARSAL_LINE_HEIGHT = 1.6
 
+/**
+ * Anotações antigas sem altura guardada ({w, strokes}, clientes até ao #36):
+ * o Ensaio ainda não tinha A−/A+ e a letra era sempre 32px — o h e o A±
+ * entraram juntos (#38). O tamanho guardado agora não diz nada sobre elas.
+ */
+export const LEGACY_NO_H_FONT = 32
+/**
+ * Largura do bloco do Ensaio a partir da qual quem desenhou tinha as medidas
+ * de tablet nos rótulos de secção (ecrã ≥ 768px). No layout dos payloads
+ * sem h o bloco era o ecrã menos 54px (padding 20+20 e a barra de 14px).
+ */
+export const LEGACY_TABLET_MIN_W = 714
+
 export function clampRehearsalFont(v: number): number {
   return Math.min(REHEARSAL_FONT_MAX, Math.max(REHEARSAL_FONT_MIN, v))
 }
