@@ -30,8 +30,10 @@ const {
   anchorStroke, anchorLegacy, resolveStroke, resolveAll, remapLines, rebaseStrokes, collectLines,
   encodeAnchored, decodeAnchored, buildPayload, readPayload, payloadHasStrokes, toLegacyStrokes,
   smoothPath, pathFromSubpaths, hitSubpaths, strokesAt, mergeRowRects, pickCharRect, isLayoutEmpty,
-  MODE_TEXT, MODE_MARGIN, MODE_MARGIN_ROW, P_STRIDE, MIN_WIDTH_PX, Y_IN, Y_BELOW, Y_ABOVE,
+  MODE_TEXT, MODE_MARGIN, MODE_MARGIN_ROW, MODE_GAP, MODE_FREE, P_STRIDE, MIN_WIDTH_PX, Y_IN, Y_BELOW, Y_ABOVE,
+  anchorFree, marginGutter, decodeAnchoredParts, unionById, unionExtra,
 } = A
+const MODE_NAMES = { [MODE_TEXT]: 'texto', [MODE_MARGIN]: 'margem', [MODE_GAP]: 'intervalo', [MODE_FREE]: 'livre' }
 
 /* ── mini harness ── */
 let pass = 0
@@ -350,14 +352,14 @@ test('identidade: ancorar e resolver no mesmo layout devolve os mesmos pontos', 
     ['sublinhado no rótulo de secção', underline(L, 6, ...visible(L, 6)), MODE_TEXT],
     ['sublinhado na 2.ª row de uma linha longa', underline(L, 12, c2[0], c2[c2.length - 1]), MODE_TEXT],
     ['risco na linha longa toda (2 rows)', [...strike(L, 12, l0, L.text(12).indexOf(' não') - 1)], MODE_TEXT],
-    ['acima da 1.ª row', [first.left - 10, first.top - 40, first.right + 10, first.top - 36, first.left, first.top - 30], MODE_TEXT],
-    ['abaixo da última row', [last.left, last.bottom + 60, last.right, last.bottom + 70], MODE_TEXT],
-    ['entre estrofes', [L.centerX - 40, L.rows(5 + 1)[0].top - 30, L.centerX + 40, L.rows(6)[0].top - 28], MODE_TEXT],
+    ['acima da 1.ª row', [first.left - 10, first.top - 40, first.right + 10, first.top - 36, first.left, first.top - 30], MODE_GAP],
+    ['abaixo da última row', [last.left, last.bottom + 60, last.right, last.bottom + 70], MODE_GAP],
+    ['entre estrofes', [L.centerX - 40, L.rows(5 + 1)[0].top - 30, L.centerX + 40, L.rows(6)[0].top - 28], MODE_GAP],
   ]
   ok(l1 > l0, 'identidade: linha longa com caracteres visíveis')
   for (const [name, pts, mode] of cases) {
     const a = anchorStroke(pts, YELLOW, 4, L, name)
-    eq(a?.mode, mode, `identidade: ${name} → modo ${mode === MODE_TEXT ? 'texto' : 'margem'}`)
+    eq(a?.mode, mode, `identidade: ${name} → modo ${MODE_NAMES[mode]}`)
     const r = resolveStroke(a, L)
     eq(r.subpaths.length, 1, `identidade: ${name} → um caminho`)
     ok(maxDev(r.subpaths[0] ?? [], pts) <= 0.5, `identidade: ${name} → mesmos pontos ±0.5px`, maxDev(r.subpaths[0] ?? [], pts))
@@ -500,7 +502,8 @@ test('chaveta na margem esquerda de 4 linhas', () => {
   // O concerto tem menos margem (em do bloco): a chaveta é deslocada inteira, não achatada
   const C = makeLayout(LYRICS, CONCERTO)
   const rc = resolveStroke(a, C)
-  ok(Math.abs(bbox(allPts(rc)).left - C.blockLeft) < 0.01, 'concerto: encostada ao bloco (deslocada para dentro)')
+  // Desvio 10: a meia largura do traço da borda (a tinta não é cortada) e marcada para a calha
+  ok(Math.abs(bbox(allPts(rc)).left - (C.blockLeft + rc.width / 2)) < 0.01 && rc.edge === 1, 'concerto: encostada ao bloco (deslocada para dentro, a meia largura do traço)', [bbox(allPts(rc)).left, rc.width, rc.edge])
 })
 
 test('desvio 1: chaveta com re-quebra cobre a linha toda (Y preso à linha, não à row)', () => {
@@ -747,7 +750,8 @@ test('rebaseStrokes: numeração nova, órfãos escondidos e de volta', () => {
   ok(!orph.strokes[1].lines && orph.strokes[1].p.length < brk.p.length, 'rebase: a chaveta perde só os pontos da linha mudada')
   const enc = decodeAnchored(JSON.parse(JSON.stringify(encodeAnchored(orph.strokes))))
   ok(enc[0].lines && enc[0].lines['2'] === u2.lines['2'], 'rebase: o órfão sobrevive a gravar/ler')
-  eq(collectLines([u2], chg), {}, 'rebase: só órfãos → payload.lines vazio')
+  // Desvio 11: o retrato também se guarda só com órfãos (diz a que linhas o órfão não pode voltar)
+  eq(collectLines([u2], chg), Object.fromEntries(chg.split('\n').map((t, i) => [String(i), t.trim()]).filter(([, t]) => t)), 'rebase: só órfãos → payload.lines com o retrato da letra')
   const back = rebaseStrokes(enc, collectLines(enc, chg), LYRICS)
   ok(!back.strokes[0].lines && !resolveStroke(back.strokes[0], S).hidden, 'rebase: a linha volta → o órfão reaparece')
   ok(maxDev(resolveStroke(back.strokes[0], S).subpaths[0], resolveStroke(und, S).subpaths[0]) < 1e-9, 'rebase: … no mesmo sítio')
@@ -778,7 +782,10 @@ test('letra vazia, traço de 1 ponto, números não finitos', () => {
   const a = anchorStroke(underline(S, 2, 3, 6), YELLOW, 3, S, 'x')
   const re = resolveStroke(a, E)
   ok(re.hidden && re.subpaths.length === 0, 'vazia: resolve sem rebentar (escondido)')
-  eq(anchorLegacy({ w: 780, h: 900, strokes: [{ id: 'z', pts: [1, 2, 3, 4], color: YELLOW, width: 3 }] }, E, 780, 900), [], 'vazia: legado não ancora')
+  // Sem texto: os traços antigos ficam livres (MODE_FREE), escalados pela largura
+  const lf = anchorLegacy({ w: 390, h: 900, strokes: [{ id: 'z', pts: [10, 20, 30, 40], color: YELLOW, width: 3 }] }, E, 780, 50)
+  ok(lf.length === 1 && lf[0].mode === MODE_FREE && maxDev(resolveStroke(lf[0], E).subpaths[0], [20, 40, 60, 80]) < 0.01 && Math.abs(resolveStroke(lf[0], E).width - 6) < 0.01,
+    'vazia: legado fica livre, escalado só pela largura (a altura guardada era a do aviso "Sem letra")', lf)
 
   const dotPts = [S.charRect(2, 4).left + 3, S.charRect(2, 4).bottom + 2]
   const dot = anchorStroke(dotPts, YELLOW, 6, S, 'dot')
