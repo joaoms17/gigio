@@ -1546,8 +1546,14 @@ export interface AnnPayload {
   v?: number
   /** em do Ensaio quando o payload foi escrito (px) */
   em?: number
-  anchored?: EncodedStroke[]
+  anchored?: (EncodedStroke | unknown)[]
   lines?: SavedLines
+  /**
+   * 1 = cópia deste aparelho ainda por juntar à da cloud (gravada sem se
+   * conseguir ler a cloud): no próximo pull bem-sucedido junta-se, por id,
+   * em vez de "o local ganha". Só no localStorage.
+   */
+  pend?: number
 }
 
 export interface ParsedPayload {
@@ -1559,6 +1565,10 @@ export interface ParsedPayload {
   anchored: AnchoredStroke[] | null
   /** null = sem registo do texto das linhas */
   lines: SavedLines | null
+  /** Entradas de uma versão futura, em bruto (ver decodeAnchoredParts) */
+  extra: unknown[]
+  /** Por juntar à cloud (ver AnnPayload.pend) */
+  pend: boolean
 }
 
 /** Payload v2 completo, pronto para JSON.stringify / upsert */
@@ -1569,16 +1579,43 @@ export function buildPayload(o: {
   em: number
   anchored: readonly AnchoredStroke[]
   lyrics: string
+  /** Entradas de uma versão futura, reescritas tal como vieram */
+  extra?: readonly unknown[]
+  pend?: boolean
 }): AnnPayload {
-  return {
+  const out: AnnPayload = {
     w: fin(o.w) ? Math.round(o.w * 10) / 10 : 0,
     h: fin(o.h) ? Math.round(o.h * 10) / 10 : 0,
     strokes: o.strokes.slice(),
     v: 2,
     em: fin(o.em) ? r3(o.em) : undefined,
-    anchored: encodeAnchored(o.anchored),
+    anchored: [...encodeAnchored(o.anchored), ...(o.extra ?? [])],
     lines: collectLines(o.anchored, o.lyrics),
   }
+  if (o.pend) out.pend = 1
+  return out
+}
+
+/** Ids das entradas em bruto (extra) — para juntar duas cópias sem as repetir */
+function extraId(e: unknown): string {
+  return Array.isArray(e) ? String(e[0]) : ''
+}
+
+/**
+ * Junta duas cópias por id (a cloud e a deste aparelho): os traços da
+ * `base` ficam, os da `mine` que a base não tem juntam-se no fim. Nada se
+ * perde — um traço apagado só numa das cópias volta (melhor do que apagar
+ * o que não se viu).
+ */
+export function unionById(base: readonly AnchoredStroke[], mine: readonly AnchoredStroke[]): AnchoredStroke[] {
+  const ids = new Set(base.map(s => s.id))
+  return [...base, ...mine.filter(s => !ids.has(s.id))]
+}
+
+/** unionById para as entradas em bruto de uma versão futura */
+export function unionExtra(base: readonly unknown[], mine: readonly unknown[]): unknown[] {
+  const ids = new Set(base.map(extraId))
+  return [...base, ...mine.filter(e => !ids.has(extraId(e)))]
 }
 
 function legacyList(v: unknown): LegacyStroke[] {
@@ -1600,14 +1637,17 @@ function legacyList(v: unknown): LegacyStroke[] {
 /** Lê qualquer versão do payload (array antigo, {w,h,strokes}, v2); null se não serve */
 export function readPayload(raw: unknown): ParsedPayload | null {
   if (raw == null) return null
-  if (Array.isArray(raw)) return { w: 0, strokes: legacyList(raw), anchored: null, lines: null }
+  if (Array.isArray(raw)) return { w: 0, strokes: legacyList(raw), anchored: null, lines: null, extra: [], pend: false }
   if (typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
+  const parts = Array.isArray(o.anchored) ? decodeAnchoredParts(o.anchored) : null
   const out: ParsedPayload = {
     w: fin(o.w) ? o.w : 0,
     strokes: legacyList(o.strokes),
-    anchored: Array.isArray(o.anchored) ? decodeAnchored(o.anchored) : null,
+    anchored: parts ? parts.strokes : null,
     lines: isSavedLines(o.lines) ? o.lines : null,
+    extra: parts ? parts.extra : [],
+    pend: o.pend === 1 || o.pend === true,
   }
   if (fin(o.h)) out.h = o.h
   if (fin(o.em)) out.em = o.em
