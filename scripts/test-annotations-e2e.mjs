@@ -719,6 +719,25 @@ try {
     await settle(dev.page, ENSAIO)
     checkAll(`${tag} Ensaio migrado, telemóvel ${LEGACY_FONT}px`, await snapshot(dev.page, ENSAIO), { emDrawn: LEGACY_FONT })
     await shots(dev.page, shot, ENSAIO_SCROLL)
+    // A migração segue para a cloud (debounce 1.5s): é o que os outros aparelhos passam a ver
+    for (let t = 0; t < 40 && !(dev.cloud?.strokes?.v === 2); t++) await dev.page.waitForTimeout(100)
+    ok(dev.cloud?.strokes?.v === 2, `${tag}: migração do telemóvel segue para a cloud (v2)`, { cloud: dev.writes })
+    return dev.cloud
+  }
+
+  /** O iPad onde se desenhou abre o concerto com o v2 que outro aparelho migrou e mandou para a cloud */
+  async function ipadFromCloud(row, tag, shot) {
+    if (!row) return
+    console.log(`— ${tag}. iPad retrato recebe da cloud o v2 migrado no telemóvel`)
+    const dev = await newDevice(browser, {
+      viewport: TABLET_PORT, concertTheme: { font_size: 32, line_height: 1.6 },
+      seed: { [FONT_KEY]: String(LEGACY_FONT), [ANN_KEY]: null }, cloud: row,
+    })
+    if (await openConcert(dev.page)) {
+      checkAll(`${tag} concerto iPad retrato (v2 vindo do telemóvel)`, await snapshot(dev.page, CONCERT), { emDrawn: LEGACY_FONT })
+      await shots(dev.page, shot, CONCERT_SCROLL)
+    }
+    await dev.ctx.close()
   }
 
   const refCheck = async (page, label, wantSize) => {
@@ -768,8 +787,9 @@ try {
     ok(await payloadOf(B2.page) === null && B2.writes === 0, 'concerto (telemóvel) não grava nada')
     await shots(B2.page, 'B3-concerto-antigo-telemovel-32px', CONCERT_SCROLL)
   }
-  await phoneEnsaio(B2, 'B2', 'B3-ensaio-migrado-telemovel-28px')
+  const rowB2 = await phoneEnsaio(B2, 'B2', 'B3-ensaio-migrado-telemovel-28px')
   await B2.ctx.close()
+  await ipadFromCloud(rowB2, 'B2c', 'B3c-concerto-ipad-com-v2-do-telemovel')
 
   // Clientes até ao #36 gravavam só {w, strokes}: sem h, a referência fica no
   // tamanho guardado (28px) e só os rótulos de secção (px fixos por media
@@ -784,8 +804,9 @@ try {
     await refCheck(B2b.page, 'concerto antigo sem h, telemóvel', LEGACY_FONT)
     await shots(B2b.page, 'B3b-concerto-antigo-sem-h-telemovel-32px', CONCERT_SCROLL)
   }
-  await phoneEnsaio(B2b, 'B2b', 'B3b-ensaio-migrado-sem-h-telemovel-28px')
+  const rowB2b = await phoneEnsaio(B2b, 'B2b', 'B3b-ensaio-migrado-sem-h-telemovel-28px')
   await B2b.ctx.close()
+  await ipadFromCloud(rowB2b, 'B2d', 'B3d-concerto-ipad-com-v2-sem-h-do-telemovel')
 
   console.log('— B3. iPad paisagem com outro tamanho guardado (44): concerto DIRETAMENTE, depois o Ensaio')
   const B3 = await newDevice(browser, {
