@@ -53,6 +53,24 @@
  *     cobre (ver anchorChar). Preso ao espaço ou à letra mais próxima, o lado
  *     de um círculo à volta da 1.ª palavra de uma row re-quebrada saltava para
  *     o fim da row de cima (opts.anchorSpaces mostra-o).
+ *  8. Notas no intervalo (MODE_GAP): um traço que não toca em nenhuma row e
+ *     se afasta mais de 0.5em do texto ("x2" entre estrofes, "FIM" depois da
+ *     última linha) fica RÍGIDO — X preso a um só carácter, Y à LINHA (como a
+ *     margem). Em modo texto, cada ponto seguia a row do seu carácter: com o
+ *     verso re-quebrado em 2 rows, o intervalo "por baixo" passava a ser o
+ *     intervalo pequeno dentro do verso e a nota achatava-se numa risca entre
+ *     as duas metades (opts.noGap mostra-o).
+ *  9. Texto: um troço pouco fundo (< 0.35em) DENTRO da row vizinha, de um
+ *     traço que pertence à outra (o topo de um círculo largo que entra na
+ *     caixa da linha de cima), fica preso à row do traço, em em desde a borda
+ *     da vizinha. Preso às letras da vizinha, o arco fugia para o lado quando
+ *     essa linha re-quebrava (opts.perRowExcursions mostra-o).
+ * 10. Margem empurrada para dentro do bloco (fitToBlock) fica a meia largura
+ *     do traço da borda (a tinta não é cortada) e marginGutter diz quanto
+ *     espaço lateral o texto deve deixar para não passar por baixo dela.
+ * 11. Órfãos só voltam a linhas que não correspondem a nenhuma linha do
+ *     retrato guardado (ver rebaseStrokes): senão, no carregamento seguinte,
+ *     o traço de um refrão apagado reaparecia no refrão que ficou.
  */
 
 /* ═══ Geometria e contrato do layout ═══ */
@@ -76,6 +94,8 @@ export interface LayoutModel {
   /** Extensão horizontal do bloco da letra */
   blockLeft: number
   blockRight: number
+  /** Topo do bloco (só para os traços livres, MODE_FREE); sem ele, 0 */
+  blockTop?: number
   /** Eixo de centragem das linhas (o LyricsView centra o texto) */
   centerX: number
   /** Linhas âncora presentes (data-ln: texto e rótulos de secção; sem quebras) */
@@ -104,7 +124,16 @@ export const MODE_TEXT = 0
 export const MODE_MARGIN = 1
 /** Margem com Y preso à row do 1.º/último carácter — modelo literal, só para comparação */
 export const MODE_MARGIN_ROW = 2
-export type StrokeMode = typeof MODE_TEXT | typeof MODE_MARGIN | typeof MODE_MARGIN_ROW
+/** Nota no intervalo entre linhas (desvio 8): rígida, X preso a um carácter, Y à linha */
+export const MODE_GAP = 3
+/**
+ * Sem texto onde ancorar ("Sem letra"): px desde o canto do bloco, em
+ * centésimas da largura dele — a folha em branco escala com a largura
+ */
+export const MODE_FREE = 4
+export type StrokeMode =
+  | typeof MODE_TEXT | typeof MODE_MARGIN | typeof MODE_MARGIN_ROW | typeof MODE_GAP | typeof MODE_FREE
+const KNOWN_MODES: readonly number[] = [MODE_TEXT, MODE_MARGIN, MODE_MARGIN_ROW, MODE_GAP, MODE_FREE]
 
 /*
  * Y fora da row de referência, no intervalo até à vizinha (na sequência
@@ -138,6 +167,14 @@ export const MIN_WIDTH_PX = 1.5
 const TEXT_SLACK_EM = 0.5
 /** Zona junto a cada borda de um intervalo entre rows (em; no máximo meio intervalo) */
 const GAP_EDGE_EM = 0.5
+/** Nota no intervalo: algum ponto a mais do que isto (em) da row mais próxima */
+const GAP_NOTE_EM = 0.5
+/** Desvio 9: fundura máxima (em) de um troço dentro da row vizinha que continua preso à sua */
+const EXCURSION_EM = 0.35
+/** Folga (em) entre o texto e uma chaveta empurrada para dentro do bloco */
+const GUTTER_CLEAR_EM = 0.25
+/** A calha lateral nunca passa desta fração da largura do bloco (de cada lado) */
+const GUTTER_MAX_FRAC = 0.2
 /** em quando o layout não traz um valor válido */
 const FALLBACK_EM = 16
 const DEFAULT_COLOR = '#000000'
@@ -161,6 +198,10 @@ export interface AnchoredStroke {
    *  yk   — Y_IN | Y_BELOW | Y_BELOW_MID | Y_BELOW_FAR | Y_ABOVE | Y_ABOVE_MID | Y_ABOVE_FAR
    *  yv   — fração (Y_IN, *_MID) ou em desde a borda (junto à própria row / à vizinha)
    *  same — 1 = mesma row (margem: mesma linha) que o ponto anterior, na origem
+   * Nota no intervalo (MODE_GAP): o mesmo (ln, c) em todos os pontos, x em em
+   * desde o left desse carácter, Y relativo à linha (como a margem).
+   * Livre (MODE_FREE): ln = c = 0, x e yv em centésimas da largura do bloco
+   * desde o canto dele, yk = Y_IN.
    * x e yv vêm arredondados a 3 casas: o que se grava é o que se desenha.
    */
   p: number[]
@@ -181,6 +222,11 @@ export interface ResolvedStroke {
   subpaths: number[][]
   /** true = não se desenha (órfão, ou a maioria dos pontos ficou sem linha) */
   hidden: boolean
+  /**
+   * Margem que fitToBlock teve de empurrar para dentro do bloco: 1 = vinha
+   * de fora pela esquerda, -1 = pela direita, 0 = cabia (ver marginGutter)
+   */
+  edge: number
 }
 
 /* ═══ Índice derivado do layout (cache por objeto) ═══ */
@@ -217,6 +263,8 @@ interface Index {
   centerX: number
   minX: number
   maxX: number
+  /** Topo do bloco (traços livres) */
+  top: number
   /** Todas as rows de todas as linhas, pela ordem vertical */
   rows: Row[]
   lineRows: Map<number, Row[]>
@@ -302,8 +350,9 @@ function buildIndex(L: LayoutModel): Index {
   const minX = fin(L.blockLeft) ? L.blockLeft : -Infinity
   const maxX = fin(L.blockRight) && L.blockRight >= minX ? L.blockRight : Infinity
   const centerX = fin(L.centerX) ? L.centerX : isFinite(minX) && isFinite(maxX) ? (minX + maxX) / 2 : 0
+  const top = fin(L.blockTop) ? L.blockTop : 0
   return {
-    L, em, centerX, minX, maxX, rows, lineRows, rowIdx, bands, bandIdx,
+    L, em, centerX, minX, maxX, top, rows, lineRows, rowIdx, bands, bandIdx,
     leads: new Map(), rowChars: new Map(), words: new Map(), hits: new Map(), memo: new WeakMap(),
   }
 }
@@ -516,7 +565,8 @@ function encodeY(y: number, list: readonly VBand[], k: number, em: number): [num
   const gap = Math.max(0, below ? nb.top - b.bottom : b.top - nb.bottom)
   const n = Math.min(GAP_EDGE_EM * em, gap / 2)
   if (d <= n) return [near, d / em]
-  if (d >= gap - n) return [below ? Y_BELOW_FAR : Y_ABOVE_FAR, Math.max(0, gap - d) / em]
+  // Negativo = para lá da borda da vizinha, dentro dela (desvio 9)
+  if (d >= gap - n) return [below ? Y_BELOW_FAR : Y_ABOVE_FAR, (gap - d) / em]
   return [below ? Y_BELOW_MID : Y_ABOVE_MID, (d - n) / (gap - 2 * n)]
 }
 
@@ -536,11 +586,58 @@ function decodeY(yk: number, yv: number, list: readonly VBand[], k: number, em: 
   }
   const gap = Math.max(0, below ? nb.top - b.bottom : b.top - nb.bottom)
   // Junto a uma borda: nunca passa do meio do intervalo (o sublinhado fica
-  // acima da row seguinte mesmo com a entrelinha mais apertada)
+  // acima da row seguinte mesmo com a entrelinha mais apertada). Junto à
+  // vizinha, yv < 0 entra nela (desvio 9) — tanto quanto entrava na origem
   if (zone === 0) return edge + dir * Math.min(yv * em, gap / 2)
   if (zone === 2) return edge + dir * (gap - Math.min(yv * em, gap / 2))
   const n = Math.min(GAP_EDGE_EM * em, gap / 2)
   return edge + dir * (n + yv * (gap - 2 * n))
+}
+
+/**
+ * Desvio 9 (ver textRefRows): troços dentro de uma row A que entram e saem
+ * pelo lado da vizinha B (A ± 1 na sequência), num traço com mais pontos
+ * dentro de B do que de A, e a menos de EXCURSION_EM da borda de A do lado de
+ * B, passam a contar como pontos do intervalo entre as duas.
+ */
+function markExcursions(ix: Index, ys: readonly number[], inRow: number[], gapOf: number[]): void {
+  const rows = ix.rows
+  const n = ys.length
+  const count = new Map<number, number>()
+  for (const k of inRow) if (k >= 0) count.set(k, (count.get(k) ?? 0) + 1)
+  if (count.size < 2) return
+  const limit = EXCURSION_EM * ix.em
+  const runs: number[][] = []   // [início, fim, A, B]
+  let i = 0
+  while (i < n) {
+    const A = inRow[i]
+    if (A < 0) {
+      i++
+      continue
+    }
+    let e = i
+    while (e + 1 < n && inRow[e + 1] === A) e++
+    // Row onde o traço está antes e depois deste troço (saltando o intervalo)
+    let prev = -1
+    for (let j = i - 1; j >= 0 && prev < 0; j--) prev = inRow[j]
+    let next = -1
+    for (let j = e + 1; j < n && next < 0; j++) next = inRow[j]
+    const B = prev >= 0 ? prev : next
+    if (B >= 0 && Math.abs(B - A) === 1 && (prev < 0 || prev === B) && (next < 0 || next === B) &&
+      (count.get(B) ?? 0) > (count.get(A) ?? 0)) {
+      let depth = 0
+      for (let j = i; j <= e; j++) depth = Math.max(depth, B > A ? rows[A].bottom - ys[j] : ys[j] - rows[A].top)
+      if (depth < limit) runs.push([i, e, A, B])
+    }
+    i = e + 1
+  }
+  for (const [s, e, A, B] of runs) {
+    for (let j = s; j <= e; j++) {
+      inRow[j] = -1
+      // O intervalo entre A e B: o índice da row de baixo
+      gapOf[j] = Math.max(A, B)
+    }
+  }
 }
 
 /**
@@ -551,8 +648,12 @@ function decodeY(yk: number, yv: number, list: readonly VBand[], k: number, em: 
  * cima); entre as duas (seta de uma linha para a outra) → ponto a ponto a
  * mais próxima; solto (sublinhado todo no intervalo) → todo na mais
  * próxima da mediana. Empates → a de cima.
+ * Desvio 9: um troço pouco fundo dentro de uma row A, entre pontos presos à
+ * row vizinha B (a que tem mais pontos do traço), conta como intervalo — o
+ * topo de um círculo largo que entra na caixa da linha de cima é da palavra
+ * que rodeia.
  */
-function textRefRows(ix: Index, ys: readonly number[], perPoint: boolean): number[] {
+function textRefRows(ix: Index, ys: readonly number[], perPoint: boolean, excursions = true): number[] {
   const rows = ix.rows
   const N = rows.length
   const n = ys.length
@@ -570,6 +671,7 @@ function textRefRows(ix: Index, ys: readonly number[], perPoint: boolean): numbe
     inRow.push(inside)
     gapOf.push(g)
   }
+  if (excursions) markExcursions(ix, ys, inRow, gapOf)
   const ref = inRow.slice()
   const closer = (A: number, B: number, y: number) => (y - rows[A].bottom <= rows[B].top - y ? A : B)
   let i = 0
@@ -616,12 +718,42 @@ export function isLayoutEmpty(layout: LayoutModel): boolean {
 /**
  * Só para os testes compararem com o modelo literal (ver topo):
  * marginRows — margem com Y preso à row; perPointRows — row de referência
- * ponto a ponto (sem troços); anchorSpaces — espaços como âncora, como as letras
+ * ponto a ponto (sem troços); anchorSpaces — espaços como âncora, como as
+ * letras; noGap — notas no intervalo em modo texto (sem o desvio 8);
+ * perRowExcursions — sem o desvio 9
  */
 export interface AnchorOptions {
   marginRows?: boolean
   perPointRows?: boolean
   anchorSpaces?: boolean
+  noGap?: boolean
+  perRowExcursions?: boolean
+}
+
+/**
+ * Desvio 8: o traço não toca em nenhuma row (todos os pontos no intervalo,
+ * antes da 1.ª ou depois da última) e algum ponto fica a mais de
+ * GAP_NOTE_EM da row mais próxima — uma nota, não um sublinhado.
+ */
+function isGapNote(ix: Index, ys: readonly number[]): boolean {
+  const far = GAP_NOTE_EM * ix.em
+  let farthest = 0
+  for (const y of ys) {
+    let d = Infinity
+    for (const r of ix.rows) {
+      const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0
+      if (dy < d) d = dy
+      if (d === 0) return false
+    }
+    if (d > farthest) farthest = d
+  }
+  return farthest > far
+}
+
+/** Mediana de uma lista de números (cópia ordenada) */
+function median(v: readonly number[]): number {
+  const s = v.slice().sort((a, b) => a - b)
+  return s[(s.length - 1) >> 1]
 }
 
 /**
@@ -653,16 +785,20 @@ export function anchorStroke(
   if (!n) return null
 
   // 1-2. Row de referência de cada ponto + modo do traço
-  let ref = textRefRows(ix, ys, !!opts?.perPointRows)
+  let ref = textRefRows(ix, ys, !!opts?.perPointRows, !opts?.perRowExcursions)
   let inside = 0
   const slack = TEXT_SLACK_EM * em
   for (let i = 0; i < n; i++) {
     const r = ix.rows[ref[i]]
     if (xs[i] >= r.left - slack && xs[i] <= r.right + slack) inside++
   }
-  const mode: StrokeMode = inside * 2 >= n ? MODE_TEXT : opts?.marginRows ? MODE_MARGIN_ROW : MODE_MARGIN
+  let mode: StrokeMode = inside * 2 >= n ? MODE_TEXT : opts?.marginRows ? MODE_MARGIN_ROW : MODE_MARGIN
   // Margem presa à row (modelo literal): a row mais próxima, ponto a ponto
   if (mode === MODE_MARGIN_ROW) ref = textRefRows(ix, ys, true)
+  // Nota no intervalo (desvio 8): rígida, presa a um carácter e à linha
+  if (mode === MODE_TEXT && !opts?.noGap && isGapNote(ix, ys)) {
+    return anchorGap(xs, ys, color, widthPx, ix, id)
+  }
 
   // Texto: quantos pontos caem em cima das letras de cada palavra (por linha)
   const cover = new Map<number, Map<number, number>>()
@@ -728,19 +864,92 @@ export function anchorStroke(
     p.push(ln, c - leadOf(ix, ln), r3(xv), yk, r3(yv), i > 0 && k === prevKey ? 1 : 0)
     prevKey = k
   }
+  return strokeOf(id, color, (fin(widthPx) && widthPx > 0 ? widthPx : MIN_WIDTH_PX) / em, mode, p)
+}
+
+function strokeOf(id: string | undefined, color: string, w: number, mode: StrokeMode, p: number[]): AnchoredStroke {
   return {
     id: typeof id === 'string' && id ? id : newId(),
     color: typeof color === 'string' && color ? color : DEFAULT_COLOR,
-    w: r3((fin(widthPx) && widthPx > 0 ? widthPx : MIN_WIDTH_PX) / em),
+    w: r3(fin(w) && w > 0 ? w : 0),
     mode,
     p,
   }
 }
 
 /**
+ * Nota no intervalo (desvio 8): todos os pontos presos à LINHA mais próxima
+ * da mediana (Y como na margem: em/frações desde a borda dela e até à
+ * vizinha) e a UM carácter dela — o mais perto do meio da nota, na row
+ * virada para a nota (a última se está por baixo, a 1.ª se está por cima).
+ * Noutro layout a nota acompanha esse carácter e fica toda do mesmo lado da
+ * linha, mesmo que ela re-quebre.
+ */
+function anchorGap(
+  xs: readonly number[], ys: readonly number[], color: string, widthPx: number, ix: Index, id?: string,
+): AnchoredStroke {
+  const em = ix.em
+  const my = median(ys)
+  const k = nearest(ix.bands, my)
+  const band = ix.bands[k]
+  const ln = band.ln
+  const perRow = charsOf(ix, ln)
+  const rs = ix.lineRows.get(ln) ?? []
+  const ri = my > band.bottom ? rs.length - 1 : my < band.top ? 0 : Math.max(0, nearest(rs, my))
+  let lo = Infinity
+  let hi = -Infinity
+  for (const x of xs) {
+    if (x < lo) lo = x
+    if (x > hi) hi = x
+  }
+  const ch = nearestChar(perRow[ri] ?? [], (lo + hi) / 2)
+  const c = ch ? ch.c : 0
+  const left = ch ? ch.left : rs[ri] ? rs[ri].left : ix.centerX
+  const cRel = c - leadOf(ix, ln)
+  const p: number[] = []
+  for (let i = 0; i < xs.length; i++) {
+    const [yk, yv] = encodeY(ys[i], ix.bands, k, em)
+    p.push(ln, cRel, r3((xs[i] - left) / em), yk, r3(yv), i > 0 ? 1 : 0)
+  }
+  return strokeOf(id, color, (fin(widthPx) && widthPx > 0 ? widthPx : MIN_WIDTH_PX) / em, MODE_GAP, p)
+}
+
+function blockUnit(ix: Index): number {
+  const W = ix.maxX - ix.minX
+  return isFinite(W) && W > 0 ? W / 100 : NaN
+}
+
+/**
+ * Traço numa folha sem texto ("Sem letra", MODE_FREE): px desde o canto do
+ * bloco, em centésimas da largura dele — como os traços antigos, escala com
+ * a largura (sem deformar). null sem largura de bloco ou sem pontos válidos.
+ */
+export function anchorFree(
+  ptsPx: readonly number[],
+  color: string,
+  widthPx: number,
+  layout: LayoutModel,
+  id?: string,
+): AnchoredStroke | null {
+  const ix = indexOf(layout)
+  const u = blockUnit(ix)
+  if (!fin(u) || !ptsPx) return null
+  const p: number[] = []
+  for (let i = 0; i + 1 < ptsPx.length; i += 2) {
+    const x = ptsPx[i]
+    const y = ptsPx[i + 1]
+    if (fin(x) && fin(y)) p.push(0, 0, r3((x - ix.minX) / u), Y_IN, r3((y - ix.top) / u), p.length ? 1 : 0)
+  }
+  if (!p.length) return null
+  return strokeOf(id, color, (fin(widthPx) && widthPx > 0 ? widthPx : MIN_WIDTH_PX) / u, MODE_FREE, p)
+}
+
+/**
  * Traços antigos (px do Ensaio, sem âncoras): adotar como antes — re-escalar
  * de (w, h) guardados para o bloco atual (sem h, Y segue o rácio de X) — e
- * ancorar contra o layout atual. Os que não ancoram (letra vazia) ficam de fora.
+ * ancorar contra o layout atual. Sem texto onde ancorar ("Sem letra") ficam
+ * livres (MODE_FREE), escalados só pela largura: a altura guardada era a do
+ * aviso "Sem letra", não a da folha.
  */
 export function anchorLegacy(
   saved: { w?: number; h?: number; strokes?: readonly LegacyStroke[] } | null | undefined,
@@ -751,15 +960,17 @@ export function anchorLegacy(
   const list = saved?.strokes
   const strokes: readonly LegacyStroke[] = Array.isArray(list) ? list : []
   if (!strokes.length) return []
+  const empty = isLayoutEmpty(layout)
   const w = saved?.w ?? 0
   const h = saved?.h ?? 0
   const kx = fin(w) && w > 0 && fin(blockW) && blockW > 0 ? blockW / w : 1
-  const ky = fin(h) && h > 0 && fin(blockH) && blockH > 0 ? blockH / h : kx
+  const ky = !empty && fin(h) && h > 0 && fin(blockH) && blockH > 0 ? blockH / h : kx
   const out: AnchoredStroke[] = []
   for (const s of strokes) {
     if (!s || !Array.isArray(s.pts)) continue
     const pts = s.pts.map((v, i) => v * (i % 2 === 0 ? kx : ky))
-    const a = anchorStroke(pts, s.color, (fin(s.width) ? s.width : MIN_WIDTH_PX) * kx, layout, s.id)
+    const width = (fin(s.width) ? s.width : MIN_WIDTH_PX) * kx
+    const a = empty ? anchorFree(pts, s.color, width, layout, s.id) : anchorStroke(pts, s.color, width, layout, s.id)
     if (a) out.push(a)
   }
   return out
@@ -795,21 +1006,38 @@ export function resolveAll(
 
 function computeStroke(a: AnchoredStroke, ix: Index, lineMap: LineMap | null): ResolvedStroke {
   const em = ix.em
-  const w = fin(a.w) && a.w > 0 ? a.w * em : 0
+  const free = a.mode === MODE_FREE
+  const unit = free ? blockUnit(ix) : em
+  const w = fin(a.w) && a.w > 0 && fin(unit) ? a.w * unit : 0
   const out: ResolvedStroke = {
     id: a.id,
     color: a.color,
     width: Math.max(MIN_WIDTH_PX, w),
     subpaths: [],
     hidden: false,
+    edge: 0,
   }
   const p = Array.isArray(a.p) ? a.p : []
   const n = Math.floor(p.length / P_STRIDE)
+  // Folha sem texto: px do bloco em centésimas da largura (não precisa de linhas)
+  if (free) {
+    const sp: number[] = []
+    for (let i = 0; i < n && fin(unit); i++) {
+      const x = ix.minX + p[i * P_STRIDE + 2] * unit
+      const y = ix.top + p[i * P_STRIDE + 4] * unit
+      if (fin(x) && fin(y)) sp.push(x, y)
+    }
+    if (sp.length) out.subpaths.push(sp)
+    out.hidden = a.lines !== undefined || !sp.length
+    if (out.hidden) out.subpaths = []
+    return out
+  }
   // Órfão: as suas linhas já não existem na letra (ver rebaseStrokes)
   if (a.lines || !n || !ix.rows.length) {
     out.hidden = true
     return out
   }
+  if (a.mode === MODE_GAP) return computeGap(a, ix, lineMap, out)
   const textMode = a.mode === MODE_TEXT
   const rowMode = textMode || a.mode === MODE_MARGIN_ROW
   let cur: number[] | null = null
@@ -856,7 +1084,35 @@ function computeStroke(a: AnchoredStroke, ix: Index, lineMap: LineMap | null): R
   if (lost * 2 > n) out.subpaths = []
   // Um ponto solto que a re-quebra separou do resto não se desenha
   else if (n > 1) out.subpaths = out.subpaths.filter(s => s.length > 2)
-  if (!textMode) fitToBlock(out.subpaths, ix)
+  if (!textMode) {
+    const moved = fitToBlock(out.subpaths, ix, out.width / 2)
+    if (a.mode === MODE_MARGIN) out.edge = moved
+  }
+  out.hidden = out.subpaths.length === 0
+  return out
+}
+
+/** Nota no intervalo (desvio 8): o carácter dá o X, a linha dá o Y; nunca se parte */
+function computeGap(a: AnchoredStroke, ix: Index, lineMap: LineMap | null, out: ResolvedStroke): ResolvedStroke {
+  const em = ix.em
+  const p = a.p
+  const n = Math.floor(p.length / P_STRIDE)
+  const sp: number[] = []
+  let lost = 0
+  for (let i = 0; i < n; i++) {
+    const o = i * P_STRIDE
+    const ln = lineMap ? lineMap.get(p[o]) : p[o]
+    const k = ln !== undefined && fin(ln) ? ix.bandIdx.get(ln) : undefined
+    const ch = k !== undefined ? resolveChar(ix, ln as number, p[o + 1]) : null
+    const x = ch ? ch.left + p[o + 2] * em : NaN
+    const y = k !== undefined ? decodeY(p[o + 3], p[o + 4], ix.bands, k, em) : NaN
+    if (fin(x) && fin(y)) sp.push(x, y)
+    else lost++
+  }
+  if (lost * 2 <= n && sp.length) {
+    out.subpaths.push(sp)
+    fitToBlock(out.subpaths, ix, out.width / 2)
+  }
   out.hidden = out.subpaths.length === 0
   return out
 }
@@ -865,8 +1121,11 @@ function computeStroke(a: AnchoredStroke, ix: Index, lineMap: LineMap | null): R
  * Margem: o traço tem de caber no bloco (o concerto corta o que sai). Desloca
  * o traço INTEIRO para dentro — uma chaveta ou uma nota escrita à mão mantém
  * a forma; só se for mais largo do que o bloco é que cada ponto é limitado.
+ * O que sai fica a meia largura do traço da borda (a tinta não é cortada);
+ * o que cabe não mexe (no layout onde se desenhou, fica onde se desenhou).
+ * Devolve 1 se veio de fora pela esquerda, -1 pela direita, 0 se cabia.
  */
-function fitToBlock(subpaths: number[][], ix: Index): void {
+function fitToBlock(subpaths: number[][], ix: Index, half: number): number {
   let lo = Infinity
   let hi = -Infinity
   for (const sp of subpaths) {
@@ -875,14 +1134,53 @@ function fitToBlock(subpaths: number[][], ix: Index): void {
       if (sp[i] > hi) hi = sp[i]
     }
   }
-  if (!(lo < ix.minX || hi > ix.maxX)) return
-  const fits = hi - lo <= ix.maxX - ix.minX
-  const shift = lo < ix.minX ? ix.minX - lo : ix.maxX - hi
+  if (!(lo < ix.minX || hi > ix.maxX)) return 0
+  let minX = ix.minX + half
+  let maxX = ix.maxX - half
+  if (!(minX <= maxX)) {
+    minX = ix.minX
+    maxX = ix.maxX
+  }
+  const fits = hi - lo <= maxX - minX
+  const fromLeft = lo < minX
+  const shift = fromLeft ? minX - lo : maxX - hi
   for (const sp of subpaths) {
     for (let i = 0; i < sp.length; i += 2) {
-      sp[i] = fits ? sp[i] + shift : Math.min(ix.maxX, Math.max(ix.minX, sp[i]))
+      sp[i] = fits ? sp[i] + shift : Math.min(maxX, Math.max(minX, sp[i]))
     }
   }
+  return fromLeft ? 1 : -1
+}
+
+/**
+ * Calha lateral (px, de cada lado) que o texto deve deixar para não passar
+ * por baixo das chavetas/notas de margem que fitToBlock teve de empurrar
+ * para dentro do bloco (desvio 10). Só depende do X dessas margens — que
+ * não muda com a calha (o bloco e o seu centro ficam iguais) —, por isso
+ * aplicá-la e voltar a medir dá o mesmo valor: não há ciclo.
+ * Uma margem que cabia no bloco nunca toca nas suas linhas (o texto não fica
+ * mais largo, em em, do que na origem): não pede calha.
+ */
+export function marginGutter(resolved: readonly ResolvedStroke[], layout: LayoutModel): number {
+  const ix = indexOf(layout)
+  const W = ix.maxX - ix.minX
+  if (!isFinite(W) || W <= 0) return 0
+  let g = 0
+  for (const s of resolved) {
+    if (s.hidden || !s.edge) continue
+    let lo = Infinity
+    let hi = -Infinity
+    for (const sp of s.subpaths) {
+      for (let i = 0; i < sp.length; i += 2) {
+        if (sp[i] < lo) lo = sp[i]
+        if (sp[i] > hi) hi = sp[i]
+      }
+    }
+    if (!isFinite(lo)) continue
+    const reach = s.edge > 0 ? hi - ix.minX : ix.maxX - lo
+    g = Math.max(g, reach + s.width / 2 + GUTTER_CLEAR_EM * ix.em)
+  }
+  return Math.round(Math.min(g, W * GUTTER_MAX_FRAC))
 }
 
 /* ═══ Letra editada depois de desenhar ═══ */
@@ -916,15 +1214,19 @@ const MAX_ALIGN_CELLS = 4000000
  * apagada → sem entrada no mapa.
  * Com o texto de TODAS as linhas (collectLines) o passo 1 tem contexto para
  * acertar; só com as linhas dos traços (órfãos) é o melhor possível.
+ * `exclude`: linhas atuais que já têm dono (não podem receber nenhuma).
  */
 export function remapLines(
   saved: SavedLines | ReadonlyMap<number, string> | null | undefined,
   lyrics: string | null | undefined,
+  exclude?: ReadonlySet<number> | null,
 ): Map<number, number> {
   const out = new Map<number, number>()
   const entries = savedEntries(saved).sort((a, b) => a[0] - b[0])
   if (!entries.length) return out
   const cur = String(lyrics ?? '').split('\n').map(l => l.trim())
+  // Linha vazia nunca corresponde a nenhuma guardada (as guardadas não são vazias)
+  if (exclude) exclude.forEach(j => { if (j >= 0 && j < cur.length) cur[j] = '' })
   // O caso normal: a letra não mudou nestas linhas
   if (entries.every(([ln, t]) => cur[ln] === t)) {
     for (const [ln] of entries) out.set(ln, ln)
