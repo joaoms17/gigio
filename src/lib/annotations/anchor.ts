@@ -1309,11 +1309,12 @@ export function remapLines(
 /**
  * Retrato do texto (trim) de TODAS as linhas não vazias da letra, para
  * payload.lines — o contexto completo deixa remapLines acertar quando a letra
- * for editada. Sem traços (não órfãos) não há nada a guardar.
+ * for editada. Também só com órfãos: é o retrato que diz a que linhas um
+ * órfão NÃO pode voltar (desvio 11). Sem traços não há nada a guardar.
  */
 export function collectLines(strokes: readonly AnchoredStroke[], lyrics: string | null | undefined): SavedLines {
   const out: SavedLines = {}
-  if (!strokes.some(s => !s.lines && s.p.length >= P_STRIDE)) return out
+  if (!strokes.some(s => s.mode !== MODE_FREE && s.p.length >= P_STRIDE)) return out
   const src = String(lyrics ?? '').split('\n')
   for (let ln = 0; ln < src.length; ln++) {
     const t = src[ln].trim()
@@ -1336,7 +1337,11 @@ function pickLines(s: AnchoredStroke, saved: SavedLines): SavedLines {
  * linhas quando os traços foram ancorados (payload.lines); null = sem
  * registo (payload antigo) → ficam como estão. Os pontos cujas linhas
  * desapareceram saem; um traço que perca a maioria fica ÓRFÃO (escondido,
- * com o texto das suas linhas) e volta se essas linhas voltarem.
+ * com o texto das suas linhas) e volta se essas linhas voltarem — só para
+ * linhas NOVAS em relação ao retrato (desvio 11): uma linha atual que
+ * corresponde a uma do retrato já é de outro sítio da letra (ex.: o refrão
+ * que ficou quando o outro foi apagado).
+ * Os traços livres (MODE_FREE) não dependem da letra: ficam como estão.
  * `changed` = false devolve os mesmos objetos (os caches continuam válidos).
  */
 export function rebaseStrokes(
@@ -1345,9 +1350,12 @@ export function rebaseStrokes(
   lyrics: string | null | undefined,
 ): { strokes: AnchoredStroke[]; changed: boolean } {
   const shared = saved ? remapLines(saved, lyrics) : null
+  let taken: Set<number> | null = null
   let changed = false
   const out = strokes.map(s => {
-    const map = s.lines ? remapLines(s.lines, lyrics) : shared
+    if (s.mode === MODE_FREE) return s
+    if (s.lines && shared && !taken) taken = new Set(shared.values())
+    const map = s.lines ? remapLines(s.lines, lyrics, taken) : shared
     const n = Math.floor(s.p.length / P_STRIDE)
     if (!map || !n) return s
     let lost = 0
