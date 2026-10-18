@@ -139,9 +139,10 @@ export default function AnnotatedLyrics({
             aria-hidden="true"
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
           >
-            {paths.map(s => (
+            {paths.map((s, i) => (
               <path
-                key={s.id}
+                // Payloads antigos podem repetir ids (cópias partidas em vários traços)
+                key={`${i}:${s.id}`}
                 d={s.d}
                 stroke={s.color}
                 strokeWidth={s.width}
