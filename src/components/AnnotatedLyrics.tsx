@@ -1,15 +1,21 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import LyricsView, { withAlpha } from './LyricsView'
-import { loadAnnotations, pullAnnotations, annotationPath, type SavedAnnotations } from './AnnotationLayer'
+import { LegacyReference, loadAnnotations, pullAnnotations } from './AnnotationLayer'
+import {
+  pathFromSubpaths, payloadHasStrokes, rebaseStrokes, resolveAll,
+  type AnchoredStroke, type ParsedPayload,
+} from '../lib/annotations/anchor'
+import { measureLayout, watchFonts, type MeasuredLayout } from '../lib/annotations/measure'
 
 const PAD_V = 16
 const PAD_H = 20
+const NO_STROKES: AnchoredStroke[] = []
 
 /**
- * Read-only view of lyrics + rehearsal annotations. The text renders at its
- * natural size for the available width; the stroke coordinates (saved with
- * the content width `w` and height `h` they were drawn at) are rescaled —
- * X by the width ratio, Y by the height ratio — to stay aligned with it.
+ * Read-only view of lyrics + rehearsal annotations (modo concerto). A letra
+ * aparece no tamanho e entrelinha do palco; os traços, ancorados ao texto
+ * no Ensaio, redesenham-se presos aos mesmos caracteres deste layout.
+ * Carrega uma vez por montagem: quem usa dá key={songId}.
  */
 export default function AnnotatedLyrics({
   songId, lyrics, userId, bgColor, textColor, activeLine, accentColor, fontSize, lineHeight,
@@ -23,55 +29,83 @@ export default function AnnotatedLyrics({
 }) {
   const padH = noPadding ? 0 : PAD_H
   const padV = noPadding ? 0 : PAD_V
-  const outerRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
-  const [data, setData] = useState<SavedAnnotations | null>(null)
-  const [outerW, setOuterW] = useState(0)
-  const [innerH, setInnerH] = useState(0)
+  // Local primeiro; a cloud só se aqui não houver nada
+  const [local] = useState(() => loadAnnotations(songId))
+  const [remote, setRemote] = useState<ParsedPayload | null>(null)
+  const data = payloadHasStrokes(local) ? local : remote
 
   useEffect(() => {
-    const local = loadAnnotations(songId)
-    setData(local)
-    if (userId && (!local || local.strokes.length === 0)) {
-      pullAnnotations(songId, userId).then(remote => { if (remote) setData(remote) })
-    }
-  }, [songId, userId])
+    if (!userId || payloadHasStrokes(local)) return
+    let alive = true
+    pullAnnotations(songId, userId).then(r => { if (alive && r) setRemote(r) })
+    return () => { alive = false }
+  }, [songId, userId, local])
 
-  useEffect(() => {
-    const el = outerRef.current
-    if (!el) return
-    const obs = new ResizeObserver(e => setOuterW(e[0].contentRect.width))
-    obs.observe(el)
-    setOuterW(el.offsetWidth)
-    return () => obs.disconnect()
+  // Ancorados (v2): passados para a numeração desta letra (pode ter sido
+  // editada depois de desenhar). Só em memória — o concerto não grava
+  const anchored = useMemo(
+    () => (data?.anchored ? rebaseStrokes(data.anchored, data.lines, lyrics).strokes : null),
+    [data, lyrics],
+  )
+
+  // Antigos (px do Ensaio, sem âncoras): ancorados contra um layout de
+  // referência com as definições do Ensaio (LegacyReference), só em memória
+  const legacy = data && !data.anchored && data.strokes.length > 0 ? data : null
+  const [migrated, setMigrated] = useState<{ from: ParsedPayload; lyrics: string; strokes: AnchoredStroke[] } | null>(null)
+  const migratedStrokes = migrated && migrated.from === legacy && migrated.lyrics === lyrics ? migrated.strokes : null
+  const onLegacyReady = useCallback((strokes: AnchoredStroke[], usedLyrics: string) => {
+    if (legacy) setMigrated({ from: legacy, lyrics: usedLyrics, strokes })
+  }, [legacy])
+
+  const strokes = anchored ?? migratedStrokes ?? NO_STROKES
+
+  // Medição do próprio LyricsView. Mesma geometria → mesmo objeto (nada a
+  // redesenhar); a linha ativa só muda o fundo, não o layout
+  const [layout, setLayout] = useState<MeasuredLayout | null>(null)
+  const layoutRef = useRef<MeasuredLayout | null>(null)
+  const measure = useCallback(() => {
+    const inner = innerRef.current
+    const next = inner ? measureLayout(inner, inner) : null
+    const prev = layoutRef.current
+    if (!next || (prev && prev.sig === next.sig)) return
+    layoutRef.current = next
+    setLayout(next)
   }, [])
 
+  // Letra, tamanho ou entrelinha novos: re-mede antes de pintar
+  useLayoutEffect(() => { measure() }, [lyrics, fontSize, lineHeight, measure])
+
+  // Resize/rotação: uma medição por frame, no máximo
   useEffect(() => {
     const el = innerRef.current
     if (!el) return
-    const obs = new ResizeObserver(e => setInnerH(e[0].contentRect.height))
+    let raf = 0
+    const obs = new ResizeObserver(() => {
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; measure() })
+    })
     obs.observe(el)
-    setInnerH(el.offsetHeight)
-    return () => obs.disconnect()
-  }, [data])
+    return () => {
+      obs.disconnect()
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [measure])
 
-  // Width of the drawing area (inside padding)
-  const contentW = Math.max(0, outerW - padH * 2)
-  const xRatio = data?.w && data.w > 0 && contentW > 0 ? contentW / data.w : 1
-  // Dados antigos sem `h` guardado: Y segue o rácio de largura, como antes
-  const yRatio = data?.h && data.h > 0 && innerH > 0 ? innerH / data.h : xRatio
+  // Fontes carregadas: o texto muda de largura sem o bloco mudar de tamanho
+  useEffect(() => watchFonts(measure), [measure])
 
-  // Caminhos re-escalados memoizados — evita remapear todos os pontos de
-  // todos os traços em cada render (ex.: a cada mudança de linha ativa)
-  const scaledPaths = useMemo(
-    () => (data?.strokes ?? []).map(s => ({
-      id: s.id,
-      color: s.color,
-      width: s.width * xRatio,
-      d: annotationPath(s.pts.map((p, i) => p * (i % 2 === 0 ? xRatio : yRatio))),
-    })),
-    [data, xRatio, yRatio]
-  )
+  // Largura do Ensaio onde os traços antigos foram desenhados; os payloads
+  // mais antigos (só um array) não a têm → a largura daqui
+  const refWidth = legacy ? (legacy.w > 0 ? legacy.w : layout?.width ?? 0) : 0
+
+  // Caminhos resolvidos neste layout — memoizados: a linha ativa muda a cada
+  // verso e não pode refazer os traços
+  const paths = useMemo(() => {
+    if (!layout || strokes.length === 0) return []
+    return resolveAll(strokes, layout)
+      .filter(s => !s.hidden)
+      .map(s => ({ id: s.id, color: s.color, width: s.width, d: pathFromSubpaths(s.subpaths) }))
+  }, [strokes, layout])
 
   // Com fundo próprio (modo palco) ocupa o ecrã sem moldura; sem ele é um
   // painel v2 normal (--surface + hairline) e segue o tema da app.
@@ -97,17 +131,15 @@ export default function AnnotatedLyrics({
   }
 
   return (
-    <div
-      ref={outerRef}
-      style={frameStyle}
-    >
+    <div style={frameStyle}>
       <div ref={innerRef} style={{ position: 'relative' }}>
         <LyricsView lyrics={lyrics} activeLine={activeLine} accent={accentColor} fontSize={fontSize} lineHeight={lineHeight} />
-        {data && data.strokes.length > 0 && (
+        {paths.length > 0 && (
           <svg
+            aria-hidden="true"
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
           >
-            {scaledPaths.map(s => (
+            {paths.map(s => (
               <path
                 key={s.id}
                 d={s.d}
@@ -121,6 +153,9 @@ export default function AnnotatedLyrics({
           </svg>
         )}
       </div>
+      {legacy && !migratedStrokes && refWidth > 0 && (
+        <LegacyReference payload={legacy} lyrics={lyrics} width={refWidth} onReady={onLegacyReady} />
+      )}
     </div>
   )
 }

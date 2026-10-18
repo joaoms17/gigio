@@ -75,17 +75,21 @@ export default function LyricsView({ lyrics, activeLine, accent, fontSize, lineH
     vars['--lyric-accent-soft'] = withAlpha(accent, 0.14, 'transparent')
   }
   const rootStyle = Object.keys(vars).length ? (vars as CSSProperties) : undefined
+  // data-ln = índice da linha no texto (lyrics.split('\n')): as anotações
+  // ancoram cada ponto a um carácter dessa linha (src/lib/annotations).
+  // O texto tem de continuar a ser filho direto — é esse nó que se mede.
   return (
     <div className={styles.root} style={rootStyle}>
       {lyrics.split('\n').map((line, i) => {
         const t = line.trim()
         const sec = t.match(/^\[(.+?)\]$/)
-        if (sec) return <div key={i} className={styles.section}>{fmtSection(sec[1])}</div>
+        if (sec) return <div key={i} data-ln={i} data-sec="" className={styles.section}>{fmtSection(sec[1])}</div>
         if (t === '') return <div key={i} className={styles.break} />
         const active = i === activeLine
         return (
           <div
             key={i}
+            data-ln={i}
             data-activeline={active || undefined}
             // Destaque só de fundo + barra: pôr a negrito refazia o fluxo do
             // texto e desalinhava os traços das anotações desenhados por cima

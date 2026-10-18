@@ -6,6 +6,11 @@ import AnnotationLayer, { type AnnotationHandle } from '../../components/Annotat
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
+// Tamanho da letra no modo ensaio (A− / A+), partilhado com o concerto
+import {
+  REHEARSAL_FONT_MAX, REHEARSAL_FONT_MIN, REHEARSAL_FONT_STEP, REHEARSAL_LINE_HEIGHT,
+  clampRehearsalFont, loadRehearsalFont, saveRehearsalFont,
+} from '../../lib/rehearsalFont'
 import { useAuth } from '../../hooks/useAuth'
 import type { Song } from '../../types'
 import styles from './SongPage.module.css'
@@ -29,22 +34,6 @@ const ANN_WIDTHS = [
   { id: 'mid',    value: 4, label: 'Traço médio' },
   { id: 'thick',  value: 8, label: 'Traço grosso' },
 ]
-
-// Tamanho da letra no modo ensaio — A− / A+ na fita de ferramentas,
-// persistido globalmente (a preferência do músico vale para todas as músicas)
-const REHEARSAL_FONT_KEY = 'gigio-rehearsal-font-size'
-const REHEARSAL_FONT_MIN = 22
-const REHEARSAL_FONT_MAX = 56
-const REHEARSAL_FONT_STEP = 4
-const REHEARSAL_FONT_DEFAULT = 32
-
-function loadRehearsalFont(): number {
-  try {
-    const v = parseInt(localStorage.getItem(REHEARSAL_FONT_KEY) ?? '', 10)
-    if (Number.isFinite(v)) return Math.min(REHEARSAL_FONT_MAX, Math.max(REHEARSAL_FONT_MIN, v))
-  } catch {}
-  return REHEARSAL_FONT_DEFAULT
-}
 
 /* ── Ícones SVG inline (stroke, currentColor) ── */
 const ICON_PROPS = {
@@ -267,18 +256,17 @@ export default function SongPage() {
   const [annTool, setAnnTool] = useState<'pen' | 'eraser'>('pen')
   const [annColor, setAnnColor] = useState(ANN_COLORS[0].value)
   const [annWidth, setAnnWidth] = useState(ANN_WIDTHS[0].value)
-  const [annClear, setAnnClear] = useState(0)
   const [annScrollMode, setAnnScrollMode] = useState(false)
   const annLayerRef = useRef<AnnotationHandle>(null)
-  // Bloco da letra no ensaio — base de coordenadas das anotações (o
-  // AnnotationLayer re-escala quando a altura/largura do texto muda)
+  // Bloco da letra no ensaio — o AnnotationLayer mede o texto que lá está e
+  // prende cada traço aos caracteres (redesenha-os quando o texto re-flui)
   const lyricsContentRef = useRef<HTMLDivElement>(null)
 
   const [rehearsalFont, setRehearsalFont] = useState(loadRehearsalFont)
   const changeRehearsalFont = useCallback((delta: number) => {
     setRehearsalFont(v => {
-      const next = Math.min(REHEARSAL_FONT_MAX, Math.max(REHEARSAL_FONT_MIN, v + delta))
-      try { localStorage.setItem(REHEARSAL_FONT_KEY, String(next)) } catch {}
+      const next = clampRehearsalFont(v + delta)
+      saveRehearsalFont(next)
       return next
     })
   }, [])
@@ -746,7 +734,7 @@ export default function SongPage() {
                             confirmLabel: 'Limpar',
                             danger: true,
                           })
-                          if (ok) setAnnClear(c => c + 1)
+                          if (ok) annLayerRef.current?.clear()
                         }}
                       >
                         <IconTrash /> Limpar
@@ -760,17 +748,19 @@ export default function SongPage() {
                   <div className={`${styles.previewPane} ${!annScrollMode ? styles.previewPaneLocked : ''}`}>
                     <div className={styles.previewInner}>
                       <div ref={lyricsContentRef}>
-                        <LyricsView lyrics={lyrics} fontSize={rehearsalFont} lineHeight={1.6} />
+                        <LyricsView lyrics={lyrics} fontSize={rehearsalFont} lineHeight={REHEARSAL_LINE_HEIGHT} />
                       </div>
                       {song && (
                         <AnnotationLayer
+                          key={song.id}
                           ref={annLayerRef}
                           songId={song.id}
                           userId={user?.id}
+                          lyrics={lyrics}
+                          fontSize={rehearsalFont}
                           tool={annTool}
                           color={annColor}
                           strokeWidth={annWidth}
-                          clearTrigger={annClear}
                           disabled={annScrollMode}
                           contentRef={lyricsContentRef}
                         />
