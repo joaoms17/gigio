@@ -63,6 +63,8 @@ const WS = /\s/
  * Layout de uma letra: em, lh (entrelinha), width (bloco), secFont/secMt/secMb
  * (rótulo de secção em px fixos: 13px, margens 22/8 no tablet; 11px, 18/6 no
  * telemóvel). A caixa de conteúdo do texto tem 1.2em, centrada na line box.
+ * pad = calha lateral (px de cada lado, ver marginGutter): o texto quebra
+ * dentro dela; o bloco e o centro ficam iguais.
  */
 function makeLayout(lyrics, o = {}) {
   const em = o.em ?? 32
@@ -99,7 +101,8 @@ function makeLayout(lyrics, o = {}) {
       sp = k
       while (k <= b && WS.test(line[k])) k++
     }
-    const maxC = Math.max(1, Math.floor(width / cw + 1e-9))
+    // pad = calha lateral (padding do LyricsView): o texto quebra dentro, o bloco fica igual
+    const maxC = Math.max(1, Math.floor((width - 2 * (o.pad ?? 0)) / cw + 1e-9))
     const rowsC = []
     let cur = []
     for (const w of words) {
