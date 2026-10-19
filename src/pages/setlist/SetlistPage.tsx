@@ -19,9 +19,9 @@ import type { PdfData, PdfKind } from '../../lib/pdfExport'
 import { fmtSection } from '../../components/LyricsView'
 import { useAuth } from '../../hooks/useAuth'
 import { useOnline } from '../../hooks/useNetworkStatus'
-import { idbAvailable } from '../../lib/offline/idb'
+import { idbAvailable, idbStatus } from '../../lib/offline/idb'
 import { applyPendingOrder, savedAtLabel, type OfflineConcert } from '../../lib/offline/logic'
-import { getPendingOrder, loadConcert, onOfflineChange, patchConcert, setPendingOrder } from '../../lib/offline/store'
+import { getPendingOrder, loadConcert, onOfflineChange, patchConcert, setPendingOrder, storedSavedAt } from '../../lib/offline/store'
 import { fetchConcert, sendOrder } from '../../lib/offline/sync'
 import type { Setlist, SetlistSong, Song } from '../../types'
 import styles from './SetlistPage.module.css'
@@ -87,13 +87,15 @@ const P = {
   mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
 }
 
-function SortableSongRow({ ss, index, last, selected, readOnly, onSelect, onEdit, onRemove, onOverrides }: {
+function SortableSongRow({ ss, index, last, selected, readOnly, onSelect, onEdit, onRemove, onOverrides, onLocked }: {
   ss: Row; index: number; last: boolean; selected: boolean; readOnly: boolean
   onSelect: (ss: Row) => void
   onEdit: (songId: string) => void; onRemove: (id: string) => void
   onOverrides: (ss: Row) => void
+  /** Sem rede: o toque numa ação apagada diz porquê */
+  onLocked: (what: string) => void
 }) {
-  // Sem rede (só leitura): nada de arrastar
+  // Sem rede (só leitura): nada de arrastar — a pega fica apagada e o toque explica
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: ss.id, disabled: readOnly })
   const style = { transform: CSS.Transform.toString(transform), transition }
   const hasOverrides = !!(ss.performance_key || ss.notes || ss.custom_intro || ss.custom_ending)
@@ -114,11 +116,11 @@ function SortableSongRow({ ss, index, last, selected, readOnly, onSelect, onEdit
     >
       <button
         ref={setActivatorNodeRef}
-        className={styles.dragHandle}
+        className={`${styles.dragHandle} ${readOnly ? styles.isOff : ''}`}
         {...attributes}
         {...listeners}
-        onClick={e => e.stopPropagation()}
-        disabled={readOnly}
+        onClick={e => { e.stopPropagation(); if (readOnly) onLocked('Mudar a ordem aqui precisa de rede — no modo concerto funciona sem rede') }}
+        aria-disabled={readOnly || undefined}
         aria-label="Arrastar para reordenar"
         title={readOnly ? 'Reordenar — precisa de rede' : 'Arrastar para reordenar'}
       >
@@ -147,7 +149,8 @@ function SortableSongRow({ ss, index, last, selected, readOnly, onSelect, onEdit
               <Ico size={15}>{P.flag}</Ico>
             </span>
           )}
-          {!hasOverrides && (
+          {/* Sem rede não se define nada: o atalho sai (o tom/notas que há continua a abrir-se) */}
+          {!hasOverrides && !readOnly && (
             <button className={styles.ghostChip} onClick={openOv} aria-label="Definir tom e notas neste concerto">
               <Ico size={12} sw={2.4}>{P.plus}</Ico>Tom · notas
             </button>
@@ -159,10 +162,23 @@ function SortableSongRow({ ss, index, last, selected, readOnly, onSelect, onEdit
       {/* Telemóvel: ✎ escondido (o toque na linha abre tom/notas, com atalho para a música);
           pega e ✕ só aparecem no modo "Editar" da lista */}
       <div className={styles.songActions}>
-        <button className={`${styles.iconBtn} ${styles.iconBtnEdit}`} onClick={e => { e.stopPropagation(); onEdit(ss.song_id) }} aria-label="Editar música" title="Editar música">
+        {/* Sem rede: apagadas como o resto da edição; o toque diz porquê (o title não aparece no iPad) */}
+        <button
+          className={`${styles.iconBtn} ${styles.iconBtnEdit} ${readOnly ? styles.isOff : ''}`}
+          onClick={e => { e.stopPropagation(); onEdit(ss.song_id) }}
+          aria-disabled={readOnly || undefined}
+          aria-label="Editar música"
+          title={readOnly ? 'Editar música — precisa de rede' : 'Editar música'}
+        >
           <Ico size={17}>{P.pencil}</Ico>
         </button>
-        <button className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={e => { e.stopPropagation(); onRemove(ss.id) }} disabled={readOnly} aria-label="Remover da setlist" title={readOnly ? 'Remover — precisa de rede' : 'Remover da setlist'}>
+        <button
+          className={`${styles.iconBtn} ${styles.iconBtnDanger} ${readOnly ? styles.isOff : ''}`}
+          onClick={e => { e.stopPropagation(); onRemove(ss.id) }}
+          aria-disabled={readOnly || undefined}
+          aria-label="Remover da setlist"
+          title={readOnly ? 'Remover — precisa de rede' : 'Remover da setlist'}
+        >
           <Ico size={17}>{P.close}</Ico>
         </button>
       </div>
@@ -224,10 +240,16 @@ export default function SetlistPage() {
   const [showingCopy, setShowingCopy] = useState(false)
   // Sem rede e sem cópia (ou o servidor diz que não existe)
   const [unavailable, setUnavailable] = useState<'offline' | 'gone' | 'error' | null>(null)
-  // Cópia para usar sem rede: quando foi guardada (null = ainda não há);
-  // storeOk = false: o browser não deixa guardar (ex.: navegação privada)
+  // Cópia para usar sem rede: quando ficou guardada NESTE aparelho (lido do
+  // IndexedDB — nunca da resposta da rede nem da memória da sessão: "Disponível
+  // offline" só com a cópia mesmo guardada). null = não está guardada.
   const [copySavedAt, setCopySavedAt] = useState<number | null>(null)
-  const [storeOk, setStoreOk] = useState(true)
+  // A cópia que está no ecrã sem rede (pode ser só a da memória desta sessão)
+  const [shownCopyAt, setShownCopyAt] = useState<number | null>(null)
+  // 'ok' | 'opening' (IndexedDB ainda a abrir) | 'blocked' (o browser não deixa guardar, ex.: navegação privada)
+  const [storeState, setStoreState] = useState<'ok' | 'opening' | 'blocked'>('ok')
+  // O estado da cópia já foi lido (antes disso a linha fica vazia — sem "ainda não está guardado" por um instante)
+  const [storeChecked, setStoreChecked] = useState(false)
   const [savingCopy, setSavingCopy] = useState(false)
   const online = useOnline()
   // Sem rede: só leitura (o modo concerto e os PDF funcionam; mudar o concerto não)
@@ -273,29 +295,51 @@ export default function SetlistPage() {
     let alive = true
     let fromNet = false
     let hadCopy = false
-    Promise.all([loadConcert(user.id, id), getPendingOrder(user.id, id)]).then(([c, p]) => {
+    const userId = user.id
+    // O que está MESMO guardado neste aparelho (e se o browser deixa guardar)
+    const refreshStored = () => Promise.all([storedSavedAt(userId, id), idbAvailable()]).then(([at, okStore]) => {
+      if (!alive) return
+      setCopySavedAt(at)
+      setStoreState(okStore ? 'ok' : idbStatus() === 'opening' ? 'opening' : 'blocked')
+      setStoreChecked(true)
+    }, () => {})
+    Promise.all([loadConcert(userId, id), getPendingOrder(userId, id)]).then(([c, p]) => {
       if (!alive || !c) return
       hadCopy = true
-      setCopySavedAt(c.savedAt)
+      setShownCopyAt(c.savedAt)
       if (!fromNet) showConcert(c, p?.ids ?? null)
     }, () => {})
-    idbAvailable().then(okStore => { if (alive) setStoreOk(okStore) })
     loadSongs({ used: true }).then(status => {
       if (!alive) return
       fromNet = status === 'ok'
+      refreshStored()
       if (status !== 'ok' && !hadCopy) {
         // Ainda pode estar a chegar a cópia: decide depois de a ler
-        loadConcert(user.id, id).then(c => {
-          if (!alive || c) return
+        loadConcert(userId, id).then(c => {
+          if (!alive) return
+          if (c) {
+            setShownCopyAt(c.savedAt)
+            showConcert(c, null)
+            return
+          }
           setSongsLoading(false)
           setUnavailable(status === 'gone' || status === 'error' ? status : 'offline')
         }, () => {})
       }
     })
-    // O prefetch em segundo plano (ou o palco) gravou uma cópia mais nova
+    // O prefetch em segundo plano (ou o palco) gravou uma cópia mais nova; o IndexedDB abriu tarde
     const unsub = onOfflineChange(sid => {
       if (sid !== null && sid !== id) return
-      loadConcert(user.id, id).then(c => { if (alive) setCopySavedAt(c?.savedAt ?? null) }, () => {})
+      refreshStored()
+      loadConcert(userId, id).then(c => {
+        if (!alive || !c) return
+        setShownCopyAt(c.savedAt)
+        // Sem rede e sem nada no ecrã: a cópia que apareceu entra
+        if (!fromNet && !hadCopy) {
+          hadCopy = true
+          showConcert(c, null)
+        }
+      }, () => {})
     })
     return () => { alive = false; unsub() }
   }, [id, user])
@@ -320,7 +364,6 @@ export default function SetlistPage() {
       return r.status
     }
     setShowingCopy(false)
-    setCopySavedAt(r.concert.savedAt)
     showConcert(r.concert, null)
     // Apagar: dono do concerto, dono do projeto ou admin do projeto
     const sl = r.concert.setlist
@@ -341,22 +384,27 @@ export default function SetlistPage() {
 
   /** "Guardar para offline": lê tudo da rede já (mesmo que um pedido tenha falhado há pouco) */
   async function saveForOffline() {
-    if (savingCopy) return
+    if (savingCopy || !id || !user) return
     setSavingCopy(true)
     const status = await loadSongs({ used: true, force: true })
     setSavingCopy(false)
     if (status !== 'ok') toast('Não foi possível guardar — sem ligação', { type: 'error' })
+    else if (!(await storedSavedAt(user.id, id))) toast('Este browser não deixou guardar o concerto neste aparelho', { type: 'error' })
   }
 
-  /** Sem rede: o concerto não muda (o aviso diz porquê) */
-  function blocked(): boolean {
+  /**
+   * Sem rede: o concerto não muda. Todas as ações de edição ficam apagadas
+   * (aria-disabled, não disabled: o toque continua a chegar) e o toque diz o
+   * quê e porquê — um aviso neutro, não um erro (é o estado esperado sem rede)
+   */
+  function blocked(what = 'Alterar o concerto precisa de rede'): boolean {
     if (!readOnly) return false
-    toast('Sem ligação — não é possível alterar o concerto agora', { type: 'error' })
+    toast(what)
     return true
   }
 
   async function loadLibrary() {
-    if (!user || libraryLoading || blocked()) return
+    if (!user || libraryLoading || blocked('Acrescentar músicas precisa de rede')) return
     // Abre o modal já com skeleton — o fetch pode demorar 1-3s em rede lenta
     setLibrary([])
     setLibSelection(new Set())
@@ -439,7 +487,8 @@ export default function SetlistPage() {
     setVenue(val)
     setVenueSuggestions([])
     setShowVenueDrop(false)
-    if ((val || null) === (setlist?.venue ?? null) || blocked()) return
+    if ((val || null) === (setlist?.venue ?? null)) return
+    if (blocked('Mudar o local precisa de rede')) { setVenue(setlist?.venue ?? ''); return }
     await saveSetlistField({ venue: val || null })
   }
 
@@ -459,7 +508,7 @@ export default function SetlistPage() {
   }
 
   async function saveDate(val: string) {
-    if (!id || blocked()) return
+    if (!id || blocked('Mudar a data precisa de rede')) return
     setDate(val)
     await saveSetlistField({ date: val || null })
   }
@@ -474,7 +523,7 @@ export default function SetlistPage() {
 
   async function saveOverrides(): Promise<boolean> {
     if (!overrideRow || !id || !user) return false
-    if (blocked()) return false
+    if (blocked('Mudar o tom e as notas precisa de rede')) return false
     setOvSaving(true)
     const patch = {
       performance_key: ovKey.trim() || null,
@@ -503,6 +552,7 @@ export default function SetlistPage() {
   // Guarda primeiro o tom/notas para não perder o que foi escrito.
   async function openSongFromOverrides() {
     if (!overrideRow || ovSaving) return
+    if (blocked('Editar a música precisa de rede')) return
     const songId = overrideRow.song_id
     if (!await saveOverrides()) return
     navigate(`/songs/${songId}?setlist=${id}`)
@@ -510,7 +560,7 @@ export default function SetlistPage() {
 
   async function removeSong(ssId: string) {
     const row = songs.find(s => s.id === ssId)
-    if (!row || blocked()) return
+    if (!row || blocked('Tirar músicas do concerto precisa de rede')) return
     const { error } = await supabase.from('setlist_songs').delete().eq('id', ssId)
     if (error) { toast('Erro ao remover: ' + error.message, { type: 'error' }); return }
     setSongs(prev => prev.filter(s => s.id !== ssId))
@@ -521,7 +571,7 @@ export default function SetlistPage() {
   }
 
   async function undoRemove() {
-    if (!removedSong || blocked()) return
+    if (!removedSong || blocked('Anular precisa de rede')) return
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
     const row = removedSong
     setRemovedSong(null)
@@ -548,7 +598,7 @@ export default function SetlistPage() {
 
   async function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e
-    if (!over || active.id === over.id || blocked()) return
+    if (!over || active.id === over.id || blocked('Mudar a ordem aqui precisa de rede — no modo concerto funciona sem rede')) return
     const oldIndex = songs.findIndex(s => s.id === active.id)
     const newIndex = songs.findIndex(s => s.id === over.id)
     const reordered = arrayMove(songs, oldIndex, newIndex)
@@ -578,7 +628,7 @@ export default function SetlistPage() {
     if (!id || !name.trim()) return
     if (name === setlist?.name) { setEditingName(false); return }
     setEditingName(false)
-    if (blocked()) { setName(setlist?.name ?? ''); return }
+    if (blocked('Mudar o nome precisa de rede')) { setName(setlist?.name ?? ''); return }
     await saveSetlistField({ name })
   }
 
@@ -588,7 +638,7 @@ export default function SetlistPage() {
   }
 
   async function deleteSetlist() {
-    if (!id || blocked()) return
+    if (!id || blocked('Apagar o concerto precisa de rede')) return
     if (!await confirmDialog({ title: 'Apagar concerto', message: `Apagar o concerto "${setlist?.name}"? Esta ação não pode ser desfeita.`, confirmLabel: 'Apagar', danger: true })) return
     const { error: e1 } = await supabase.from('setlist_songs').delete().eq('setlist_id', id)
     if (e1) { toast('Erro ao apagar músicas do concerto: ' + e1.message, { type: 'error' }); return }
@@ -598,7 +648,7 @@ export default function SetlistPage() {
   }
 
   async function duplicateTo(projectId: string) {
-    if (!user || !setlist || dupBusy || blocked()) return
+    if (!user || !setlist || dupBusy || blocked('Duplicar precisa de rede')) return
     // Mantém o picker aberto com busy — evita re-toques que criam duplicados
     setDupBusy(true)
     const { data: newSl, error } = await supabase

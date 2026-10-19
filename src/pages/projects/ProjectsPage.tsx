@@ -330,10 +330,12 @@ export default function ProjectsPage() {
   return (
     <>
       <div className={styles.page}>
-        {isOffline && (
+        {/* Sem rede, o aviso global "Sem ligação" (Layout) e "Disponíveis offline"
+            já o dizem; este fica para quando há rede mas o servidor não respondeu */}
+        {isOffline && online && (
           <div className={styles.offlineBanner} role="status">
             <span className={styles.offlineLed} aria-hidden="true" />
-            {projects.length > 0 ? 'Sem ligação — a mostrar a última cópia' : 'Sem ligação'}
+            {projects.length > 0 ? 'Não foi possível atualizar — a mostrar a última cópia' : 'Não foi possível carregar os projetos'}
           </div>
         )}
 

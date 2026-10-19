@@ -20,14 +20,27 @@
 
 /* Aviso "Sem ligação" (Layout) visível, fixo em baixo: os toasts sobem para
    não o taparem — sem rede, os erros de gravação chegam precisamente agora.
+   O Layout marca o body (data-net-banner; sem :has(), que o Safari 15 não tem).
    Tablet: aviso de 1 linha (44px) · telemóvel: pode partir em 2 linhas (~60px) */
-:global(body:has([data-offline-banner])) .stack {
+:global(body[data-net-banner]) .stack {
   bottom: calc(68px + env(safe-area-inset-bottom, 0px));
 }
 @media (max-width: 640px) {
-  :global(body:has([data-offline-banner])) .stack {
+  :global(body[data-net-banner]) .stack {
     bottom: calc(var(--bottomnav-h) + 84px + env(safe-area-inset-bottom, 0px));
   }
+}
+
+/* Modo concerto (o palco marca o body com data-stage): os avisos aparecem em
+   cima, por baixo do cabeçalho, e NÃO apanham toques — em baixo tapavam o
+   visor, o "A seguir" e as teclas de música, e o 1.º toque só fechava o aviso */
+:global(body[data-stage]) .stack {
+  top: calc(124px + env(safe-area-inset-top, 0px));
+  bottom: auto;
+}
+:global(body[data-stage]) .toast { pointer-events: none; }
+@media (min-width: 641px) {
+  :global(body[data-stage]) .stack { top: calc(84px + env(safe-area-inset-top, 0px)); }
 }
 
 .toast {

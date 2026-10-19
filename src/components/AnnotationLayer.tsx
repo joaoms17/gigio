@@ -244,8 +244,8 @@ interface Initial {
 }
 
 /** O que está guardado neste dispositivo, já na numeração da letra atual */
-function initialLoad(songId: string, lyrics: string): Initial {
-  const p = loadAnnotations(songId)
+function initialLoad(songId: string, lyrics: string, userId?: string): Initial {
+  const p = loadAnnotations(songId, userId)
   if (!p) return { strokes: [], extra: [], legacy: null, save: SAVE_NONE, kind: 'none' }
   if (p.anchored) {
     const r = rebaseStrokes(p.anchored, p.lines, lyrics, p.hlLines)
@@ -286,7 +286,7 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   ref
 ) {
   const layerRef = useRef<HTMLDivElement>(null)
-  const [init] = useState(() => initialLoad(songId, lyrics))
+  const [init] = useState(() => initialLoad(songId, lyrics, userId))
   const [strokes, setStrokes] = useState<AnnItem[]>(init.strokes)
   const [layout, setLayout] = useState<MeasuredLayout | null>(null)
   const [current, setCurrent] = useState<DraftStroke | null>(null)
@@ -569,7 +569,7 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
       extra: extraRef.current,
     }
     const payload = buildPayload({ ...base, pend: pendRef.current })
-    try { localStorage.setItem(ANN_STORAGE_KEY(songId), JSON.stringify(payload)) } catch { /* storage cheio/bloqueado */ }
+    try { localStorage.setItem(ANN_STORAGE_KEY(songId, userId), JSON.stringify(payload)) } catch { /* storage cheio/bloqueado */ }
     // A cópia antiga deste aparelho foi substituída por uma v2: já não há nada a migrar
     if (kindRef.current === 'legacy' && localLegacyRef.current === null) kindRef.current = 'v2'
     if (push && userId) {

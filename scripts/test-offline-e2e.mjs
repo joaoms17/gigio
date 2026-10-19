@@ -835,14 +835,62 @@ try {
     await page.waitForTimeout(500)
     ok(pathOf(page) === here, 'O3b iPad ao alto: fica na página do concerto (nada se abre sem dados)', page.url())
 
+    // O tom/notas sem rede: o aviso do próprio modal e os botões não podem ficar
+    // por baixo do aviso global "Sem ligação" (fixo, por cima dos modais)
+    const dlg = page.locator('[role="dialog"]', { hasText: 'Só neste concerto' })
+    const coveredInDialog = () => page.evaluate(() => {
+      const d = [...document.querySelectorAll('[role="dialog"]')].find(x => x.textContent.includes('Só neste concerto'))
+      if (!d) return null
+      const banner = document.querySelector('[data-offline-banner]')
+      const btn = t => [...d.querySelectorAll('button')].find(b => b.textContent.replace(/\s+/g, ' ').trim() === t)
+      return [
+        ['aviso do modal', d.querySelector('[class*="_ovOffline_"]')],
+        ['Editar letra e música', btn('Editar letra e música')],
+        ['Cancelar', btn('Cancelar')],
+        ['Guardar', btn('Guardar')],
+      ].filter(([, el]) => el).map(([name, el]) => {
+        el.scrollIntoView({ block: 'nearest' })
+        const b = el.getBoundingClientRect()
+        // Três pontos ao longo do elemento (esquerda, meio, direita)
+        const hits = [0.15, 0.5, 0.85].map(f => document.elementFromPoint(b.left + b.width * f, b.top + b.height / 2))
+        // Só conta o aviso global (os toasts desaparecem sozinhos)
+        const by = hits.find(h => h && !el.contains(h) && banner?.contains(h))
+        return { name, covered: !!by, by: by ? 'aviso global "Sem ligação"' : null }
+      }).filter(x => x.covered)
+    })
+    async function checkDialogCover(label, shotName) {
+      await dlg.waitFor({ timeout: 3000 }).catch(() => {})
+      await page.waitForFunction(() => !document.querySelector('[class*="_toast_"]'), null, { timeout: 8000 }).catch(() => {})
+      await page.waitForTimeout(250)
+      const cov = await coveredInDialog()
+      ok(Array.isArray(cov) && cov.length === 0, `${label}: nada do tom/notas fica por baixo do aviso global "Sem ligação"`, cov)
+      // O aviso do modal alinhado com os campos e os botões (mesma margem)
+      const al = await page.evaluate(() => {
+        const d = [...document.querySelectorAll('[role="dialog"]')].find(x => x.textContent.includes('Só neste concerto'))
+        const note = d?.querySelector('[class*="_ovOffline_"]')
+        const field = d?.querySelector('#ov-key')
+        const footer = note?.nextElementSibling
+        if (!note || !field || !footer) return null
+        const r = document.createRange()
+        r.selectNodeContents(note)
+        const t = r.getBoundingClientRect()
+        return { texto: Math.round(t.left * 10) / 10, campos: Math.round(field.getBoundingClientRect().left * 10) / 10, espacoAbaixo: Math.round((footer.getBoundingClientRect().top - t.bottom) * 10) / 10 }
+      })
+      ok(!!al && Math.abs(al.texto - al.campos) <= 1, `${label}: aviso "Sem ligação" do modal alinhado com os campos`, al)
+      if (shotName) await shot(page, shotName)
+    }
+    await page.locator('button[aria-label^="Tom nesta setlist: D"]').first().click()
+    await checkDialogCover('O3b iPad ao alto')
+    await dlg.locator('button[aria-label="Fechar"]').click().catch(() => {})
+
     // Telemóvel: o ✎ está escondido; o toque na linha abre o tom/notas, com o atalho para a música
     await page.setViewportSize(PHONE)
     await page.waitForTimeout(300)
     await page.locator('[class*="_songTitle_"]', { hasText: 'Carrossel de Agosto' }).first().click()
-    const dlg = page.locator('[role="dialog"]', { hasText: 'Só neste concerto' })
     await dlg.waitFor({ timeout: 3000 }).catch(() => {})
     ok(/Sem ligação — o tom e as notas não podem ser guardados agora/.test(await dlg.textContent().catch(() => '')), 'O3b telemóvel: tom/notas com o aviso "Sem ligação"')
     ok(await dlg.locator('button', { hasText: /^Guardar$/ }).isDisabled().catch(() => false), 'O3b telemóvel: "Guardar" desativado')
+    await checkDialogCover('O3b telemóvel', 'O3b-tom-notas-telemovel')
     await trackToasts(page)
     await dlg.locator('button', { hasText: 'Editar letra e música' }).click()
     ok(!!(await toastSeen(page, BLOCK)), 'O3b telemóvel: "Editar letra e música" → aviso "Sem ligação"', await page.evaluate(() => window.__toasts))
@@ -855,6 +903,9 @@ try {
     await page.setViewportSize(TABLET_LAND)
     await page.waitForTimeout(300)
     await page.locator('[class*="_songTitle_"]', { hasText: 'Barraca das Farturas' }).first().click()
+    await page.locator('aside button', { hasText: 'Tom & notas' }).first().click().catch(() => {})
+    await checkDialogCover('O3b iPad deitado', 'O3b-tom-notas-ipad-paisagem')
+    await dlg.locator('button[aria-label="Fechar"]').click().catch(() => {})
     const edit = page.locator('aside button', { hasText: 'Editar letra' }).first()
     await edit.waitFor({ timeout: 3000 }).catch(() => {})
     await trackToasts(page)

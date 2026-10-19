@@ -39,7 +39,8 @@ export function probeSupabase(): Promise<boolean> {
 }
 
 export type FetchResult =
-  | { status: 'ok'; concert: OfflineConcert }
+  /** persisted = a cópia ficou guardada neste aparelho (ver saveConcert) */
+  | { status: 'ok'; concert: OfflineConcert; persisted: boolean }
   /** Sem rede (ou tempo esgotado): fica a cópia */
   | { status: 'offline' }
   /** O servidor diz que não existe ou que já não há acesso */
@@ -135,8 +136,8 @@ export async function fetchConcert(
   const concert = buildConcert({
     userId, setlist: sl.data, rows, syncs, annotations, annChecked, savedAt: Date.now(),
   })
-  await saveConcert(concert, { used: opts.used })
-  return { status: 'ok', concert }
+  const persisted = await saveConcert(concert, { used: opts.used })
+  return { status: 'ok', concert, persisted }
 }
 
 /** profiles.concert_theme → cópia local (null se não veio) */
@@ -158,6 +159,15 @@ function lastRun(userId: string): number {
 }
 function setLastRun(userId: string, at: number) {
   try { localStorage.setItem(lastRunKey(userId), String(at)) } catch { /* */ }
+}
+
+/**
+ * Uma música ou sincronização mudou com rede (página da música, editor de
+ * sincronização): o próximo guardar em segundo plano (voltar ao primeiro
+ * plano, rede de volta, reabrir) corre já, sem esperar pelos 10 min
+ */
+export function markCopiesStale(userId: string) {
+  setLastRun(userId, 0)
 }
 
 /** Ids da cache antiga (localStorage, antes do IndexedDB): verificados pelo servidor antes de entrarem */
@@ -188,15 +198,17 @@ export function dropLegacyCache() {
 
 /**
  * Com rede: guarda os concertos de hoje e dos próximos PREFETCH_DAYS dias
- * (até PREFETCH_MAX), refresca os próximos já guardados e o tema. No máximo
- * uma vez a cada 10 min (force: já), nunca dois em paralelo, um concerto de
- * cada vez (não atrasa a interface). Devolve quantos guardou (null = não correu).
+ * (até PREFETCH_MAX), refresca os próximos já guardados e o tema. Nunca dois
+ * em paralelo, um concerto de cada vez (não atrasa a interface). Depois de
+ * uma volta COMPLETA espera 10 min até à próxima (force: já); uma volta
+ * interrompida (a rede caiu, a app foi fechada a meio) não conta — a
+ * seguinte (rede de volta, primeiro plano, reabrir) recomeça logo, e os que
+ * faltavam ficam guardados. Devolve quantos guardou (null = não correu).
  */
 export function prefetchUpcoming(userId: string, opts: { force?: boolean } = {}): Promise<number | null> {
   if (running) return running
   if (isLikelyOffline()) return Promise.resolve(null)
   if (!opts.force && Date.now() - lastRun(userId) < PREFETCH_EVERY_MS) return Promise.resolve(null)
-  setLastRun(userId, Date.now())
   running = (async () => {
     const today = new Date()
     const until = new Date(today.getFullYear(), today.getMonth(), today.getDate() + PREFETCH_DAYS)
@@ -205,10 +217,7 @@ export function prefetchUpcoming(userId: string, opts: { force?: boolean } = {})
       supabase.from('setlists').select('id, date').gte('date', ymd(today)).lte('date', ymd(until)).order('date', { ascending: true }),
       12000,
     )
-    if (list.network || list.error || !Array.isArray(list.data)) {
-      setLastRun(userId, 0)
-      return null
-    }
+    if (list.network || list.error || !Array.isArray(list.data)) return null
     const ids = selectPrefetch(list.data as { id: string; date: string | null }[], today)
     // Os próximos que já estavam guardados (abertos à mão: sem data, mais longe) também se refrescam
     const saved = await listConcerts(userId)
@@ -221,10 +230,12 @@ export function prefetchUpcoming(userId: string, opts: { force?: boolean } = {})
     let n = 0
     for (const id of [...ids, ...legacy]) {
       const r = await fetchConcert(userId, id)
-      if (r.status === 'offline') break
+      // Sem rede a meio: pára sem marcar a volta como feita (retoma quando a rede voltar)
+      if (r.status === 'offline') return n
       if (r.status === 'ok') n++
     }
     dropLegacyCache()
+    setLastRun(userId, Date.now())
     return n
   })().catch(() => null).finally(() => { running = null })
   return running
@@ -275,6 +286,22 @@ export function sendOrder(userId: string, setlistId: string, ids: string[]): Pro
   })
   orderChain = job.catch(() => undefined)
   return job.catch(() => 'offline' as const)
+}
+
+/**
+ * Antes de terminar a sessão: tenta enviar as ordens por enviar e devolve os
+ * nomes dos concertos cuja ordem nova AINDA não foi enviada (perde-se ao
+ * terminar a sessão — quem chama avisa no diálogo)
+ */
+export async function unsentOrdersBeforeSignOut(userId: string): Promise<string[]> {
+  try {
+    await Promise.race([flushPendingOrders(userId), new Promise(r => setTimeout(r, 8000))])
+  } catch { /* fica por enviar */ }
+  const names: string[] = []
+  for (const p of await listPendingOrders(userId).catch(() => [])) {
+    names.push((await loadConcert(userId, p.setlistId).catch(() => null))?.setlist.name || 'um concerto')
+  }
+  return names
 }
 
 /** Envia todas as ordens pendentes deste utilizador (ao arrancar, quando a rede volta) */

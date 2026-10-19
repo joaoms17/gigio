@@ -37,7 +37,7 @@ function legacyOf(p: ParsedPayload | null): ParsedPayload | null {
  *
  * `cloudCopy`: a linha da cloud (song_annotations.strokes) guardada com o
  * concerto para usar sem rede. Faz de "cloud" quando ela não responde — e
- * só em memória: gravada como cópia deste aparelho (gigio_ann_v1_*), uma v2
+ * só em memória: gravada como cópia deste aparelho (localStorage), uma v2
  * local ganha sempre e escondia as versões mais novas de outros aparelhos.
  */
 export default function AnnotatedLyrics({
@@ -54,7 +54,7 @@ export default function AnnotatedLyrics({
   const padH = noPadding ? 0 : PAD_H
   const padV = noPadding ? 0 : PAD_V
   const innerRef = useRef<HTMLDivElement>(null)
-  const [local] = useState(() => loadAnnotations(songId))
+  const [local] = useState(() => loadAnnotations(songId, userId))
   const [copy] = useState(() => (cloudCopy != null ? readPayload(cloudCopy) : null))
   // Sem rede ao abrir: não se espera pela cloud — a cópia guardada faz de cloud
   const [offline] = useState(isLikelyOffline)

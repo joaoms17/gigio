@@ -5,6 +5,8 @@ import { useAuth } from '../hooks/useAuth'
 import { useConfirm } from './ConfirmDialog'
 import { useOnline } from '../hooks/useNetworkStatus'
 import { listConcerts, onOfflineChange } from '../lib/offline/store'
+import { unsentOrdersBeforeSignOut } from '../lib/offline/sync'
+import { unsentOrdersText } from '../lib/offline/logic'
 import styles from './Layout.module.css'
 import Wordmark, { BrandMark } from './Wordmark'
 
@@ -111,17 +113,25 @@ export default function Layout({ children }: Props) {
     const unsub = onOfflineChange(count)
     return () => { alive = false; unsub() }
   }, [offline, userId])
+  // O aviso está no ecrã: os toasts sobem para não o taparem (Toast.module.css)
+  useEffect(() => {
+    if (!offline) return
+    document.body.setAttribute('data-net-banner', '')
+    return () => document.body.removeAttribute('data-net-banner')
+  }, [offline])
   const displayName: string = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? ''
 
   async function handleSignOut() {
+    // Uma ordem mudada sem rede ainda por enviar: tenta-se agora; se não for, o diálogo diz que se perde
+    const unsent = userId ? await unsentOrdersBeforeSignOut(userId) : []
     const ok = await confirmDialog({
       title: 'Terminar sessão',
-      message: 'Terminar a sessão neste dispositivo? Os concertos guardados para usar sem rede são apagados.',
+      message: `Terminar a sessão neste dispositivo? Os concertos guardados para usar sem rede são apagados.${unsentOrdersText(unsent)}`,
       confirmLabel: 'Sair',
       danger: true,
     })
     if (!ok) return
-    await signOut()
+    await signOut(userId)
     // Recarrega: o cliente do Supabase arranca sem a sessão em memória
     window.location.href = '/auth'
   }
@@ -145,10 +155,16 @@ export default function Layout({ children }: Props) {
         <div className={styles.offlineBanner} role="status" aria-live="polite" data-offline-banner="">
           <span className={styles.offlineLed} aria-hidden="true" />
           <span className={styles.offlineLabel}>Sem ligação</span>
-          <span className={styles.offlineText}>
+          {/* Telemóvel: a versão curta (cabe numa linha — o aviso fica fixo por cima do conteúdo) */}
+          <span className={`${styles.offlineText} ${styles.offlineTextLong}`}>
             {savedCount > 0
               ? `${savedCount} ${savedCount === 1 ? 'concerto guardado funciona' : 'concertos guardados funcionam'} sem rede · edições bloqueadas`
               : 'As alterações não são guardadas sem rede'}
+          </span>
+          <span className={`${styles.offlineText} ${styles.offlineTextShort}`}>
+            {savedCount > 0
+              ? `${savedCount} ${savedCount === 1 ? 'concerto funciona' : 'concertos funcionam'} sem rede`
+              : 'Alterações não guardadas'}
           </span>
         </div>
       )}
@@ -207,7 +223,8 @@ export default function Layout({ children }: Props) {
       </header>
 
       {/* ── CONTEÚDO ── */}
-      <main className={`${styles.main} ${bleed ? styles.mainBleed : ''}`}>
+      {/* Com o aviso "Sem ligação" fixo em baixo, o fim da página sobe acima dele */}
+      <main className={`${styles.main} ${bleed ? styles.mainBleed : ''} ${offline && !bleed ? styles.mainWithBanner : ''}`}>
         {children ?? <Outlet context={outletContext} />}
       </main>
 

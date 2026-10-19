@@ -4,6 +4,8 @@ import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
 import { signOut as endSession } from '../../lib/auth'
 import { loadTheme, saveTheme } from '../../lib/offline/store'
+import { unsentOrdersBeforeSignOut } from '../../lib/offline/sync'
+import { unsentOrdersText } from '../../lib/offline/logic'
 import { isLikelyOffline } from '../../lib/offline/net'
 import { useAuth } from '../../hooks/useAuth'
 import { getThemePref, applyThemePref, type ThemePref } from '../../lib/theme'
@@ -326,14 +328,16 @@ export default function SettingsPage() {
   }
 
   async function signOut() {
+    // Uma ordem mudada sem rede ainda por enviar: tenta-se agora; se não for, o diálogo diz que se perde
+    const unsent = user ? await unsentOrdersBeforeSignOut(user.id) : []
     if (!await confirmDialog({
       title: 'Terminar sessão',
-      message: 'Terminar a sessão neste dispositivo? Os concertos guardados para usar sem rede são apagados, e vais precisar de ligação à internet para voltar a entrar.',
+      message: `Terminar a sessão neste dispositivo? Os concertos guardados para usar sem rede são apagados, e vais precisar de ligação à internet para voltar a entrar.${unsentOrdersText(unsent)}`,
       confirmLabel: 'Terminar sessão',
       danger: true,
     })) return
     // Também apaga os concertos guardados para usar sem rede
-    await endSession()
+    await endSession(user?.id)
     window.location.href = '/auth'
   }
 

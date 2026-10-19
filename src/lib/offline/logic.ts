@@ -65,7 +65,7 @@ export interface OfflineConcert {
   rows: OfflineRow[]
   /** Linhas sincronizadas por música (só as que têm) */
   syncs: Record<string, LyricLine[]>
-  /** Anotações do utilizador na cloud, por música (as deste aparelho ficam em gigio_ann_v1_*) */
+  /** Anotações do utilizador na cloud, por música (as deste aparelho ficam no localStorage, ver annotations/storage.ts) */
   annotations: Record<string, OfflineAnnotation>
   /** A cloud foi lida para TODAS as músicas: ausência = não há anotações lá */
   annChecked: boolean
@@ -82,8 +82,12 @@ export interface OfflineIndexEntry {
   bandColor: string | null
   songCount: number
   savedAt: number
-  /** Última vez que foi aberto neste aparelho (ms) */
+  /** Última vez que foi aberto neste aparelho (ms; nunca aberto = savedAt) — ordena os "últimos usados" */
   usedAt: number
+  /** Última vez que foi ABERTO à mão (página do concerto, palco, "Guardar para offline") — nunca por um guardar em segundo plano */
+  openedAt?: number
+  /** Músicas da cópia (uma música editada fora do concerto atualiza as cópias que a têm) */
+  songIds?: string[]
 }
 
 /** Colunas de songs que o palco, a página do concerto e o PDF usam (sem original_lyrics, source_metadata, structure…) */
@@ -202,7 +206,30 @@ export function parseConcert(raw: unknown, userId: string, setlistId: string): O
   }
 }
 
-export function indexEntryOf(c: OfflineConcert, usedAt: number): OfflineIndexEntry {
+/** Uma música mudou fora do concerto (letra, acordes, tom, sincronização…) */
+export interface SongChange {
+  /** Colunas novas de songs (só as que o palco usa ficam — ver trimSong) */
+  song?: Partial<Song>
+  /** Linhas sincronizadas novas; null = a música deixou de ter sync */
+  syncLines?: LyricLine[] | null
+}
+
+/** A cópia com a música mudada — null se a cópia não tem esta música */
+export function applySongChange(c: OfflineConcert, songId: string, change: SongChange): OfflineConcert | null {
+  if (!c.rows.some(r => r.song.id === songId)) return null
+  const rows = change.song
+    ? c.rows.map(r => (r.song.id === songId ? { ...r, song: trimSong({ ...r.song, ...change.song, id: songId }) } : r))
+    : c.rows
+  let syncs = c.syncs
+  if (change.syncLines !== undefined) {
+    syncs = { ...c.syncs }
+    if (validLines(change.syncLines)) syncs[songId] = change.syncLines
+    else delete syncs[songId]
+  }
+  return { ...c, rows, syncs }
+}
+
+export function indexEntryOf(c: OfflineConcert, usedAt: number, openedAt?: number): OfflineIndexEntry {
   return {
     setlistId: c.setlistId,
     name: c.setlist.name,
@@ -214,6 +241,8 @@ export function indexEntryOf(c: OfflineConcert, usedAt: number): OfflineIndexEnt
     songCount: c.rows.length,
     savedAt: c.savedAt,
     usedAt,
+    ...(openedAt ? { openedAt } : {}),
+    songIds: Array.from(new Set(c.rows.map(r => r.song.id))),
   }
 }
 
@@ -221,7 +250,12 @@ export function parseIndex(raw: unknown): OfflineIndexEntry[] {
   if (!Array.isArray(raw)) return []
   return raw.filter((e): e is OfflineIndexEntry =>
     isObj(e) && typeof e.setlistId === 'string' && typeof e.name === 'string' && typeof e.savedAt === 'number')
-    .map(e => ({ ...e, usedAt: typeof e.usedAt === 'number' ? e.usedAt : e.savedAt }))
+    .map(e => {
+      const out: OfflineIndexEntry = { ...e, usedAt: typeof e.usedAt === 'number' ? e.usedAt : e.savedAt }
+      if (typeof e.openedAt !== 'number') delete out.openedAt
+      if (!Array.isArray(e.songIds) || !e.songIds.every(x => typeof x === 'string')) delete out.songIds
+      return out
+    })
 }
 
 /** Junta/substitui uma entrada (a mais recente primeiro não importa: a lista ordena) */
@@ -231,19 +265,24 @@ export function upsertIndex(entries: OfflineIndexEntry[], entry: OfflineIndexEnt
 
 /**
  * Poda: ficam os próximos (com data, até KEEP_UPCOMING_MAX, os mais perto
- * primeiro) e, dos outros (sem data e passados há ≤ PAST_DROP_DAYS dias), os
- * KEEP_RECENT usados mais recentemente. Passados há mais de PAST_DROP_DAYS
- * dias saem sempre.
+ * primeiro) e, dos outros (sem data e passados), os KEEP_RECENT usados mais
+ * recentemente. Um passado há mais de PAST_DROP_DAYS dias sai — a menos que
+ * tenha sido aberto à mão há menos do que isso (um alinhamento antigo que se
+ * vai repetir, uma data escrita com o ano errado). `keepId` (o concerto que
+ * se acabou de abrir) nunca sai.
  */
-export function pruneIndex(entries: OfflineIndexEntry[], now: Date): { keep: OfflineIndexEntry[]; drop: string[] } {
+export function pruneIndex(entries: OfflineIndexEntry[], now: Date, keepId?: string): { keep: OfflineIndexEntry[]; drop: string[] } {
   const upcoming: OfflineIndexEntry[] = []
   const others: OfflineIndexEntry[] = []
   const drop: string[] = []
+  let pinned: OfflineIndexEntry | null = null
+  const recentlyOpened = (e: OfflineIndexEntry) => !!e.openedAt && now.getTime() - e.openedAt <= PAST_DROP_DAYS * 86_400_000
   for (const e of entries) {
+    if (e.setlistId === keepId) { pinned = e; continue }
     const days = concertDaysUntil(e.date, now)
     if (days === null) others.push(e)
     else if (days >= 0) upcoming.push(e)
-    else if (-days > PAST_DROP_DAYS) drop.push(e.setlistId)
+    else if (-days > PAST_DROP_DAYS && !recentlyOpened(e)) drop.push(e.setlistId)
     else others.push(e)
   }
   upcoming.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '') || b.usedAt - a.usedAt)
@@ -251,6 +290,7 @@ export function pruneIndex(entries: OfflineIndexEntry[], now: Date): { keep: Off
   const keep = [...upcoming.slice(0, KEEP_UPCOMING_MAX), ...others.slice(0, KEEP_RECENT)]
   for (const e of upcoming.slice(KEEP_UPCOMING_MAX)) drop.push(e.setlistId)
   for (const e of others.slice(KEEP_RECENT)) drop.push(e.setlistId)
+  if (pinned) keep.push(pinned)
   return { keep, drop }
 }
 
@@ -323,6 +363,15 @@ export function sameOrder(rows: { id: string }[], ids: string[]): boolean {
 }
 
 // ── Textos ───────────────────────────────────────────────────────────────────
+/** Aviso ao terminar a sessão com ordens por enviar ('' = nenhuma) */
+export function unsentOrdersText(names: string[]): string {
+  if (names.length === 0) return ''
+  const list = names.map(n => `"${n}"`).join(', ')
+  return names.length === 1
+    ? ` Há uma ordem por enviar de ${list} que se perde.`
+    : ` Há ordens por enviar de ${list} que se perdem.`
+}
+
 const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 

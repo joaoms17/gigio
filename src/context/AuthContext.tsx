@@ -2,6 +2,7 @@ import { createContext, useEffect, useState, type ReactNode } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { AUTH_STORAGE_KEY, supabase } from '../lib/supabase'
 import { thawOffline } from '../lib/offline/store'
+import { adoptLegacyAnnotations } from '../lib/annotations/storage'
 
 interface AuthContextValue {
   user: User | null
@@ -26,6 +27,12 @@ function readCachedUser(): User | null {
   } catch { return null }
 }
 
+/** As anotações antigas deste aparelho (só por música) passam para o 1.º utilizador com sessão */
+function withAdoption(u: User | null): User | null {
+  if (u) adoptLegacyAnnotations(u.id)
+  return u
+}
+
 /** Mesmo utilizador e mesmos dados visíveis: mantém o objeto (as páginas que dependem de `user` não recarregam a cada renovação do token) */
 function sameUser(a: User | null, b: User | null): boolean {
   if (!a || !b) return a === b
@@ -41,13 +48,14 @@ function sameUser(a: User | null, b: User | null): boolean {
  * ou recusada pelo servidor) ou não haver sessão guardada tiram o utilizador.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(readCachedUser)
+  const [user, setUser] = useState<User | null>(() => withAdoption(readCachedUser()))
   const [loading, setLoading] = useState(() => !readCachedUser())
 
   useEffect(() => {
     let alive = true
     const settle = (next: User | null) => {
       if (!alive) return
+      withAdoption(next)
       setUser(prev => (sameUser(prev, next) ? prev : next))
       setLoading(false)
     }

@@ -1,15 +1,25 @@
 /**
- * Onde as anotações vivem: localStorage deste aparelho
- * ('gigio_ann_v1_<songId>') e a cloud (song_annotations.strokes, jsonb).
- * Partilhado pelo Ensaio (AnnotationLayer), pelo concerto (AnnotatedLyrics)
- * e pelo ConcertPage (tecla "Anotações de ensaio").
+ * Onde as anotações vivem: localStorage deste aparelho, POR UTILIZADOR
+ * ('gigio_ann_u_<userId>_<songId>') e a cloud (song_annotations.strokes,
+ * jsonb). Partilhado pelo Ensaio (AnnotationLayer), pelo concerto
+ * (AnnotatedLyrics) e pelo ConcertPage (tecla "Anotações de ensaio").
+ *
+ * Antes eram só por música ('gigio_ann_v1_<songId>'): num iPad partilhado
+ * pela banda, o membro seguinte via (e podia enviar para a conta dele) os
+ * desenhos do anterior. As antigas passam para o 1.º utilizador que entra
+ * depois de a app arrancar (adoptLegacyAnnotations) — quem as desenhou, na
+ * prática: a sessão dele continua guardada quando a app atualiza.
  */
 import { supabase } from '../supabase'
 import { runQuery } from '../offline/net'
 import { loadRehearsalFont } from '../rehearsalFont'
 import { readPayload, type AnchoredStroke, type AnnPayload, type ParsedPayload } from './anchor'
 
-export const ANN_STORAGE_KEY = (id: string) => `gigio_ann_v1_${id}`
+const LEGACY_PREFIX = 'gigio_ann_v1_'
+const userPrefix = (userId: string) => `gigio_ann_u_${userId}_`
+/** Chave deste aparelho para a música (sem utilizador — só transitório: a antiga) */
+export const ANN_STORAGE_KEY = (songId: string, userId?: string | null) =>
+  userId ? `${userPrefix(userId)}${songId}` : `${LEGACY_PREFIX}${songId}`
 
 /**
  * Cópia antiga (px) deste aparelho: quanto se espera pela cloud antes de a
@@ -20,12 +30,60 @@ export const ANN_STORAGE_KEY = (id: string) => `gigio_ann_v1_${id}`
  */
 export const LEGACY_PULL_WAIT_MS = 1500
 
-/** Payload guardado neste dispositivo (qualquer versão), já lido — null se não há */
-export function loadAnnotations(songId: string): ParsedPayload | null {
+/** Payload guardado neste dispositivo por este utilizador (qualquer versão), já lido — null se não há */
+export function loadAnnotations(songId: string, userId?: string | null): ParsedPayload | null {
   try {
-    const raw = localStorage.getItem(ANN_STORAGE_KEY(songId))
+    const raw = localStorage.getItem(ANN_STORAGE_KEY(songId, userId))
     return raw ? readPayload(JSON.parse(raw)) : null
   } catch { return null }
+}
+
+let adopted = false
+/**
+ * As anotações antigas, só por música, passam a ser deste utilizador — uma
+ * vez por arranque da app, para o 1.º utilizador com sessão. Se ele já tem
+ * uma cópia sua dessa música, a antiga fica onde está (não se perde nem
+ * passa por cima).
+ */
+export function adoptLegacyAnnotations(userId: string) {
+  if (adopted || !userId) return
+  adopted = true
+  try {
+    const legacy: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(LEGACY_PREFIX)) legacy.push(k)
+    }
+    for (const k of legacy) {
+      const target = ANN_STORAGE_KEY(k.slice(LEGACY_PREFIX.length), userId)
+      if (localStorage.getItem(target) !== null) continue
+      const v = localStorage.getItem(k)
+      if (v === null) continue
+      localStorage.setItem(target, v)
+      localStorage.removeItem(k)
+    }
+  } catch { /* armazenamento bloqueado */ }
+}
+
+/**
+ * Terminar sessão: apaga as cópias deste utilizador que já estão na cloud.
+ * As por juntar (pend: desenhadas sem a conseguir ler) ficam — só dele, e
+ * seguem para a cloud quando ele voltar a entrar.
+ */
+export function clearUserAnnotations(userId: string) {
+  if (!userId) return
+  try {
+    const mine: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(userPrefix(userId))) mine.push(k)
+    }
+    for (const k of mine) {
+      let pend = false
+      try { pend = !!readPayload(JSON.parse(localStorage.getItem(k) ?? 'null'))?.pend } catch { /* estragada: sai */ }
+      if (!pend) localStorage.removeItem(k)
+    }
+  } catch { /* */ }
 }
 
 /**

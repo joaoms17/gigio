@@ -22,6 +22,7 @@ import {
 import { cacheProjectDashboard, getCachedProjectDashboard } from '../../lib/concertCache'
 import { runQuery } from '../../lib/offline/net'
 import OfflineConcerts from '../../components/OfflineConcerts'
+import { useOnline } from '../../hooks/useNetworkStatus'
 import styles from './ProjectDashboardPage.module.css'
 import { mapLegacyProjectColor } from '../../lib/projectColor'
 import {
@@ -381,6 +382,7 @@ export default function ProjectDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isOffline, setIsOffline] = useState(false)
+  const online = useOnline()
   // Sem rede e sem cópia deste projeto: mostra os concertos dele guardados neste aparelho
   const [offlineNoCopy, setOfflineNoCopy] = useState(false)
   const [songSearch, setSongSearch] = useState('')
@@ -536,6 +538,11 @@ export default function ProjectDashboardPage() {
   }, [user, projectId, canManage])
 
   useEffect(() => { load() }, [load])
+
+  // A rede voltou com a última cópia no ecrã: troca-a pelos dados verdadeiros
+  useEffect(() => {
+    if (online && (isOffline || offlineNoCopy)) load(true)
+  }, [online])
 
   // Silent refresh when switching tabs so counts/lists stay current
   const firstTabRender = useRef(true)
@@ -1073,10 +1080,12 @@ export default function ProjectDashboardPage() {
   return (
     <>
       <div className={styles.page}>
-        {isOffline && (
+        {/* Sem rede, o aviso global "Sem ligação" (Layout) já o diz; este fica
+            para quando há rede mas o servidor não respondeu */}
+        {isOffline && online && (
           <div className={styles.offlineBanner} role="status">
             <span className={styles.offlineLed} aria-hidden="true" />
-            Sem ligação — a mostrar dados em cache
+            Não foi possível atualizar — a mostrar a última cópia
           </div>
         )}
 
