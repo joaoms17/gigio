@@ -5,12 +5,17 @@
  * Uso:
  *   VITE_SUPABASE_URL=https://mockproj.supabase.co VITE_SUPABASE_ANON_KEY=mock npm run build
  *   node scripts/visual-shots.mjs [pasta-destino]
+ *
+ * Também serve de módulo: os fixtures, o servidor do dist e a interceção do
+ * Supabase são exportados (ex.: scripts/test-annotations-e2e.mjs). Importado,
+ * não tira capturas.
  */
 import { chromium } from 'playwright-core'
 import { createServer } from 'node:http'
 import { readFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const DIST = path.resolve(import.meta.dirname, '../dist')
 const OUT = process.argv[2] ?? path.resolve(import.meta.dirname, '../shots')
@@ -182,16 +187,19 @@ const TABLES = {
 
 // ── Servidor estático do dist ───────────────────────────────────────────────
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon' }
-const server = createServer(async (req, res) => {
-  const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname)
-  let file = path.join(DIST, urlPath)
-  if (!existsSync(file) || urlPath === '/') file = path.join(DIST, 'index.html')
-  try {
-    const body = await readFile(file)
-    res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream' })
-    res.end(body)
-  } catch { res.writeHead(404); res.end() }
-})
+/** Servidor (ainda sem listen) de uma pasta de build — SPA: o que não existe cai no index.html */
+function staticServer(dir = DIST) {
+  return createServer(async (req, res) => {
+    const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname)
+    let file = path.join(dir, urlPath)
+    if (!existsSync(file) || urlPath === '/') file = path.join(dir, 'index.html')
+    try {
+      const body = await readFile(file)
+      res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream' })
+      res.end(body)
+    } catch { res.writeHead(404); res.end() }
+  })
+}
 
 // ── Interceção Supabase ─────────────────────────────────────────────────────
 function restResponse(route) {
@@ -291,59 +299,66 @@ const VIEWS = Object.entries(ALL_VIEWS).filter(([k]) => (process.env.VIEWS ?? 'p
 const THEMES = (process.env.THEMES ?? 'light,dark').split(',')
 const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null
 
-await mkdir(OUT, { recursive: true })
-await new Promise(r => server.listen(PORT, r))
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
+export { USER, SESSION, TABLES, SAMPLE_LYRICS, ALL_VIEWS, DIST, restResponse, staticServer }
 
-for (const theme of THEMES) {
-  for (const [vname, viewport] of VIEWS) {
-    const ctx = await browser.newContext({ viewport, deviceScaleFactor: 2 })
-    await ctx.route('**/rest/v1/**', restResponse)
-    await ctx.route('**/auth/v1/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(route.request().url().includes('/user') ? USER : SESSION) }))
-    await ctx.route(/lrclib|genius|nominatim/, route => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }))
-    await ctx.addInitScript(`
-      localStorage.setItem('sb-mockproj-auth-token', ${JSON.stringify(JSON.stringify(SESSION))});
-      localStorage.setItem('gigio-theme', '${theme}');
-    `)
-    const page = await ctx.newPage()
-    for (const [name, route, opts] of PAGES) {
-      if (ONLY && !ONLY.includes(name)) continue
-      try {
-        if (opts?.session) {
-          await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded', timeout: 15000 })
-          await page.evaluate(s => { for (const [k, v] of Object.entries(s)) sessionStorage.setItem(k, v) }, opts.session)
-        }
-        await page.goto(`http://localhost:${PORT}${route}`, { waitUntil: 'networkidle', timeout: 15000 })
-        await page.waitForTimeout(700)
-        const fullPage = !name.startsWith('concerto-') && name !== 'sync'
-        // Numa captura de página inteira, barras position:fixed ficam desenhadas a meio
-        // da página — pô-las em fluxo normal para aparecerem no fim, como ao fazer scroll.
-        const unfix = fullPage ? await page.addStyleTag({ content: '[class*="bottomNav"],[class*="_actionBar_"]{position:static!important}' }) : null
-        await page.screenshot({ path: path.join(OUT, `${name}--${vname}--${theme}.png`), fullPage })
-        if (unfix) await unfix.evaluate(el => el.remove())
-        console.log('ok', `${name}--${vname}--${theme}`)
-      } catch (e) { console.log('FALHOU', name, vname, theme, String(e).split('\n')[0]) }
-    }
-    await ctx.close()
+// Só tira as capturas quando corrido diretamente (não quando importado)
+const isMain = !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+if (isMain) {
+  const server = staticServer(DIST)
+  await mkdir(OUT, { recursive: true })
+  await new Promise(r => server.listen(PORT, r))
+  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
 
-    // Páginas públicas — sem sessão
-    const pub = await browser.newContext({ viewport, deviceScaleFactor: 2 })
-    await pub.route('**/rest/v1/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }))
-    await pub.route('**/auth/v1/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
-    await pub.addInitScript(`localStorage.setItem('gigio-theme', '${theme}');`)
-    const ppage = await pub.newPage()
-    for (const [name, route] of PUBLIC_PAGES) {
-      if (ONLY && !ONLY.includes(name)) continue
-      try {
-        await ppage.goto(`http://localhost:${PORT}${route}`, { waitUntil: 'networkidle', timeout: 15000 })
-        await ppage.waitForTimeout(700)
-        await ppage.screenshot({ path: path.join(OUT, `${name}--${vname}--${theme}.png`), fullPage: true })
-        console.log('ok', `${name}--${vname}--${theme}`)
-      } catch (e) { console.log('FALHOU', name, vname, theme, String(e).split('\n')[0]) }
+  for (const theme of THEMES) {
+    for (const [vname, viewport] of VIEWS) {
+      const ctx = await browser.newContext({ viewport, deviceScaleFactor: 2 })
+      await ctx.route('**/rest/v1/**', restResponse)
+      await ctx.route('**/auth/v1/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(route.request().url().includes('/user') ? USER : SESSION) }))
+      await ctx.route(/lrclib|genius|nominatim/, route => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }))
+      await ctx.addInitScript(`
+        localStorage.setItem('sb-mockproj-auth-token', ${JSON.stringify(JSON.stringify(SESSION))});
+        localStorage.setItem('gigio-theme', '${theme}');
+      `)
+      const page = await ctx.newPage()
+      for (const [name, route, opts] of PAGES) {
+        if (ONLY && !ONLY.includes(name)) continue
+        try {
+          if (opts?.session) {
+            await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded', timeout: 15000 })
+            await page.evaluate(s => { for (const [k, v] of Object.entries(s)) sessionStorage.setItem(k, v) }, opts.session)
+          }
+          await page.goto(`http://localhost:${PORT}${route}`, { waitUntil: 'networkidle', timeout: 15000 })
+          await page.waitForTimeout(700)
+          const fullPage = !name.startsWith('concerto-') && name !== 'sync'
+          // Numa captura de página inteira, barras position:fixed ficam desenhadas a meio
+          // da página — pô-las em fluxo normal para aparecerem no fim, como ao fazer scroll.
+          const unfix = fullPage ? await page.addStyleTag({ content: '[class*="bottomNav"],[class*="_actionBar_"]{position:static!important}' }) : null
+          await page.screenshot({ path: path.join(OUT, `${name}--${vname}--${theme}.png`), fullPage })
+          if (unfix) await unfix.evaluate(el => el.remove())
+          console.log('ok', `${name}--${vname}--${theme}`)
+        } catch (e) { console.log('FALHOU', name, vname, theme, String(e).split('\n')[0]) }
+      }
+      await ctx.close()
+
+      // Páginas públicas — sem sessão
+      const pub = await browser.newContext({ viewport, deviceScaleFactor: 2 })
+      await pub.route('**/rest/v1/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }))
+      await pub.route('**/auth/v1/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
+      await pub.addInitScript(`localStorage.setItem('gigio-theme', '${theme}');`)
+      const ppage = await pub.newPage()
+      for (const [name, route] of PUBLIC_PAGES) {
+        if (ONLY && !ONLY.includes(name)) continue
+        try {
+          await ppage.goto(`http://localhost:${PORT}${route}`, { waitUntil: 'networkidle', timeout: 15000 })
+          await ppage.waitForTimeout(700)
+          await ppage.screenshot({ path: path.join(OUT, `${name}--${vname}--${theme}.png`), fullPage: true })
+          console.log('ok', `${name}--${vname}--${theme}`)
+        } catch (e) { console.log('FALHOU', name, vname, theme, String(e).split('\n')[0]) }
+      }
+      await pub.close()
     }
-    await pub.close()
   }
+  await browser.close()
+  server.close()
+  console.log('shots em', OUT)
 }
-await browser.close()
-server.close()
-console.log('shots em', OUT)

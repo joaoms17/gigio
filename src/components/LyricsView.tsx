@@ -60,14 +60,28 @@ export function withAlpha(color: string, alpha: number, fallback?: string): stri
   return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`
 }
 
-export default function LyricsView({ lyrics, activeLine, accent, fontSize, lineHeight }: {
+/** Medidas dos rótulos de secção: as do telemóvel (< 768px) ou as do tablet */
+export type SectionMetrics = 'phone' | 'tablet'
+
+export default function LyricsView({ lyrics, activeLine, accent, fontSize, lineHeight, metrics, gutter }: {
   lyrics: string; activeLine?: number; accent?: string
   fontSize?: number; lineHeight?: number
+  /**
+   * Fixa as medidas dos rótulos de secção em vez de seguir o ecrã — o layout
+   * de referência das anotações antigas reproduz o aparelho onde se desenhou
+   */
+  metrics?: SectionMetrics
+  /** Calha lateral (px de cada lado): o texto quebra dentro dela (anotações de margem) */
+  gutter?: number
 }) {
   if (!lyrics?.trim()) return <span className={styles.hint}>Sem letra</span>
   const vars: Record<string, string | number> = {}
   if (fontSize) vars['--lyric-size'] = `${fontSize}px`
   if (lineHeight) vars['--lyric-lh'] = lineHeight
+  if (gutter && gutter > 0) {
+    vars.paddingLeft = `${gutter}px`
+    vars.paddingRight = `${gutter}px`
+  }
   // Acento explícito (modo palco) — senão os rótulos usam o --accent-text da app
   if (accent) {
     vars['--lyric-accent'] = accent
@@ -75,17 +89,21 @@ export default function LyricsView({ lyrics, activeLine, accent, fontSize, lineH
     vars['--lyric-accent-soft'] = withAlpha(accent, 0.14, 'transparent')
   }
   const rootStyle = Object.keys(vars).length ? (vars as CSSProperties) : undefined
+  // data-ln = índice da linha no texto (lyrics.split('\n')): as anotações
+  // ancoram cada ponto a um carácter dessa linha (src/lib/annotations).
+  // O texto tem de continuar a ser filho direto — é esse nó que se mede.
   return (
-    <div className={styles.root} style={rootStyle}>
+    <div className={styles.root} style={rootStyle} data-metrics={metrics}>
       {lyrics.split('\n').map((line, i) => {
         const t = line.trim()
         const sec = t.match(/^\[(.+?)\]$/)
-        if (sec) return <div key={i} className={styles.section}>{fmtSection(sec[1])}</div>
+        if (sec) return <div key={i} data-ln={i} data-sec="" className={styles.section}>{fmtSection(sec[1])}</div>
         if (t === '') return <div key={i} className={styles.break} />
         const active = i === activeLine
         return (
           <div
             key={i}
+            data-ln={i}
             data-activeline={active || undefined}
             // Destaque só de fundo + barra: pôr a negrito refazia o fluxo do
             // texto e desalinhava os traços das anotações desenhados por cima

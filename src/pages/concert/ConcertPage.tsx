@@ -10,7 +10,8 @@ import {
   getCachedSetlistMeta,
 } from '../../lib/concertCache'
 import AnnotatedLyrics from '../../components/AnnotatedLyrics'
-import { loadAnnotations, pullAnnotations } from '../../components/AnnotationLayer'
+import { loadAnnotations, pullAnnotations } from '../../lib/annotations/storage'
+import { payloadHasVisible } from '../../lib/annotations/anchor'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
 import { parseRgb, withAlpha } from '../../components/LyricsView'
@@ -572,13 +573,16 @@ export default function ConcertPage() {
   useEffect(() => {
     const song = songs[songIdx]?.song
     if (!song) return
-    // Annotation availability: local first, remote as fallback
+    // Annotation availability: local first, remote as fallback (conta os
+    // traços ancorados quando existem, senão os px antigos; os órfãos de uma
+    // letra editada não contam — estão escondidos)
+    const songLyrics = song.edited_lyrics ?? song.lyrics ?? ''
     const local = loadAnnotations(song.id)
-    if (local && local.strokes.length > 0) setAnnAvailable(true)
+    if (payloadHasVisible(local, songLyrics)) setAnnAvailable(true)
     else {
       setAnnAvailable(false)
       if (userId) pullAnnotations(song.id, userId).then(r => {
-        if (r && r.strokes.length > 0) setAnnAvailable(true)
+        if (payloadHasVisible(r, songLyrics)) setAnnAvailable(true)
       })
     }
     if (!song.has_sync || syncById[song.id]) return
@@ -1733,6 +1737,7 @@ export default function ConcertPage() {
                 <div className={styles.annotationsWrap}>
                   {currentSong && (
                     <AnnotatedLyrics
+                      key={currentSong.id}
                       songId={currentSong.id}
                       userId={user?.id}
                       lyrics={currentSong.edited_lyrics ?? currentSong.lyrics ?? ''}
