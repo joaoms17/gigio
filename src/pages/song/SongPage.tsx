@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import LyricsView from '../../components/LyricsView'
-import AnnotationLayer, { type AnnotationHandle } from '../../components/AnnotationLayer'
+import AnnotationLayer, { type AnnotationHandle, type AnnTool } from '../../components/AnnotationLayer'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
@@ -33,6 +33,16 @@ const ANN_WIDTHS = [
   { id: 'thin',   value: 2, label: 'Traço fino' },
   { id: 'mid',    value: 4, label: 'Traço médio' },
   { id: 'thick',  value: 8, label: 'Traço grosso' },
+]
+/* Cores do marcador — também DADOS: cores vivas de marca-texto, gravadas
+   opacas em cada destaque; a translucidez é da camada (depende do fundo),
+   por isso servem nos dois temas e no palco. */
+const HL_COLORS = [
+  { id: 'yellow', value: '#FFE01A', label: 'Amarelo' },
+  { id: 'green',  value: '#5CE65C', label: 'Verde' },
+  { id: 'pink',   value: '#FF5FAF', label: 'Rosa' },
+  { id: 'blue',   value: '#3DB8FF', label: 'Azul' },
+  { id: 'orange', value: '#FF9A1F', label: 'Laranja' },
 ]
 
 /* ── Ícones SVG inline (stroke, currentColor) ── */
@@ -95,6 +105,17 @@ function IconUndo({ size = 18 }: IconProps) {
     <svg width={size} height={size} viewBox="0 0 24 24" {...ICON_PROPS}>
       <polyline points="9 14 4 9 9 4" />
       <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+    </svg>
+  )
+}
+
+/** Marcador (marca-texto): corpo inclinado, ponta biselada e o rasto por baixo */
+function IconHighlighter({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...ICON_PROPS}>
+      <path d="M15 3.5l5.5 5.5-7.5 7.5-5.5-5.5z" />
+      <path d="M7.5 11l-2 5 2.5 2.5 5-2" />
+      <path d="M3 21h9" />
     </svg>
   )
 }
@@ -253,8 +274,13 @@ export default function SongPage() {
   // Annotation state
   // Paleta consciente do tema (lida no render; a página remonta ao mudar de tema)
   const annPalette = document.documentElement.dataset.theme === 'dark' ? ANN_COLORS_DARK : ANN_COLORS
-  const [annTool, setAnnTool] = useState<'pen' | 'eraser'>('pen')
+  const [annTool, setAnnTool] = useState<AnnTool>('pen')
+  // Última ferramenta de tinta (caneta ou marcador): a paleta que a fita
+  // mostra, também com a borracha ativa — tocar numa cor volta a ela
+  const [annInk, setAnnInk] = useState<'pen' | 'highlighter'>('pen')
+  // Cada ferramenta lembra a sua cor
   const [annColor, setAnnColor] = useState(ANN_COLORS[0].value)
+  const [hlColor, setHlColor] = useState(HL_COLORS[0].value)
   const [annWidth, setAnnWidth] = useState(ANN_WIDTHS[0].value)
   const [annScrollMode, setAnnScrollMode] = useState(false)
   const annLayerRef = useRef<AnnotationHandle>(null)
@@ -487,7 +513,21 @@ export default function SongPage() {
     return t && !/^\[.+\]$/.test(t)
   }).length
 
-  const annPenActive = annTool === 'pen' && !annScrollMode
+  // Ferramenta de tinta ativa (não a borracha, não o modo scroll)
+  const annInkActive = annTool !== 'eraser' && !annScrollMode
+  const annHl = annInk === 'highlighter'
+  const swatches = annHl ? HL_COLORS : annPalette
+  const swatchColor = annHl ? hlColor : annColor
+  const pickTool = (t: AnnTool) => {
+    setAnnTool(t)
+    if (t !== 'eraser') setAnnInk(t)
+    setAnnScrollMode(false)
+  }
+  const ANN_TOOLS: { id: AnnTool; label: string; title: string; icon: ReactNode }[] = [
+    { id: 'pen', label: 'Caneta', title: 'Caneta: escrever e sublinhar', icon: <IconPencil size={18} /> },
+    { id: 'highlighter', label: 'Marcador', title: 'Marcador: destacar frases (palavras inteiras)', icon: <IconHighlighter /> },
+    { id: 'eraser', label: 'Borracha', title: 'Borracha', icon: <IconEraser /> },
+  ]
 
   return (
     <div className={`${styles.page} ${mode === 'ensaio' && tab === 'lyrics' ? styles.pageRehearsal : ''}`}>
@@ -634,41 +674,47 @@ export default function SongPage() {
                 {/* Fita de ferramentas de anotação */}
                 <div className={styles.annStrip} role="toolbar" aria-label="Ferramentas de anotação">
                   <div className={styles.annRow}>
-                    {/* Colors */}
-                    <div className={styles.annGroup}>
-                      {annPalette.map(c => {
-                        const on = annPenActive && annColor === c.value
+                    {/* Ferramenta: Caneta | Marcador | Borracha */}
+                    <div className={styles.annGroup} role="group" aria-label="Ferramenta">
+                      {ANN_TOOLS.map(t => {
+                        const on = annTool === t.id && !annScrollMode
                         return (
                           <button
-                            key={c.id}
+                            key={t.id}
                             type="button"
-                            className={`${styles.annSwatchBtn} ${on ? styles.annSwatchOn : ''}`}
-                            onClick={() => { setAnnColor(c.value); setAnnTool('pen'); setAnnScrollMode(false) }}
-                            aria-label={`Cor ${c.label.toLowerCase()}`}
+                            className={`${styles.annTool} ${styles.annToolWide} ${on ? styles.annToolOn : ''}`}
+                            onClick={() => pickTool(t.id)}
+                            aria-label={t.label}
                             aria-pressed={on}
-                            title={c.label}
+                            title={t.title}
                           >
-                            <span className={styles.annSwatch} style={{ backgroundColor: c.value }} />
+                            {t.icon}
+                            <span className={styles.annToolLabel}>{t.label}</span>
                           </button>
                         )
                       })}
                     </div>
 
-                    {/* Widths */}
-                    <div className={styles.annGroup}>
-                      {ANN_WIDTHS.map(w => {
-                        const on = annWidth === w.value && annPenActive
+                    {/* Cores da ferramenta de tinta (a caneta e o marcador têm paletas próprias) */}
+                    <div className={styles.annGroup} role="group" aria-label={annHl ? 'Cores do marcador' : 'Cores da caneta'}>
+                      {swatches.map(c => {
+                        const on = annInkActive && swatchColor === c.value
+                        const name = annHl ? `Marcador ${c.label.toLowerCase()}` : `Cor ${c.label.toLowerCase()}`
                         return (
                           <button
-                            key={w.id}
+                            key={c.id}
                             type="button"
-                            className={`${styles.annTool} ${on ? styles.annToolOn : ''}`}
-                            onClick={() => { setAnnWidth(w.value); setAnnTool('pen'); setAnnScrollMode(false) }}
-                            aria-label={w.label}
+                            className={`${styles.annSwatchBtn} ${on ? styles.annSwatchOn : ''}`}
+                            onClick={() => {
+                              if (annHl) setHlColor(c.value)
+                              else setAnnColor(c.value)
+                              pickTool(annInk)
+                            }}
+                            aria-label={name}
                             aria-pressed={on}
-                            title={w.label}
+                            title={annHl ? name : c.label}
                           >
-                            <span className={styles.annWidthSample} style={{ height: w.value }} />
+                            <span className={`${styles.annSwatch} ${annHl ? styles.annSwatchHl : ''}`} style={{ backgroundColor: c.value }} />
                           </button>
                         )
                       })}
@@ -676,20 +722,30 @@ export default function SongPage() {
                   </div>
 
                   <div className={styles.annRow}>
-                    <div className={styles.annGroup}>
-                      {/* Eraser */}
-                      <button
-                        type="button"
-                        className={`${styles.annTool} ${annTool === 'eraser' && !annScrollMode ? styles.annToolOn : ''}`}
-                        onClick={() => { setAnnTool(t => t === 'eraser' ? 'pen' : 'eraser'); setAnnScrollMode(false) }}
-                        title="Borracha"
-                        aria-label="Borracha"
-                        aria-pressed={annTool === 'eraser' && !annScrollMode}
-                      >
-                        <IconEraser />
-                      </button>
+                    {/* Espessuras — só da caneta: com o marcador ficam desativadas
+                        (no mesmo sítio, a fita não muda de altura) */}
+                    <div className={styles.annGroup} role="group" aria-label="Espessura da caneta">
+                      {ANN_WIDTHS.map(w => {
+                        const on = !annHl && annInkActive && annWidth === w.value
+                        return (
+                          <button
+                            key={w.id}
+                            type="button"
+                            className={`${styles.annTool} ${styles.annWidthBtn} ${on ? styles.annToolOn : ''}`}
+                            onClick={() => { setAnnWidth(w.value); pickTool('pen') }}
+                            disabled={annHl}
+                            aria-label={w.label}
+                            aria-pressed={on}
+                            title={annHl ? `${w.label} (só para a caneta)` : w.label}
+                          >
+                            <span className={styles.annWidthSample} style={{ height: w.value }} />
+                          </button>
+                        )
+                      })}
+                    </div>
 
-                      {/* Undo */}
+                    <div className={styles.annGroup}>
+                      {/* Undo — um gesto de cada vez (traço, destaque ou borracha) */}
                       <button
                         type="button"
                         className={styles.annTool}
@@ -762,7 +818,7 @@ export default function SongPage() {
                           lyrics={lyrics}
                           fontSize={rehearsalFont}
                           tool={annTool}
-                          color={annColor}
+                          color={annTool === 'highlighter' ? hlColor : annColor}
                           strokeWidth={annWidth}
                           disabled={annScrollMode}
                           contentRef={lyricsContentRef}

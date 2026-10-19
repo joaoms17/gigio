@@ -4,20 +4,23 @@ import LyricsView, { withAlpha } from './LyricsView'
 import { LegacyReference } from './AnnotationLayer'
 import { LEGACY_PULL_WAIT_MS, cachedLegacy, legacyKey, loadAnnotations, pullAnnotations } from '../lib/annotations/storage'
 import {
-  marginGutter, pathFromSubpaths, payloadHasStrokes, rebaseStrokes, resolveAll, unionById,
-  type AnchoredStroke, type ParsedPayload,
+  marginGutter, payloadHasStrokes, rebaseStrokes, unionById,
+  type AnchoredStroke, type AnnItem, type ParsedPayload,
 } from '../lib/annotations/anchor'
 import { measureLayout, watchFonts, type MeasuredLayout } from '../lib/annotations/measure'
+import { buildView, markerPaint, type MarkerShape, type PenPath } from '../lib/annotations/view'
+import MarkerUnderlay from './MarkerUnderlay'
+import styles from './AnnotatedLyrics.module.css'
 
 const PAD_V = 16
 const PAD_H = 20
-const NO_STROKES: AnchoredStroke[] = []
-const NO_VIEW = { paths: [] as { id: string; color: string; width: number; d: string }[], gutter: 0, padTop: 0, padBottom: 0 }
+const NO_STROKES: AnnItem[] = []
+const NO_VIEW = { paths: [] as PenPath[], marker: [] as MarkerShape[], gutter: 0, padTop: 0, padBottom: 0 }
 
 /** Âncoras de um payload v2 na numeração desta letra (null se não tem nada) */
-function anchoredOf(p: ParsedPayload | null, lyrics: string): AnchoredStroke[] | null {
+function anchoredOf(p: ParsedPayload | null, lyrics: string): AnnItem[] | null {
   if (!p?.anchored || !payloadHasStrokes(p)) return null
-  return rebaseStrokes(p.anchored, p.lines, lyrics).strokes
+  return rebaseStrokes(p.anchored, p.lines, lyrics, p.hlLines).strokes
 }
 
 /** Payload antigo (px, sem âncoras) com traços, ou null */
@@ -97,7 +100,7 @@ export default function AnnotatedLyrics({
     if (legacy) setMigrated({ key: legacyKey(legacy, usedLyrics), strokes })
   }, [legacy])
 
-  const strokes = anchored ?? migratedStrokes ?? NO_STROKES
+  const strokes: AnnItem[] = anchored ?? migratedStrokes ?? NO_STROKES
 
   // Medição do próprio LyricsView. Mesma geometria → mesmo objeto (nada a
   // redesenhar); a linha ativa só muda o fundo, não o layout
@@ -113,31 +116,20 @@ export default function AnnotatedLyrics({
   }, [])
 
   // Caminhos resolvidos neste layout — memoizados: a linha ativa muda a cada
-  // verso e não pode refazer os traços. Também: a calha lateral que as
-  // chavetas de margem pedem (o texto quebra dentro dela em vez de passar
-  // por baixo delas) e o espaço que os traços precisam acima da 1.ª e
-  // abaixo da última linha (senão eram cortados)
+  // verso e não pode refazer os traços. A caneta por cima do texto, o
+  // marcador por trás. Também: a calha lateral que as chavetas de margem
+  // pedem (o texto quebra dentro dela em vez de passar por baixo delas) e o
+  // espaço que os traços precisam acima da 1.ª e abaixo da última linha
+  // (senão eram cortados)
   const view = useMemo(() => {
     if (!layout || strokes.length === 0) return NO_VIEW
-    const resolved = resolveAll(strokes, layout)
-    let top = 0
-    let bottom = layout.height
-    const paths: typeof NO_VIEW.paths = []
-    for (const s of resolved) {
-      if (s.hidden) continue
-      for (const sp of s.subpaths) {
-        for (let i = 1; i < sp.length; i += 2) {
-          top = Math.min(top, sp[i] - s.width / 2)
-          bottom = Math.max(bottom, sp[i] + s.width / 2)
-        }
-      }
-      paths.push({ id: s.id, color: s.color, width: s.width, d: pathFromSubpaths(s.subpaths) })
-    }
+    const v = buildView(strokes, layout)
     return {
-      paths,
-      gutter: marginGutter(resolved, layout),
-      padTop: Math.ceil(-top),
-      padBottom: Math.ceil(bottom - layout.height),
+      paths: v.pen,
+      marker: v.marker,
+      gutter: marginGutter(v.resolved, layout),
+      padTop: Math.ceil(-Math.min(0, v.top)),
+      padBottom: Math.ceil(Math.max(layout.height, v.bottom) - layout.height),
     }
   }, [strokes, layout])
 
@@ -181,6 +173,11 @@ export default function AnnotatedLyrics({
     ink['--text3'] = withAlpha(textColor, 0.56)
   }
 
+  // Marcador: a opacidade de cada cor depende do fundo (o tema do concerto
+  // tem fundo configurável; sem ele, o painel --surface do tema da app) e da
+  // cor e do tamanho da letra e dos rótulos por cima (medidos com o layout)
+  const paint = useMemo(() => markerPaint(layout?.ink, bgColor), [layout, bgColor])
+
   const frameStyle: CSSProperties = {
     background: bgColor ?? 'var(--surface)',
     border: hasOwnBg ? 'none' : '1px solid var(--border)',
@@ -196,7 +193,9 @@ export default function AnnotatedLyrics({
       {/* Espaço para os traços acima/abaixo da letra — fora do bloco medido,
           para não mudar a medição (nem voltar a medir por causa dele) */}
       <div style={{ paddingTop: view.padTop, paddingBottom: view.padBottom }}>
-        <div ref={innerRef} style={{ position: 'relative' }}>
+        {/* Contexto de empilhamento (.host): o marcador fica atrás da letra e
+            à frente do fundo; a faixa da linha ativa passa para trás dele */}
+        <div ref={innerRef} className={styles.host}>
           <LyricsView
             lyrics={lyrics} activeLine={activeLine} accent={accentColor}
             fontSize={fontSize} lineHeight={lineHeight} gutter={view.gutter}
@@ -220,6 +219,7 @@ export default function AnnotatedLyrics({
               ))}
             </svg>
           )}
+          <MarkerUnderlay shapes={view.marker} paint={paint} />
         </div>
       </div>
       {legacy && !migratedStrokes && refWidth > 0 && (

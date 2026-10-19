@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
+import { execSync } from 'node:child_process'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
@@ -32,7 +33,20 @@ const {
   smoothPath, pathFromSubpaths, hitSubpaths, strokesAt, mergeRowRects, pickCharRect, isLayoutEmpty,
   MODE_TEXT, MODE_MARGIN, MODE_MARGIN_ROW, MODE_GAP, MODE_FREE, P_STRIDE, MIN_WIDTH_PX, Y_IN, Y_BELOW, Y_ABOVE,
   anchorFree, marginGutter, decodeAnchoredParts, unionById, unionExtra, payloadHasVisible,
+  // Marcador
+  MODE_HL_TEXT, MODE_HL_INK, HL_INK_EM, HL_LEGACY_ALPHA, HL_OPACITY_LIGHT, HL_OPACITY_DARK,
+  classifyHighlight, highlightRange, anchorHighlight, resolveHighlight, resolveHighlights, highlightsAt,
+  mergeHighlights, isTextHighlight, markerOpacity, luminanceOf, rgbaOf, markerAlpha, HL_MIN_ALPHA_LARGE, MODE_HL_LINES,
 } = A
+
+// A versão publicada antes do marcador (PR #45, commit 2b52db3) — possivelmente
+// em cache no iPad: tem de preservar os destaques sem os apagar nem desenhar
+let OLD = null
+try {
+  const oldSrc = execSync('git show 2b52db3:src/lib/annotations/anchor.ts', { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+  writeFileSync(join(out, 'anchor-2b52db3.mjs'), esbuild.transformSync(oldSrc, { loader: 'ts', format: 'esm', target: 'es2022' }).code)
+  OLD = await import(pathToFileURL(join(out, 'anchor-2b52db3.mjs')).href)
+} catch { /* sem git ou sem o commit: o teste de compatibilidade avisa */ }
 const MODE_NAMES = { [MODE_TEXT]: 'texto', [MODE_MARGIN]: 'margem', [MODE_GAP]: 'intervalo', [MODE_FREE]: 'livre' }
 
 /* ── mini harness ── */
@@ -1218,6 +1232,741 @@ test('payloadHasVisible: os órfãos não contam (tecla do concerto)', () => {
   ok(!payloadHasVisible(p2, edited) && payloadHasVisible(p2, LYRICS), 'órfão gravado: invisível com a letra editada, visível se a linha voltar')
   ok(payloadHasVisible({ w: 1, strokes: [{ id: 'x', pts: [1, 2, 3, 4], color: YELLOW, width: 3 }], anchored: null, lines: null, extra: [], pend: false }, ''), 'antigo (px): conta os traços')
   ok(!payloadHasVisible(null, LYRICS), 'sem payload: nada')
+})
+
+/* ═══ 12. Marcador (highlighter) ═══ */
+const PINK = '#ff5faf'
+const GREEN = '#5ce65c'
+const BLUE = '#3db8ff'
+/** Centro da caixa de um carácter */
+function center(L, ln, c) {
+  const b = L.charRect(ln, c)
+  return [(b.left + b.right) / 2, (b.top + b.bottom) / 2]
+}
+/** Índice de `w` na linha (a k-ésima ocorrência) */
+function at(L, ln, w, k = 0) {
+  let i = -1
+  for (let j = 0; j <= k; j++) i = L.text(ln).indexOf(w, i + 1)
+  if (i < 0) throw new Error(`"${w}" não está na linha ${ln}`)
+  return i
+}
+const leadOfText = t => t.length - t.replace(/^\s+/, '').length
+/** Gesto do marcador do centro de um carácter ao centro de outro (pode mudar de linha) */
+function sweep(L, [ln0, c0], [ln1, c1], { n = 24, wob = 0.05 } = {}) {
+  const [x0, y0] = center(L, ln0, c0)
+  const [x1, y1] = center(L, ln1, c1)
+  const pts = []
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1)
+    pts.push(x0 + t * (x1 - x0), y0 + t * (y1 - y0) + Math.sin(t * 11) * wob * L.em)
+  }
+  return pts
+}
+/** Destaque exatamente de `phrase` (palavras inteiras) na linha */
+function mk(L, ln, phrase, color, id, k = 0) {
+  const i = at(L, ln, phrase, k)
+  return highlightRange(sweep(L, [ln, i], [ln, i + phrase.length - 1]), color, L, id)[0]
+}
+/** Vertical na margem esquerda das linhas dadas */
+function marginBar(L, lns, { gapEm = 1.2, n = 30 } = {}) {
+  const rs = lns.flatMap(ln => L.rows(ln))
+  const x = Math.min(...rs.map(r => r.left)) - gapEm * L.em
+  const top = Math.min(...rs.map(r => r.top))
+  const bottom = Math.max(...rs.map(r => r.bottom))
+  const pts = []
+  for (let i = 0; i < n; i++) pts.push(x + Math.sin(i) * 2, top + ((bottom - top) * i) / (n - 1))
+  return pts
+}
+/** Gravar e ler como o AnnotationLayer (buildPayload → JSON → readPayload) */
+function saveLoad(items, lyrics, cfg = ENSAIO) {
+  const L = makeLayout(lyrics, cfg)
+  return readPayload(JSON.parse(JSON.stringify(buildPayload({
+    w: cfg.width, h: L.height, strokes: toLegacyStrokes(resolveAll(items, L), resolveHighlights(items, L)), em: L.em, anchored: items, lyrics,
+  }))))
+}
+/** Caixa esperada de cada row de um destaque (calculada à parte, só com o layout fictício) */
+function rowsOfRange(L, h) {
+  const lead = leadOfText(L.text(h.ln))
+  const rs = L.rows(h.ln)
+  const per = new Map()
+  for (let c = lead + h.c0; c < lead + h.c1; c++) {
+    const b = L.charRect(h.ln, c)
+    if (!b || b.right <= b.left) continue
+    const ri = rs.findIndex(r => r.top <= b.top + 0.01 && r.bottom >= b.bottom - 0.01)
+    const cur = per.get(ri) ?? { left: Infinity, right: -Infinity, top: rs[ri].top, bottom: rs[ri].bottom }
+    cur.left = Math.min(cur.left, b.left)
+    cur.right = Math.max(cur.right, b.right)
+    per.set(ri, cur)
+  }
+  return [...per.entries()].sort((a, b) => a[0] - b[0]).map(e => e[1])
+}
+
+test('marcador: arrasto numa linha ajusta a palavras inteiras', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const a = at(S, 2, 'café') + 2   // a meio de "café"
+  const b = at(S, 2, 'mesa') + 1   // a meio de "mesa"
+  const pts = sweep(S, [2, a], [2, b])
+  eq(classifyHighlight(pts, S), 'text', 'palavras: o gesto em cima do texto é um destaque')
+  const hs = highlightRange(pts, YELLOW, S, 'h')
+  eq(hs.map(h => [h.id, h.mode, h.ln, h.c0, h.c1, h.t]), [['h', MODE_HL_TEXT, 2, at(S, 2, 'café'), at(S, 2, 'café') + 12, 'café na mesa']],
+    'palavras: de "café" a "mesa", inteiras, mesmo começando e acabando a meio')
+  eq(highlightRange(sweep(S, [2, b], [2, a]), YELLOW, S).map(h => h.t), ['café na mesa'], 'palavras: ao contrário dá o mesmo')
+  const back = [...sweep(S, [2, a], [2, b]), ...sweep(S, [2, b], [2, at(S, 2, 'na')])]
+  eq(highlightRange(back, YELLOW, S).map(h => h.t), ['café na mesa'], 'palavras: vai-e-vem numa linha cobre tudo o que tocou')
+  const d = at(S, 8, 'daqui')
+  const h8 = highlightRange(sweep(S, [8, d + 1], [8, d + 3]), YELLOW, S)
+  eq(h8.map(h => [h.c0, h.t]), [[at(S, 8, 'daqui') - 4, 'daqui)']], 'palavras: linha indentada — c0 conta do 1.º não branco (pontuação colada fica)')
+  const r = anchorHighlight(pts, YELLOW, S, 'x')
+  ok(r && r.ink === null && r.marks.length === 1 && r.marks[0].id === 'x', 'anchorHighlight: destaque, sem traço', r)
+  ok(isTextHighlight(r.marks[0]) && !isTextHighlight(anchorStroke(pts, YELLOW, 3, S)), 'isTextHighlight distingue destaque de traço')
+})
+
+test('marcador: toque curto destaca a palavra; fora do texto não faz nada', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const c = at(S, 3, 'chaves') + 2
+  const [x, y] = center(S, 3, c)
+  eq(classifyHighlight([x, y], S), 'text', 'toque: em cima de uma palavra')
+  eq(highlightRange([x, y], YELLOW, S).map(h => h.t), ['chaves'], 'toque: a palavra inteira')
+  const j = 0.1 * S.em
+  eq(highlightRange([x, y, x + j, y + j / 2, x - j / 2, y], YELLOW, S).map(h => h.t), ['chaves'], 'toque com tremor (< 0.3em): a mesma palavra')
+  const sp = at(S, 3, ' chaves')
+  const [sx, sy] = center(S, 3, sp)
+  const onSpace = highlightRange([sx, sy], YELLOW, S).map(h => h.t)
+  ok(onSpace.length === 1 && (onSpace[0] === 'as' || onSpace[0] === 'chaves'), 'toque no espaço: a palavra mais próxima', onSpace)
+  const row = S.rows(3)[0]
+  ok(row.left - S.blockLeft > 0.6 * S.em + 5, 'pré-condição: margem à esquerda da linha 3')
+  eq(classifyHighlight([S.blockLeft + 5, (row.top + row.bottom) / 2], S), null, 'toque na margem: nada')
+  eq(anchorHighlight([S.blockLeft + 5, (row.top + row.bottom) / 2], YELLOW, S), null, 'toque na margem: anchorHighlight null')
+  const lab = S.rows(6)[0]
+  const tl = highlightRange([(lab.left + lab.right) / 2, (lab.top + lab.bottom) / 2], YELLOW, S)
+  eq(tl.map(h => [h.ln, h.t]), [[6, 'REFRÃO']], 'toque no rótulo de secção: o rótulo')
+  eq(classifyHighlight([], S), null, 'sem pontos: nada')
+  eq(classifyHighlight([NaN, 1, 2, Infinity], S), null, 'pontos não finitos: nada')
+})
+
+test('marcador: arrasto por 2 e 3 linhas tem a semântica de uma seleção de texto', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const two = highlightRange(sweep(S, [1, at(S, 1, 'rio') + 1], [2, at(S, 2, 'sol') + 1], { n: 40 }), PINK, S, 'm')
+  eq(two.map(h => [h.id, h.ln, h.t]), [['m', 1, 'rio a passar'], ['m-1', 2, 'Há café na mesa e o sol']],
+    '2 linhas: o fim da 1.ª e o início da última')
+  const s0 = [2, at(S, 2, 'sol') + 1]
+  const e0 = [4, at(S, 4, 'saio') + 1]
+  // Diagonal para a esquerda: atravessa "e o" (linha 2) e "para a" (linha 4) a caminho
+  const three = highlightRange(sweep(S, s0, e0, { n: 60 }), PINK, S)
+  eq(three.map(h => [h.ln, h.t]), [[2, 'sol a entrar'], [3, 'Guardo as chaves no bolso do casaco'], [4, 'E saio']],
+    '3 linhas: da palavra onde entrou à palavra onde saiu, a do meio inteira (a diagonal não apanha mais palavras)')
+  eq(highlightRange(sweep(S, e0, s0, { n: 60 }), PINK, S).map(h => [h.ln, h.t]), three.map(h => [h.ln, h.t]),
+    '3 linhas: de baixo para cima dá o mesmo (ordem de leitura)')
+  // Começar e acabar fora do texto: contam os pontos onde entrou e saiu dele
+  const [ax, ay] = center(S, 2, at(S, 2, 'sol') + 1)
+  const [bx, by] = center(S, 4, at(S, 4, 'saio') + 1)
+  const loose = [ax + 6 * S.em, ay - 2 * S.em, ...sweep(S, s0, e0, { n: 60 }), bx - 6 * S.em, by + 2.5 * S.em]
+  eq(highlightRange(loose, PINK, S).map(h => h.t), three.map(h => h.t), '3 linhas: pontos fora do texto nas pontas não contam')
+  // Por cima de uma quebra de estrofe e de um rótulo: a linha vazia não tem registo, o rótulo entra inteiro
+  const cross = highlightRange(sweep(S, [4, at(S, 4, 'trás') + 1], [7, at(S, 7, 'contigo') + 2], { n: 60 }), PINK, S)
+  eq(cross.map(h => [h.ln, h.t]), [[4, 'trás'], [6, 'REFRÃO'], [7, 'Leva-me contigo,']], 'estrofes: sem registo na linha vazia, rótulo inteiro')
+  // Linha longa partida em rows: um só registo (é uma linha da letra)
+  const T = makeLayout(LYRICS, TELEMOVEL)
+  ok(T.rows(12).length >= 3, 'pré-condição: linha longa em 3+ rows no telemóvel')
+  const lw = highlightRange(sweep(T, [12, at(T, 12, 'comprida') + 1], [12, at(T, 12, 'telemóvel') + 2], { n: 50 }), PINK, T)
+  eq(lw.map(h => [h.ln, h.t]), [[12, 'comprida que não cabe inteira no ecrã do telemóvel']], 'linha longa em várias rows: um registo')
+})
+
+test('marcador: gestos em U, zigue-zague e varrimentos para trás', () => {
+  /** Gesto feito de troços (cada um do centro de um carácter ao de outro) */
+  const path = (L, ...legs) => legs.flatMap(([a, b, n], k) => sweep(L, a, b, { n: n ?? 24 }).slice(k ? 2 : 0))
+  const end = (L, ln) => L.text(ln).replace(/\s+$/, '').length - 1
+  for (const [name, cfg] of [['Ensaio', ENSAIO], ['telemóvel', { ...TELEMOVEL, em: 18, width: 360 }]]) {
+    const L = makeLayout(LYRICS, cfg)
+    if (L.rows(1).length !== 1 || L.rows(2).length !== 1 || L.rows(3).length !== 1) {
+      ok(false, `${name}: pré-condição — linhas 1–3 numa row cada`)
+      continue
+    }
+    const full = ln => L.text(ln).trim()
+    // U: linha 1 para a direita, desce pela direita, linha 2 de volta para a esquerda
+    const U = path(L, [[1, 0], [1, end(L, 1)]], [[1, end(L, 1)], [2, end(L, 2)], 4], [[2, end(L, 2)], [2, 0]])
+    eq(highlightRange(U, YELLOW, L).map(h => [h.ln, h.t]), [[1, full(1)], [2, full(2)]], `${name}: U — as duas linhas varridas ficam inteiras`)
+    // Ao contrário (de baixo para cima, também em U)
+    const Ur = path(L, [[2, 0], [2, end(L, 2)]], [[2, end(L, 2)], [1, end(L, 1)], 4], [[1, end(L, 1)], [1, 0]])
+    eq(highlightRange(Ur, YELLOW, L).map(h => [h.ln, h.t]), [[1, full(1)], [2, full(2)]], `${name}: U de baixo para cima — o mesmo`)
+    // Z: linha 1 para a direita, diagonal de volta ao início da linha 2, linha 2 para a direita
+    const Z = path(L, [[1, 0], [1, end(L, 1)]], [[1, end(L, 1)], [2, 0], 30], [[2, 0], [2, end(L, 2)]])
+    eq(highlightRange(Z, YELLOW, L).map(h => [h.ln, h.t]), [[1, full(1)], [2, full(2)]], `${name}: Z — as duas linhas inteiras`)
+    // Começa a meio da linha 1, volta ao início, desce e varre a linha 2 até "mesa"
+    const mid = at(L, 1, 'com')
+    const back = path(L, [[1, mid], [1, 0]], [[1, 0], [2, 0], 4], [[2, 0], [2, at(L, 2, 'mesa') + 1]])
+    eq(highlightRange(back, YELLOW, L).map(h => [h.ln, h.t]), [[1, full(1)], [2, 'Há café na mesa']],
+      `${name}: começa a meio e volta ao início — as palavras varridas para trás contam`)
+    // Zigue-zague que acaba na row de partida: as outras rows tocadas contam
+    const zz = path(L, [[1, 0], [1, end(L, 1)]], [[1, end(L, 1)], [2, end(L, 2)], 4], [[2, end(L, 2)], [2, 0]], [[2, 0], [1, 2], 4])
+    eq(highlightRange(zz, YELLOW, L).map(h => [h.ln, h.t]), [[1, full(1)], [2, full(2)]], `${name}: zigue-zague que volta à 1.ª linha — a 2.ª não se perde`)
+    // Três linhas em S: 1 →, 2 ←, 3 → até "chaves"
+    const S3 = path(L, [[1, 0], [1, end(L, 1)]], [[1, end(L, 1)], [2, end(L, 2)], 4], [[2, end(L, 2)], [2, 0]],
+      [[2, 0], [3, 0], 4], [[3, 0], [3, at(L, 3, 'chaves') + 2]])
+    eq(highlightRange(S3, YELLOW, L).map(h => [h.ln, h.t]), [[1, full(1)], [2, full(2)], [3, 'Guardo as chaves']], `${name}: S por 3 linhas`)
+    // Varrer uma linha com um desvio para a folga da linha de baixo (sem entrar na caixa do texto dela)
+    const r1 = L.rows(1)[0]
+    const r2 = L.rows(2)[0]
+    const dipY = r1.bottom + Math.min((r2.top - r1.bottom) * 0.9, 0.45 * L.em)
+    const [ax, ay] = center(L, 1, at(L, 1, 'cedo'))
+    const [bx] = center(L, 1, at(L, 1, 'passar') + 2)
+    const dip = []
+    for (let i = 0; i <= 30; i++) {
+      const t = i / 30
+      dip.push(ax + t * (bx - ax), i === 15 || i === 16 ? dipY : ay)
+    }
+    ok(dipY < r2.top && classifyHighlight(dip, L) === 'text', `${name}: pré-condição — o desvio fica na folga, fora da caixa da linha 2`)
+    eq(highlightRange(dip, YELLOW, L).map(h => [h.ln, h.t]), [[1, 'cedo com o rio a passar']], `${name}: um desvio para a folga da vizinha não acrescenta a linha de baixo`)
+  }
+  // Diagonais (não varrem): a 1.ª e a última palavra são as do início e do fim
+  const S = makeLayout(LYRICS, ENSAIO)
+  const d1 = highlightRange(sweep(S, [1, at(S, 1, 'rio') + 1], [2, at(S, 2, 'café') + 1], { n: 40, wob: 0 }), YELLOW, S)
+  eq(d1.map(h => [h.ln, h.t]), [[1, 'rio a passar'], [2, 'Há café']], 'diagonal de uma linha para a seguinte, para trás: não apanha as palavras por onde passa')
+})
+
+test('marcador: margem, vertical e folha sem letra → traço livre de marcador', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const bar = marginBar(S, [1, 2, 3, 4])
+  eq(classifyHighlight(bar, S), 'ink', 'vertical na margem: traço livre')
+  const r = anchorHighlight(bar, BLUE, S, 'barra')
+  ok(r && r.marks.length === 0 && r.ink && r.ink.hl === true && r.ink.mode === MODE_MARGIN && r.ink.id === 'barra',
+    'vertical na margem: ancorado como uma chaveta (margem), com hl', r && r.ink && { mode: r.ink.mode, hl: r.ink.hl })
+  const rs = resolveStroke(r.ink, S)
+  ok(rs.hl === true && Math.abs(rs.width - HL_INK_EM * S.em) < 0.05 && maxDev(rs.subpaths[0], bar) <= 0.5,
+    'traço livre: largo (0.9em), no sítio onde se desenhou', { w: rs.width })
+  const G = makeLayout(LYRICS, GRANDE)
+  ok(Math.abs(resolveStroke(r.ink, G).width - HL_INK_EM * G.em) < 0.05, 'traço livre: a largura escala com o em')
+  // Vertical por cima do texto (altura > 1.5× largura)
+  const cx = S.centerX
+  const vt = []
+  for (let i = 0; i < 20; i++) vt.push(cx + Math.sin(i) * 3, S.rows(1)[0].top + i * 6)
+  eq(classifyHighlight(vt, S), 'ink', 'vertical por cima do texto: traço livre')
+  // Horizontal na margem (fora das rows)
+  const row = S.rows(3)[0]
+  const y = (row.top + row.bottom) / 2
+  eq(classifyHighlight([S.blockLeft + 2, y, S.blockLeft + 30, y + 1, S.blockLeft + 50, y], S), 'ink', 'horizontal na margem: traço livre')
+  // Entre estrofes, longe das linhas
+  const gy = (S.rows(4)[0].bottom + S.rows(6)[0].top) / 2
+  const gpts = [cx - 60, gy, cx, gy + 2, cx + 60, gy]
+  const gap = anchorHighlight(gpts, BLUE, S)
+  ok(gap && gap.ink && gap.ink.hl && gap.ink.mode === anchorStroke(gpts, BLUE, 3, S).mode, 'entre estrofes: traço livre, ancorado como a caneta o ancoraria', gap && gap.ink && gap.ink.mode)
+  // Folha sem letra
+  const E = makeLayout('', ENSAIO)
+  eq(classifyHighlight([10, 10, 200, 30], E), 'ink', 'sem letra: traço livre')
+  const fr = anchorHighlight([10, 10, 200, 30], BLUE, E)
+  ok(fr && fr.ink && fr.ink.mode === MODE_FREE && fr.ink.hl && !resolveStroke(fr.ink, E).hidden, 'sem letra: livre na folha (MODE_FREE)')
+  eq(classifyHighlight([10, 10], E), null, 'sem letra: um ponto só não faz nada')
+})
+
+test('marcador: retângulos por row, por trás do texto, em qualquer layout', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const one = mk(S, 2, 'café na mesa', YELLOW, 'um')
+  const r1 = resolveHighlight(one, S)
+  const want = rowsOfRange(S, one)
+  ok(!r1.hidden && r1.rects.length === 1, 'identidade: uma row → um retângulo')
+  const rr = r1.rects[0]
+  ok(rr.left <= want[0].left && rr.left >= want[0].left - 0.15 * S.em && rr.right >= want[0].right && rr.right <= want[0].right + 0.15 * S.em,
+    'identidade: do left do 1.º carácter ao right do último, com pequena folga', [rr, want[0]])
+  ok(rr.top <= want[0].top && rr.top >= want[0].top - 0.1 * S.em && rr.bottom >= want[0].bottom && rr.bottom <= want[0].bottom + 0.1 * S.em,
+    'identidade: altura da caixa do texto da row com pequena folga', [rr, want[0]])
+  ok(resolveHighlight(one, S) === r1, 'cache por layout e destaque')
+  const long = mk(S, 12, 'comprida que não cabe inteira no ecrã do telemóvel e tem de quebrar', YELLOW, 'longo')
+  for (const [name, cfg] of Object.entries({ ENSAIO, ...DESTINOS })) {
+    const D = makeLayout(LYRICS, cfg)
+    for (const h of [one, long]) {
+      const r = resolveHighlight(h, D)
+      const exp = rowsOfRange(D, h)
+      const em = D.em
+      const fits = r.rects.length === exp.length && r.rects.every((b, k) =>
+        b.left <= exp[k].left && b.left >= exp[k].left - 0.15 * em && b.right >= exp[k].right && b.right <= exp[k].right + 0.15 * em &&
+        b.top <= exp[k].top && b.top >= exp[k].top - 0.1 * em && b.bottom >= exp[k].bottom && b.bottom <= exp[k].bottom + 0.1 * em)
+      ok(!r.hidden && fits, `${name}: "${h.t.slice(0, 16)}…" → um retângulo por row (${exp.length}), presos aos mesmos caracteres`, { got: r.rects.length, exp: exp.length })
+      // Nenhum par de retângulos se sobrepõe (sem dupla opacidade dentro do destaque)
+      ok(r.rects.every((b, k) => k === 0 || b.top >= r.rects[k - 1].bottom), `${name}: rows sem sobreposição`)
+    }
+  }
+  const T = makeLayout(LYRICS, TELEMOVEL)
+  const N = makeLayout(LYRICS, ESTREITO)
+  ok(resolveHighlight(long, N).rects.length > resolveHighlight(long, S).rects.length, 'bloco estreito: a linha re-quebra e o destaque acompanha as rows novas',
+    [resolveHighlight(long, N).rects.length, resolveHighlight(long, S).rects.length])
+  // Escondido: órfão, texto que já não é o mesmo, linha que não existe
+  ok(resolveHighlight({ ...one, lines: { 2: 'x' } }, S).hidden, 'órfão: escondido')
+  ok(resolveHighlight({ ...one, t: 'chá na mesa' }, S).hidden, 'texto diferente do layout: escondido')
+  ok(resolveHighlight({ ...one, ln: 999 }, S).hidden && resolveHighlight(one, makeLayout('', ENSAIO)).hidden, 'linha inexistente / sem letra: escondido')
+  // Entre todos os retângulos resolvidos, nenhum NaN
+  ok(resolveHighlights([one, long, anchorStroke(underline(S, 2, 3, 6), YELLOW, 3, S)], T).every(h => h.rects.flatMap(b => [b.left, b.top, b.right, b.bottom]).every(Number.isFinite)),
+    'resolveHighlights: só os destaques, números finitos')
+})
+
+test('marcador: fusão com a mesma cor, recorte da outra — nunca dupla opacidade', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const T = ln => S.text(ln)
+  let list = mergeHighlights([], [mk(S, 2, 'café', YELLOW, 'a')], T)
+  list = mergeHighlights(list, [mk(S, 2, 'mesa', YELLOW, 'b')], T)
+  eq(list.map(h => h.t), ['café', 'mesa'], 'mesma cor com uma palavra no meio: ficam dois')
+  const before = list
+  list = mergeHighlights(list, [mk(S, 2, 'na', YELLOW, 'c')], T)
+  eq(list.map(h => [h.id, h.t]), [['c', 'café na mesa']], 'mesma cor: os três fundem-se num só')
+  eq(before.map(h => h.t), ['café', 'mesa'], 'a lista de entrada não muda (Desfazer guarda-a)')
+  eq(mergeHighlights([mk(S, 3, 'as', YELLOW, 'x')], [mk(S, 3, 'chaves', YELLOW.toUpperCase(), 'y')], T).map(h => h.t), ['as chaves'],
+    'mesma cor (maiúsculas ou não), só um espaço entre eles: fundem-se')
+  const big = mk(S, 2, 'Há café na mesa e o sol', YELLOW, 'big')
+  const cut = mergeHighlights([big], [mk(S, 2, 'na', GREEN, 'g')], T)
+  eq(cut.map(h => [h.color, h.t]), [[YELLOW, 'Há café'], [YELLOW, 'mesa e o sol'], [GREEN, 'na']], 'outra cor no meio: parte o amarelo em dois, sem os espaços da ponta')
+  ok(cut[0].id === 'big' && cut[1].id !== 'big' && cut[1].id !== 'g', 'recorte: o pedaço da esquerda fica com o id, o da direita tem um novo')
+  eq(mergeHighlights([mk(S, 2, 'café', YELLOW, 'y')], [mk(S, 2, 'Há café na', GREEN, 'g')], T).map(h => [h.id, h.t]), [['g', 'Há café na']],
+    'outra cor por cima de tudo: o de baixo sai')
+  eq(mergeHighlights([mk(S, 2, 'café na mesa', YELLOW, 'y')], [mk(S, 2, 'Há café', GREEN, 'g')], T).map(h => [h.id, h.t]), [['y', 'na mesa'], ['g', 'Há café']],
+    'outra cor no início: o de baixo fica aparado')
+  eq(mergeHighlights([mk(S, 3, 'chaves', YELLOW, 'y')], [mk(S, 2, 'café', GREEN, 'g')], T).map(h => h.t), ['chaves', 'café'], 'outra linha: não mexe')
+  const pen = anchorStroke(underline(S, 2, 3, 6), YELLOW, 3, S, 'caneta')
+  ok(mergeHighlights([pen], [mk(S, 2, 'café', YELLOW, 'y')], T)[0] === pen, 'traços da caneta ficam como estão')
+  // Propriedade: 300 destaques aleatórios em 3 cores, em duas linhas (uma re-quebrada)
+  let seed = 7
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 }
+  const colors = [YELLOW, GREEN, PINK]
+  let all = []
+  let bad = null
+  for (let k = 0; k < 300 && !bad; k++) {
+    const ln = k % 2 ? 12 : 2
+    const vis = []
+    for (let c = 0; c < S.text(ln).length; c++) { const b = S.charRect(ln, c); if (b && b.right > b.left && !/\s/.test(S.text(ln)[c])) vis.push(c) }
+    const a = vis[Math.floor(rnd() * vis.length)]
+    const b = vis[Math.floor(rnd() * vis.length)]
+    const add = highlightRange(sweep(S, [ln, a], [ln, b], { n: 12, wob: 0 }), colors[k % 3], S, `r${k}`)
+    all = mergeHighlights(all, add, T)
+    for (const l of [2, 12]) {
+      const text = S.text(l)
+      const iv = all.filter(h => h.ln === l).map(h => ({ a: h.c0, b: h.c1, color: h.color, t: h.t })).sort((p, q) => p.a - q.a)
+      for (let i = 0; i < iv.length && !bad; i++) {
+        if (text.slice(iv[i].a, iv[i].b) !== iv[i].t) bad = ['texto', iv[i]]
+        else if (/^\s|\s$/.test(iv[i].t)) bad = ['brancos na ponta', iv[i]]
+        else if (i && iv[i].a < iv[i - 1].b) bad = ['sobreposição', iv[i - 1], iv[i]]
+        else if (i && iv[i].color === iv[i - 1].color && !text.slice(iv[i - 1].b, iv[i].a).trim()) bad = ['mesma cor encostada', iv[i - 1], iv[i]]
+      }
+    }
+  }
+  ok(!bad, 'aleatório: em cada linha, destaques sem sobreposição, a mesma cor nunca encostada, texto certo', bad)
+  ok(new Set(all.map(h => h.id)).size === all.length, 'aleatório: ids únicos')
+})
+
+test('marcador: letra editada — linha inserida, editada, apagada, refrão repetido', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const h2 = mk(S, 2, 'café na mesa', YELLOW, 'h2')
+  const h16 = mk(S, 16, 'contigo,', YELLOW, 'h16')     // 2.º refrão
+  const h8 = mk(S, 8, 'daqui)', YELLOW, 'h8')           // linha indentada
+  const list = [h2, h16, h8]
+  const saved = collectLines(list, LYRICS)
+  ok(saved['2'] === 'Há café na mesa e o sol a entrar' && saved['18'] !== undefined, 'collectLines: só com destaques também guarda o retrato')
+  const same = rebaseStrokes(list, saved, LYRICS)
+  ok(!same.changed && same.strokes.every((s, i) => s === list[i]), 'letra igual: os mesmos objetos')
+  // Inserida acima
+  const ins = editLines(LYRICS, l => l.splice(1, 0, 'Uma linha nova inventada'))
+  const ri = rebaseStrokes(list, saved, ins)
+  eq(ri.strokes.map(h => [h.ln, h.c0, h.t]), [[3, h2.c0, 'café na mesa'], [17, h16.c0, 'contigo,'], [9, h8.c0, 'daqui)']],
+    'inserida: cada destaque desce uma linha, o 2.º refrão fica com o seu (17, não 8)')
+  const D = makeLayout(ins, CONCERTO)
+  const rd = resolveHighlight(ri.strokes[0], D)
+  const ex = rowsOfRange(D, ri.strokes[0])
+  ok(!rd.hidden && rd.rects.length === ex.length && rd.rects[0].left <= ex[0].left && rd.rects[0].right >= ex[0].right, 'inserida: no concerto, por trás das mesmas palavras')
+  // Editada: outra palavra mudou, o texto destacado continua na linha
+  const ed = LYRICS.replace('Há café na mesa e o sol a entrar', 'Hoje há café na mesa e o sol')
+  const re = rebaseStrokes(list, saved, ed)
+  const e0 = re.strokes[0]
+  ok(re.changed && e0.ln === 2 && !e0.lines && e0.c0 === 'Hoje há café na mesa e o sol'.indexOf('café') && e0.t === 'café na mesa',
+    'editada: reencontra o texto na linha nova', e0)
+  ok(!resolveHighlight(e0, makeLayout(ed, ENSAIO)).hidden, 'editada: visível')
+  // Editada E com uma linha inserida antes
+  const ed2 = editLines(ed, l => l.splice(0, 0, 'Linha nova inventada'))
+  eq(rebaseStrokes(list, saved, ed2).strokes[0].ln, 3, 'editada + inserida: segue a linha (3)')
+  // Duas ocorrências na linha editada: a mais próxima de c0
+  const twice = LYRICS.replace('Há café na mesa e o sol a entrar', 'café na mesa, Há café na mesa e o sol')
+  eq(rebaseStrokes([h2], saved, twice).strokes[0].c0, 'café na mesa, Há café na mesa e o sol'.lastIndexOf('café na mesa'), 'editada: ocorrência mais próxima de c0')
+  // O texto destacado saiu da linha → órfão (escondido, não apagado)
+  const gone = LYRICS.replace('Há café na mesa e o sol a entrar', 'Há chá na mesa e o sol a entrar')
+  const ro = rebaseStrokes(list, saved, gone)
+  ok(ro.strokes[0].lines && ro.strokes[0].lines['2'] === 'Há café na mesa e o sol a entrar' && ro.strokes.length === 3, 'texto apagado: órfão com o texto da linha')
+  ok(resolveHighlight(ro.strokes[0], makeLayout(gone, ENSAIO)).hidden, 'texto apagado: escondido')
+  const enc = decodeAnchored(JSON.parse(JSON.stringify(encodeAnchored(ro.strokes))))
+  eq(enc, ro.strokes, 'órfão: sobrevive a gravar/ler')
+  const back = rebaseStrokes(enc, collectLines(enc, gone), LYRICS)
+  ok(!back.strokes[0].lines && back.strokes[0].ln === 2 && back.strokes[0].c0 === h2.c0 && !resolveHighlight(back.strokes[0], S).hidden,
+    'a linha volta → o destaque volta ao mesmo sítio', back.strokes[0])
+  // Refrão: 1.º apagado inteiro → o do 2.º fica com o seu, o do 1.º fica órfão (2 carregamentos)
+  const h7 = mk(S, 7, 'contigo,', PINK, 'h7')
+  const del = editLines(LYRICS, l => l.splice(6, 5))
+  let p = saveLoad([h7, h16], LYRICS)
+  const l1 = rebaseStrokes(p.anchored, p.lines, del)
+  eq(l1.strokes.map(h => (h.lines ? 'órfão' : h.ln)), ['órfão', 11], 'refrão apagado: o do 1.º órfão, o do 2.º sobe para 11')
+  p = saveLoad(l1.strokes, del)
+  const l2 = rebaseStrokes(p.anchored, p.lines, del)
+  eq(l2.strokes.map(h => (h.lines ? 'órfão' : h.ln)), ['órfão', 11], 'refrão apagado: no carregamento seguinte o órfão não cai no refrão que ficou')
+  eq(resolveHighlights(l2.strokes, makeLayout(del, CONCERTO)).filter(h => !h.hidden).map(h => h.id), ['h16'], 'refrão apagado: só um destaque visível no concerto')
+  // Indentação tirada: c0 conta do 1.º não branco
+  const ind = LYRICS.replace('    (leva-me daqui)', '(leva-me daqui)')
+  const Di = makeLayout(ind, ENSAIO)
+  const r8 = rebaseStrokes([h8], collectLines([h8], LYRICS), ind).strokes[0]
+  const q = Di.charRect(8, Di.text(8).indexOf('daqui'))
+  const r8r = resolveHighlight(r8, Di)
+  ok(!r8r.hidden && Math.abs(r8r.rects[0].left - q.left) < 0.15 * Di.em, 'indentação tirada: continua em "daqui)"', r8r.rects[0])
+  // Sem registo das linhas (payload regravado pela versão anterior só com destaques: lines = {})
+  const nr = rebaseStrokes([h2], {}, LYRICS)
+  ok(!nr.changed && nr.strokes[0] === h2 && !resolveHighlight(h2, makeLayout(LYRICS, CONCERTO)).hidden, 'sem registo: fica, e aparece se o texto lá estiver')
+  ok(resolveHighlight(h2, makeLayout(gone, ENSAIO)).hidden, 'sem registo e texto mudado: o resolver esconde-o')
+})
+
+test('marcador: formato guardado (encode/decode, payload, entradas estragadas)', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const pen = anchorStroke(underline(S, 2, ...word(S, 2, 'café na mesa')), '#dc2626', 4, S, 'caneta')
+  const hls = highlightRange(sweep(S, [2, at(S, 2, 'sol')], [4, at(S, 4, 'saio') + 1], { n: 60 }), PINK, S, 'hl')
+  const ink = anchorHighlight(marginBar(S, [7, 8, 9]), BLUE, S, 'barra').ink
+  const orphan = { ...mk(S, 3, 'chaves', YELLOW, 'orf'), lines: { 3: 'Guardo as chaves no bolso do casaco' } }
+  const items = [pen, ...hls, ink, orphan]
+  const enc = encodeAnchored(items)
+  const json = JSON.stringify(enc)
+  eq(decodeAnchored(JSON.parse(json)), items, 'encode/decode: ida e volta exata (caneta, destaques, marcador livre, órfão)')
+  eq(enc[1], ['hl', PINK, 0, MODE_HL_TEXT, 2, hls[0].c0, hls[0].c1, hls[0].t], 'destaque: [id, cor, 0, 5, ln, c0, c1, texto]')
+  ok(enc[4][3] === MODE_HL_INK && enc[4][8] === MODE_MARGIN && enc[4].length === 9, 'marcador livre: modo 6, ancoragem a seguir aos pontos', enc[4].slice(0, 4).concat(enc[4].slice(8)))
+  ok(enc[0][3] === MODE_TEXT && enc[0].length === 8, 'caneta: formato de sempre')
+  eq(decodeAnchored([
+    ['a', PINK, 0, MODE_HL_TEXT, 2, 3, 3, ''],          // vazio
+    ['b', PINK, 0, MODE_HL_TEXT, -1, 0, 2, 'ab'],       // linha negativa
+    ['c', PINK, 0, MODE_HL_TEXT, 2, 0, 3, 'ab'],        // texto com outro tamanho
+    ['d', PINK, 0, MODE_HL_TEXT, 2, 0, 2],              // sem texto
+    ['e', PINK, 0, MODE_HL_TEXT, 2.5, 0, 2, 'ab'],      // linha não inteira
+    ['f', BLUE, 900, MODE_HL_INK, [0, 0, 1], [0], [0], [0], 'x'],  // ancoragem inválida
+  ]), [], 'decode: destaques e marcadores estragados saem')
+  const parts = decodeAnchoredParts([['g', BLUE, 900, MODE_HL_INK, [0, 0, 1], [0], [0], [0], 9], ['h', BLUE, 900, MODE_HL_INK, [0, 99, 1], [0], [0], [0], 0]])
+  ok(parts.strokes.length === 0 && parts.extra.length === 2, 'decode: marcador livre com ancoragem ou código futuros → extra (preservado)')
+  const p = saveLoad(items, LYRICS)
+  eq(p.anchored, items, 'payload: âncoras de volta')
+  ok(payloadHasStrokes(p) && p.lines['3'] === 'Guardo as chaves no bolso do casaco', 'payload: tem anotações e o retrato das linhas')
+  const onlyHl = saveLoad([hls[0]], LYRICS)
+  ok(onlyHl.lines && onlyHl.lines['2'] === LYRICS.split('\n')[2], 'payload só com destaques: guarda o retrato das linhas')
+})
+
+test('compatibilidade: a versão publicada (2b52db3) preserva os destaques em extra e reescreve-os iguais', () => {
+  if (!OLD) {
+    console.log('   (aviso) sem git ou sem o commit 2b52db3: compatibilidade não verificada')
+    return
+  }
+  const S = makeLayout(LYRICS, ENSAIO)
+  const pen = anchorStroke(underline(S, 2, ...word(S, 2, 'café na mesa')), '#dc2626', 4, S, 'caneta')
+  const hls = highlightRange(sweep(S, [2, at(S, 2, 'sol')], [4, at(S, 4, 'saio') + 1], { n: 60 }), PINK, S, 'hl')
+  const ink = anchorHighlight(marginBar(S, [7, 8, 9]), BLUE, S, 'barra').ink
+  const orphan = { ...mk(S, 3, 'chaves', YELLOW, 'orf'), lines: { 3: 'Guardo as chaves no bolso do casaco' } }
+  const items = [pen, ...hls, ink, orphan]
+  const raw = JSON.parse(JSON.stringify(buildPayload({
+    w: 780, h: S.height, strokes: toLegacyStrokes(resolveAll(items, S), resolveHighlights(items, S)), em: 32, anchored: items, lyrics: LYRICS,
+  })))
+  const old = OLD.readPayload(raw)
+  eq(old.anchored.map(s => s.id), ['caneta'], 'antiga: só a caneta entra nos traços que desenha')
+  eq(old.extra, raw.anchored.slice(1), 'antiga: destaques e marcador livre guardados em extra, em bruto')
+  const drawn = OLD.resolveAll(old.anchored, S)
+  ok(drawn.length === 1 && drawn[0].color === '#dc2626', 'antiga: nenhum destaque desenhado como caneta opaca')
+  // A antiga desenha mais um traço e grava
+  const pen2 = OLD.anchorStroke(strike(S, 3, ...word(S, 3, 'chaves')), '#2563eb', 3, S, 'antiga')
+  const mine = [...old.anchored, pen2]
+  const again = JSON.parse(JSON.stringify(OLD.buildPayload({
+    w: 780, h: S.height, strokes: OLD.toLegacyStrokes(OLD.resolveAll(mine, S)), em: 32, anchored: mine, lyrics: LYRICS, extra: old.extra,
+  })))
+  eq(again.anchored.slice(2), raw.anchored.slice(1), 'antiga: reescreve-os tal como vieram')
+  const back = readPayload(again)
+  eq(back.extra, [], 'nova: lê tudo de volta (nada fica em extra)')
+  eq(back.anchored.filter(s => s.id !== 'antiga'), items, 'nova: destaques, marcador livre e órfão iguais aos originais')
+  // Só destaques: a antiga não tem nada que desenhar — a tecla do concerto não aparece, nada rebenta
+  const onlyRaw = JSON.parse(JSON.stringify(buildPayload({ w: 780, h: S.height, strokes: [], em: 32, anchored: hls, lyrics: LYRICS })))
+  const o2 = OLD.readPayload(onlyRaw)
+  // (+1: o retrato das linhas do marcador, também em extra)
+  ok(o2.anchored.length === 0 && o2.extra.length === hls.length + 1 && !OLD.payloadHasVisible(o2, LYRICS) && OLD.rebaseStrokes(o2.anchored, o2.lines, LYRICS).strokes.length === 0,
+    'antiga, só destaques: nada desenhado, nada perdido', o2.extra.length)
+  // …e se a antiga gravar assim, o retrato das linhas sai vazio: a nova continua a mostrá-los
+  const w2 = JSON.parse(JSON.stringify(OLD.buildPayload({ w: 780, h: S.height, strokes: [], em: 32, anchored: o2.anchored, lyrics: LYRICS, extra: o2.extra })))
+  eq(w2.lines, {}, 'antiga, só destaques: grava lines = {}')
+  const n2 = readPayload(w2)
+  const r2 = rebaseStrokes(n2.anchored, n2.lines, LYRICS)
+  ok(r2.strokes.length === hls.length && resolveHighlights(r2.strokes, makeLayout(LYRICS, CONCERTO)).every(h => !h.hidden) && payloadHasVisible(n2, LYRICS),
+    'nova: depois disso continua a mostrar os destaques')
+})
+
+test('compatibilidade: a 2b52db3 re-numera a caneta depois de a letra mudar — o marcador segue o seu retrato', () => {
+  if (!OLD) {
+    console.log('   (aviso) sem git ou sem o commit 2b52db3: compatibilidade não verificada')
+    return
+  }
+  // Letra inventada com uma linha repetida (o destaque é o da 2.ª)
+  const L0 = [
+    '[Verso 1]',                         // 0
+    'Acordo cedo com o rio a passar',    // 1
+    'Há café na mesa e o sol a entrar',  // 2
+    '',                                  // 3
+    '[Refrão]',                          // 4
+    'Leva-me daqui sem pressa',          // 5
+    'Leva-me daqui sem pressa',          // 6 (repetida)
+    'Até ao fim da linha',               // 7
+  ].join('\n')
+  // Editada fora do Ensaio: uma linha nova no início
+  const L1 = editLines(L0, l => l.splice(1, 0, 'Uma linha nova lá em cima'))
+  const S0 = makeLayout(L0, ENSAIO)
+  const S1 = makeLayout(L1, ENSAIO)
+  const pen = anchorStroke(underline(S0, 1, ...word(S0, 1, 'Acordo cedo')), '#dc2626', 3, S0, 'caneta')
+  const rep = mk(S0, 6, 'Leva-me daqui', YELLOW, 'rep')
+  const uni = mk(S0, 7, 'Até ao', PINK, 'uni')
+  const ink = anchorHighlight(marginBar(S0, [7]), BLUE, S0, 'barra').ink
+  ok(rep.ln === 6 && uni.ln === 7 && ink && ink.hl, 'pré-condição: destaques nas linhas 6 e 7, traço de marcador ao lado da 7')
+  const items = [pen, rep, uni, ink]
+  const P0 = JSON.parse(JSON.stringify(buildPayload({ w: 780, h: S0.height, strokes: [], em: 32, anchored: items, lyrics: L0 })))
+  const snaps = P0.anchored.filter(e => e[3] === 7)
+  ok(snaps.length === 1 && snaps[0][4]['6'] === 'Leva-me daqui sem pressa' && JSON.stringify(snaps[0][4]) === JSON.stringify(P0.lines),
+    'payload: uma entrada com o retrato do marcador (igual a lines quando grava a versão atual)', snaps)
+  // Referência: a versão atual abre a letra editada diretamente
+  const p0 = readPayload(P0)
+  const ref = rebaseStrokes(p0.anchored, p0.lines, L1, p0.hlLines).strokes
+  const id = (list, k) => list.find(s => s.id === k)
+  ok(id(ref, 'rep').ln === 7 && id(ref, 'uni').ln === 8 && id(ref, 'barra').p[0] === 8, 'referência: tudo desce uma linha',
+    { rep: id(ref, 'rep').ln, uni: id(ref, 'uni').ln, barra: id(ref, 'barra').p[0] })
+  // A 2b52db3 (PWA em cache) abre o Ensaio com a letra editada: re-numera a caneta e grava
+  const o = OLD.readPayload(P0)
+  const r = OLD.rebaseStrokes(o.anchored, o.lines, L1)
+  ok(r.changed && o.extra.length === 4, 'antiga: re-numera a caneta (changed) e guarda os 3 itens + o retrato em extra', o.extra.length)
+  const P1 = JSON.parse(JSON.stringify(OLD.buildPayload({ w: 780, h: S1.height, strokes: [], em: 32, anchored: r.strokes, lyrics: L1, extra: o.extra })))
+  ok(P1.lines['7'] === 'Leva-me daqui sem pressa' && P1.lines['1'] === 'Uma linha nova lá em cima', 'antiga: grava lines com a letra NOVA')
+  // A versão atual volta a abrir: o marcador segue o seu retrato, a caneta o lines
+  const p1 = readPayload(P1)
+  const back = rebaseStrokes(p1.anchored, p1.lines, L1, p1.hlLines)
+  eq(['caneta', 'rep', 'uni', 'barra'].map(k => { const s = id(back.strokes, k); return isTextHighlight(s) ? [s.ln, s.t, !!s.lines] : [s.p[0], !!s.lines] }),
+    [[2, false], [7, 'Leva-me daqui', false], [8, 'Até ao', false], [8, false]],
+    'nova, depois da antiga: caneta na 2, destaque na 2.ª repetida (7, não a 6), "Até ao" na 8, marcador livre ao lado da 8')
+  ok(back.changed, 'nova: re-numerou o marcador (grava já a numeração nova)')
+  const rr = resolveHighlight(id(back.strokes, 'rep'), S1)
+  ok(!rr.hidden && Math.abs(rr.rects[0].top - S1.rows(7)[0].top) < 0.1 * S1.em, 'destaque desenhado na 2.ª repetida', rr.rects[0])
+  const ri = resolveStroke(id(back.strokes, 'barra'), S1)
+  const ys = ri.subpaths.flat().filter((_, i) => i % 2)
+  ok(Math.min(...ys) > S1.rows(7)[0].bottom, 'marcador livre ao lado da linha certa (8), não uma linha acima', [Math.min(...ys), S1.rows(7)[0].bottom])
+  ok(payloadHasVisible(p1, L1), 'payloadHasVisible com o retrato do marcador')
+  // A nova grava e volta a abrir: estável
+  const P2 = JSON.parse(JSON.stringify(buildPayload({ w: 780, h: S1.height, strokes: [], em: 32, anchored: back.strokes, lyrics: L1 })))
+  const p2 = readPayload(P2)
+  const again = rebaseStrokes(p2.anchored, p2.lines, L1, p2.hlLines)
+  ok(!again.changed && P2.anchored.filter(e => e[3] === 7).length === 1, 'nova grava: estável, um só retrato')
+  // A antiga outra vez, agora SEM traços próprios (lines = {}) e a letra muda de novo: o retrato do marcador chega
+  const L2 = editLines(L1, l => l.splice(0, 0, 'Outra linha nova inventada'))
+  const o3 = OLD.readPayload(JSON.parse(JSON.stringify(buildPayload({ w: 780, h: S1.height, strokes: [], em: 32, anchored: again.strokes.filter(s => s.id !== 'caneta'), lyrics: L1 }))))
+  const P3 = JSON.parse(JSON.stringify(OLD.buildPayload({ w: 780, h: 1, strokes: [], em: 32, anchored: o3.anchored, lyrics: L2, extra: o3.extra })))
+  eq(P3.lines, {}, 'antiga sem traços próprios: grava lines = {}')
+  const p3 = readPayload(P3)
+  const S2 = makeLayout(L2, ENSAIO)
+  const b3 = rebaseStrokes(p3.anchored, p3.lines, L2, p3.hlLines).strokes
+  eq(b3.filter(isTextHighlight).map(h => [h.ln, h.t, !resolveHighlight(h, S2).hidden]), [[8, 'Leva-me daqui', true], [9, 'Até ao', true]],
+    'letra editada outra vez: os destaques continuam visíveis e na linha certa')
+  ok(payloadHasVisible(p3, L2), 'payloadHasVisible: a tecla do concerto aparece')
+})
+
+test('marcador: guarda de versão futura (campos reservados e a mais vão para extra)', () => {
+  const lyrics = 'Acordo cedo com o rio a passar'
+  const fut5 = ['f1', '#FFE01A', 1, MODE_HL_TEXT, 0, 7, 11, 'cedo']                                // campo reservado ≠ 0
+  const fut5b = ['f2', '#FFE01A', 0, MODE_HL_TEXT, 0, 7, 11, 'cedo', { 0: lyrics }, { estilo: 'x' }] // campo a mais
+  const fut6 = ['f3', BLUE, 900, MODE_HL_INK, [0, 0, 1], [0], [0], [0], MODE_MARGIN, { 0: lyrics }, 'a mais']
+  const futPen = ['f4', '#000', 3000, MODE_TEXT, [0, 0, 1], [0], [0], [0], { 0: lyrics }, 'a mais']
+  const fut7 = ['marcador-linhas', '', 0, 7, { 0: lyrics }, 'a mais']
+  const okHl = ['h', '#FFE01A', 0, MODE_HL_TEXT, 0, 7, 11, 'cedo']
+  const parts = decodeAnchoredParts([fut5, fut5b, fut6, futPen, fut7, okHl])
+  eq(parts.strokes.map(s => s.id), ['h'], 'só o destaque de hoje é lido')
+  eq(parts.extra, [fut5, fut5b, fut6, futPen, fut7], 'os de uma versão futura ficam em extra, em bruto')
+  ok(parts.hlLines === null, 'retrato com campos a mais: não é lido como retrato')
+  const out = buildPayload({ w: 1, h: 1, strokes: [], em: 32, anchored: parts.strokes, lyrics, extra: parts.extra })
+  ok([fut5, fut5b, fut6, futPen, fut7].every(e => out.anchored.some(x => JSON.stringify(x) === JSON.stringify(e))),
+    'regravados tal como vieram (nada se perde)')
+  const back = readPayload(JSON.parse(JSON.stringify(out)))
+  ok(back.hlLines && back.hlLines['0'] === lyrics && back.extra.length === 5, 'e o retrato novo é lido; os futuros continuam em extra')
+})
+
+test('marcador: rede de segurança sem retrato da linha', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const h2 = mk(S, 2, 'café na mesa', YELLOW, 'h2')
+  const ins = editLines(LYRICS, l => l.splice(1, 0, 'Uma linha nova inventada'))
+  const r = rebaseStrokes([h2], null, ins).strokes[0]
+  ok(r.ln === 3 && r.c0 === h2.c0 && !resolveHighlight(r, makeLayout(ins, ENSAIO)).hidden, 'sem retrato: reencontra o texto na linha vizinha', r)
+  const far = editLines(LYRICS, l => l.splice(1, 0, 'a', 'b', 'c', 'd'))
+  eq(rebaseStrokes([h2], {}, far).strokes[0], h2, 'longe demais: fica como está (escondido pelo resolver, não apagado)')
+  const part = mk(S, 3, 'as', YELLOW, 'as')
+  const moved = LYRICS.replace('Guardo as chaves', 'Guardo-as chaves')
+  ok(rebaseStrokes([part], {}, moved).strokes[0] === part, 'só palavras inteiras ("as" dentro de "Guardo-as" não conta)')
+  const lab = S.rows(6)[0]
+  const tl = highlightRange([(lab.left + lab.right) / 2, (lab.top + lab.bottom) / 2], YELLOW, S, 'rot')[0]
+  ok(rebaseStrokes([tl], {}, LYRICS).strokes[0] === tl, 'rótulo de secção: fica')
+})
+
+test('marcador: cópia antiga em px com cor rgba translúcida', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const pen = anchorStroke(underline(S, 2, ...word(S, 2, 'café')), '#DC2626', 4, S, 'caneta')
+  const one = mk(S, 3, 'chaves no bolso', '#FFE01A', 'um')
+  const long = mk(S, 12, 'comprida que não cabe inteira no ecrã do telemóvel e tem de quebrar', '#5CE65C', 'longo')
+  const ink = anchorHighlight(marginBar(S, [1, 2]), '#3DB8FF', S, 'barra').ink
+  const items = [pen, one, ink, long]
+  const rh = resolveHighlights(items, S)
+  const leg = toLegacyStrokes(resolveAll(items, S), rh)
+  const byId = Object.fromEntries(leg.map(s => [s.id, s]))
+  eq(byId.caneta.color, '#DC2626', 'caneta: a cor de sempre')
+  eq(byId.barra.color, rgbaOf('#3DB8FF', HL_LEGACY_ALPHA), 'marcador livre: rgba translúcida')
+  eq(rgbaOf('#3DB8FF', 0.4), 'rgba(61, 184, 255, 0.4)', 'rgbaOf: hex → rgba')
+  const rows = rh.flatMap(h => h.rects.map((r, k) => [k ? `${h.id}~${k}` : h.id, r, h.color]))
+  ok(rows.length === 1 + resolveHighlight(long, S).rects.length, 'destaques: um traço por row')
+  for (const [id, r, color] of rows) {
+    const s = byId[id]
+    const th = r.bottom - r.top
+    ok(s && s.color === rgbaOf(color, HL_LEGACY_ALPHA) && Math.abs(s.width - th) <= 0.1 && s.pts.length === 4 && s.pts[1] === s.pts[3] &&
+      Math.abs(s.pts[1] - (r.top + r.bottom) / 2) <= 0.5 && Math.abs(s.pts[0] - th / 2 - r.left) <= 1 && Math.abs(s.pts[2] + th / 2 - r.right) <= 1,
+    `destaque ${id}: traço horizontal largo da altura da row, de ponta a ponta, rgba`, { s, r })
+  }
+  ok(leg.every(s => s.pts.every(Number.isInteger)), 'px inteiros')
+})
+
+test('marcador: borracha, payloadHasVisible e cor sobre o fundo', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const h = mk(S, 2, 'café na mesa', YELLOW, 'h')
+  const r = resolveHighlight(h, S)
+  const b = r.rects[0]
+  eq(highlightsAt([r], (b.left + b.right) / 2, (b.top + b.bottom) / 2, 1), ['h'], 'borracha: em cima do destaque')
+  eq(highlightsAt([r], b.left - 5, (b.top + b.bottom) / 2, 6), ['h'], 'borracha: a tocar na borda')
+  eq(highlightsAt([r], b.left - 30, b.top - 30, 10), [], 'borracha: longe')
+  eq(highlightsAt([{ ...r, hidden: true }], (b.left + b.right) / 2, (b.top + b.bottom) / 2, 1), [], 'borracha: escondidos não')
+  const ink = anchorHighlight(marginBar(S, [1, 2]), BLUE, S, 'barra').ink
+  const ri = resolveStroke(ink, S)
+  eq(strokesAt([ri], ri.subpaths[0][0] + HL_INK_EM * S.em * 0.45, ri.subpaths[0][1], 1), ['barra'], 'borracha: o traço livre conta com a largura dele')
+  // payloadHasVisible (tecla do concerto)
+  ok(payloadHasVisible(saveLoad([h], LYRICS), LYRICS), 'só destaques: a tecla aparece')
+  const gone = LYRICS.replace('Há café na mesa e o sol a entrar', 'Há chá na mesa e o sol a entrar')
+  ok(!payloadHasVisible(saveLoad([h], LYRICS), gone), 'destaque cujo texto saiu: não conta')
+  const lab = S.rows(6)[0]
+  const tl = highlightRange([(lab.left + lab.right) / 2, (lab.top + lab.bottom) / 2], YELLOW, S, 'rot')
+  ok(payloadHasVisible(saveLoad(tl, LYRICS), LYRICS), 'destaque num rótulo de secção: conta')
+  ok(luminanceOf('#0B0B0C') < 0.01 && luminanceOf('#FFFFFF') > 0.99 && luminanceOf('rgb(255, 255, 255)') > 0.99 && luminanceOf('nada') === null, 'luminanceOf')
+  ok(markerOpacity(luminanceOf('#0B0B0C')) === HL_OPACITY_DARK && markerOpacity(luminanceOf('#FFFFFF')) === HL_OPACITY_LIGHT && markerOpacity(null) === HL_OPACITY_LIGHT, 'markerOpacity (teto): escuro/claro')
+})
+
+test('marcador: opacidade por cor — o texto por cima mantém o contraste (Ensaio, palco, tintas de cor, rótulos)', () => {
+  // Implementação própria do contraste (WCAG), à parte da do módulo
+  const hex = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16))
+  const lum = rgb => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }; return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]) }
+  const over = (fg, bg, a) => fg.map((v, i) => v * a + bg[i] * (1 - a))
+  const contrast = (x, y) => (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
+  const under = (c, bg, ink, a) => contrast(lum(over(hex(c), hex(bg), a)), lum(hex(ink)))
+  // Paleta do marcador (SongPage: HL_COLORS) e as escolhas das Definições (SettingsPage: BG_SWATCHES, ACTIVE_SWATCHES)
+  const palette = ['#FFE01A', '#5CE65C', '#FF5FAF', '#3DB8FF', '#FF9A1F']
+  const stageBg = ['#0B0B0C', '#000000', '#17171A', '#0E1520', '#1A110B']
+  const stageInk = ['#F2F1EC', '#FF6A26', '#FFC24B', '#3DDC97', '#4CC9F0']
+  // Letra pequena (< 24px): ≥ 4.5:1 sempre
+  let worst = Infinity
+  let worstAt = null
+  const cases = [['#FFFFFF', '#111111'], ['#151517', '#F2F1EC'], ...stageBg.flatMap(bg => stageInk.map(ink => [bg, ink]))]
+  for (const [bg, ink] of cases) {
+    for (const c of palette) {
+      const a = markerAlpha(c, bg, ink, 18)
+      const k = under(c, bg, ink, a)
+      if (k < worst) { worst = k; worstAt = { bg, ink, c, a } }
+    }
+  }
+  ok(worst >= 4.5, `letra < 24px: contraste por cima do marcador ≥ 4.5:1 em ${cases.length} fundos×tintas × 5 cores (pior ${worst.toFixed(2)})`, worstAt)
+  // Letra grande (concerto: 32px+): ≥ 4.5:1 quando o marcador fica visível; senão nunca abaixo de 3:1
+  let worstL = Infinity
+  let minA = Infinity
+  for (const [bg, ink] of cases) {
+    for (const c of palette) {
+      const a = markerAlpha(c, bg, ink, 32)
+      worstL = Math.min(worstL, under(c, bg, ink, a))
+      minA = Math.min(minA, a)
+      if (a > HL_MIN_ALPHA_LARGE + 1e-9) ok(under(c, bg, ink, a) >= 4.5, `letra grande ${ink} sobre ${bg}, marcador ${c} a ${a}: ≥ 4.5:1`)
+    }
+  }
+  ok(worstL >= 3, `letra grande: nunca abaixo de 3:1 (pior ${worstL.toFixed(2)})`, worstL)
+  ok(minA >= 0.18, `letra grande: o marcador nunca fica quase invisível (mínimo ${minA})`, minA)
+  // Tinta laranja do palco: antes 0.40 dava 2.2:1 com o amarelo; agora a opacidade baixa
+  const aO = markerAlpha('#FFE01A', '#0B0B0C', '#FF6A26', 46)
+  ok(aO >= HL_MIN_ALPHA_LARGE - 1e-9 && aO < 0.3 && under('#FFE01A', '#0B0B0C', '#FF6A26', aO) >= 3, 'palco com letra laranja: marcador mais leve, letra ≥ 3:1', aO)
+  // Letra branca no palco (o normal): mais vivo do que antes (0.40) onde a cor deixa, sem passar do teto
+  const white = palette.map(c => markerAlpha(c, '#0B0B0C', '#F2F1EC', 46))
+  ok(white.every(a => a >= 0.44 && a <= HL_OPACITY_DARK), 'palco com letra branca: 0.44–0.52 por cor (menos turvo)', white)
+  // Folha clara: o teto (a letra escura tem contraste de sobra)
+  ok(palette.every(c => markerAlpha(c, '#FFFFFF', '#111111', 32) === HL_OPACITY_LIGHT), 'Ensaio claro: o teto 0.42 em todas as cores')
+  // Rótulos de secção (11–13px, cor de acento): ≥ 4.5:1 — Ensaio claro e escuro, palco
+  let worstSec = Infinity
+  for (const [bg, ink] of [['#FFFFFF', '#B83B0B'], ['#151517', '#FF8A52'], ['#0B0B0C', '#FF6A26']]) {
+    for (const c of palette) worstSec = Math.min(worstSec, under(c, bg, ink, markerAlpha(c, bg, ink, 13)))
+  }
+  ok(worstSec >= 4.5, `rótulos de secção destacados: ≥ 4.5:1 (pior ${worstSec.toFixed(2)})`, worstSec)
+  // Cores que não se reconhecem: o teto, sem NaN
+  ok(markerAlpha('nada', '#0B0B0C', '#F2F1EC', 32) === HL_OPACITY_DARK && markerAlpha('#FFE01A', null, '#111', 32) === HL_OPACITY_LIGHT, 'cores desconhecidas: o teto do fundo')
+  // Tema sem contraste (letra quase da cor do fundo): pede 80% do que tem, não rebenta
+  const weak = markerAlpha('#FFE01A', '#333333', '#555555', 18)
+  ok(Number.isFinite(weak) && weak >= 0 && weak <= HL_OPACITY_DARK, 'tema com pouco contraste: um valor válido', weak)
+})
+
+test('marcador: entrelinha apertada (1.0–1.2) — os retângulos de rows seguidas nunca se sobrepõem', () => {
+  const lines = ['Toca mais alto que a chuva lá fora', 'Ninguém arruma os cabos', 'Até a noite acabar de vez', 'Uma linha muito comprida que não cabe inteira no ecrã do telemóvel e tem de quebrar']
+  const text = lines.join('\n')
+  for (const lh of [1.0, 1.1, 1.2, 1.6]) {
+    for (const [name, cfg] of [['palco', { em: 46, width: 900 }], ['telemóvel', { em: 32, width: 360 }]]) {
+      const L = makeLayout(text, { ...cfg, lh })
+      const hs = [
+        mk(L, 0, 'chuva lá fora', PINK, 'a'),
+        highlightRange(sweep(L, [1, 0], [1, L.text(1).length - 1]), GREEN, L, 'b')[0],
+        mk(L, 2, 'Até a noite', YELLOW, 'c'),
+        highlightRange(sweep(L, [3, 0], [3, L.text(3).length - 1], { n: 80 }), YELLOW, L, 'd')[0],
+      ]
+      const rects = resolveHighlights(hs, L).flatMap(r => r.rects.map(b => ({ ...b, id: r.id })))
+      let minGap = Infinity
+      const sorted = rects.slice().sort((p, q) => p.top - q.top)
+      for (let i = 1; i < sorted.length; i++) {
+        const p = sorted[i - 1]
+        const q = sorted[i]
+        if (Math.min(p.right, q.right) - Math.max(p.left, q.left) > 0) minGap = Math.min(minGap, q.top - p.bottom)
+      }
+      ok(minGap >= 0.99, `${name}, entrelinha ${lh}: ≥ 1px entre os retângulos de rows seguidas (${minGap.toFixed(2)}px)`, minGap)
+      const short = Math.min(...rects.map(b => b.bottom - b.top))
+      ok(short >= 0.8 * L.em, `${name}, entrelinha ${lh}: os retângulos continuam a cobrir a maior parte da row (${(short / L.em).toFixed(2)}em)`, short)
+    }
+  }
+})
+
+test('desempenho: 80 linhas, 40 traços e 30 destaques resolvem em < 16ms', () => {
+  const lines = []
+  for (let k = 0; k < 16; k++) lines.push(`[Parte ${k + 1}]`, `Linha ${k} do mar e da luz inventada`, `Outra linha ${k} sem pressa de acabar`, `E mais uma ${k} para o caderno`, '')
+  const text = lines.join('\n')
+  const S = makeLayout(text, ENSAIO)
+  const list = []
+  for (let s = 0; s < 40; s++) {
+    const ln = 1 + (s % 16) * 5 + (s % 3)
+    const [v0, v1] = visible(S, ln)
+    list.push(anchorStroke(s % 3 ? underline(S, ln, v0, v1, { n: 150 }) : circle(S, ln, v0 + 1, v0 + 6, { n: 149 }), YELLOW, 4, S, `p${s}`))
+  }
+  let marks = []
+  for (let k = 0; marks.length < 30; k++) {
+    const ln = 1 + (k % 16) * 5 + (k % 3)
+    const [v0, v1] = visible(S, ln)
+    const to = k % 4 === 0 && ln % 5 < 3 ? [ln + 1, visible(S, ln + 1)[0] + 3] : [ln, v1 - 2]
+    marks = mergeHighlights(marks, highlightRange(sweep(S, [ln, v0 + 2], to, { n: 40 }), [YELLOW, GREEN, PINK][k % 3], S, `h${k}`), l => S.text(l))
+  }
+  const items = [...list, ...marks]
+  ok(marks.length >= 30, `desempenho: ${marks.length} destaques`)
+  let best = Infinity
+  let calls = null
+  for (let run = 0; run < 7; run++) {
+    const D = makeLayout(text, CONCERTO)
+    const t0 = performance.now()
+    const rs = resolveAll(items, D)
+    const rh = resolveHighlights(items, D)
+    best = Math.min(best, performance.now() - t0)
+    if (rs.some(r => r.hidden) || rh.some(r => r.hidden) || rs.length !== 40 || rh.length !== marks.length) best = Infinity
+    calls = D.calls
+  }
+  ok(best < 16, `desempenho: resolver traços e destaques ${best.toFixed(2)}ms`, best)
+  ok(calls.rows <= 80, 'desempenho: rows medidas uma vez por linha', calls.rows)
+  const D = makeLayout(text, CONCERTO)
+  const a1 = resolveHighlights(items, D)
+  const n1 = D.calls.chars
+  const a2 = resolveHighlights(items, D)
+  ok(a1.every((r, i) => r === a2[i]) && D.calls.chars === n1, 'desempenho: memo por layout (os retângulos não voltam a medir)')
 })
 
 /* ── resultado ── */

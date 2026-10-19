@@ -15,12 +15,28 @@
  */
 import { mergeRowRects, pickCharRect, type Box, type LayoutModel } from './anchor'
 
+/**
+ * Cores por baixo e por cima do marcador, lidas do DOM (o tema da app no
+ * Ensaio, o tema do concerto no palco) — ver markerPaint em view.ts
+ */
+export interface MarkerInk {
+  /** Fundo opaco por trás da letra (o 1.º antepassado com fundo) */
+  bg: string | null
+  /** Cor e tamanho (px) da letra */
+  text: string | null
+  textPx: number
+  /** Cor e tamanho (px) dos rótulos de secção */
+  label: string | null
+  labelPx: number
+}
+
 export interface MeasuredLayout extends LayoutModel {
-  /** Geometria + texto medidos: dois retratos com a mesma assinatura são o mesmo layout */
+  /** Geometria + texto (+ cores) medidos: dois retratos com a mesma assinatura são o mesmo layout */
   sig: string
   /** Tamanho do contentor medido (px) — a base {w, h} da cópia antiga dos traços */
   width: number
   height: number
+  ink: MarkerInk
 }
 
 const EMPTY: readonly Box[] = []
@@ -30,6 +46,21 @@ const r2 = (v: number) => Math.round(v * 100) / 100
 function textNodeOf(el: Element): Text | null {
   for (let n = el.firstChild; n; n = n.nextSibling) {
     if (n.nodeType === 3 && (n as Text).data.length > 0) return n as Text
+  }
+  return null
+}
+
+/** Alfa de uma cor calculada (rgb()/rgba()); 1 se não diz */
+function alphaOf(color: string): number {
+  const m = /^rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\s*\)$/.exec(color.trim())
+  return m ? Number(m[1]) : color.trim() === 'transparent' ? 0 : 1
+}
+
+/** Fundo opaco por trás de `el`: o do 1.º antepassado (ele incluído) com fundo pelo menos meio opaco */
+function backgroundOf(el: Element | null): string | null {
+  for (let n = el; n; n = n.parentElement) {
+    const bg = getComputedStyle(n).backgroundColor
+    if (bg && alphaOf(bg) >= 0.5) return bg
   }
   return null
 }
@@ -59,7 +90,10 @@ export function measureLayout(container: HTMLElement | null, base: HTMLElement |
   const texts = new Map<number, string>()
   const rowMap = new Map<number, Box[]>()
   const lines: number[] = []
+  const sections = new Set<number>()
   let em = 0
+  let textEl: HTMLElement | null = null
+  let secEl: HTMLElement | null = null
   for (let i = 0; i < els.length; i++) {
     const el = els[i]
     const ln = Number(el.getAttribute('data-ln'))
@@ -74,13 +108,28 @@ export function measureLayout(container: HTMLElement | null, base: HTMLElement |
     texts.set(ln, node.data)
     rowMap.set(ln, rows)
     lines.push(ln)
-    // 1em = tamanho das linhas de texto (os rótulos de secção têm px fixos)
-    if (!em && !el.hasAttribute('data-sec')) {
+    if (el.hasAttribute('data-sec')) {
+      sections.add(ln)
+      if (!secEl) secEl = el
+    } else if (!textEl) {
+      textEl = el
+      // 1em = tamanho das linhas de texto (os rótulos de secção têm px fixos)
       const fs = parseFloat(getComputedStyle(el).fontSize)
       if (fs > 0) em = fs
     }
   }
   if (!em) em = parseFloat(getComputedStyle(block).fontSize) || 16
+
+  // Cores por baixo e por cima do marcador (ver MarkerInk)
+  const textCs = textEl ? getComputedStyle(textEl) : null
+  const secCs = secEl ? getComputedStyle(secEl) : null
+  const ink: MarkerInk = {
+    bg: backgroundOf(container),
+    text: textCs ? textCs.color : null,
+    textPx: em,
+    label: secCs ? secCs.color : null,
+    labelPx: secCs ? parseFloat(secCs.fontSize) || 0 : 0,
+  }
 
   // Altura máxima de uma row por linha: um carácter com uma caixa mais alta
   // do que isto apanhou duas linhas de ecrã (ver charRect)
@@ -116,7 +165,10 @@ export function measureLayout(container: HTMLElement | null, base: HTMLElement |
   const blockLeft = bRect.left - ox
   const blockRight = bRect.right - ox
   const blockTop = bRect.top - oy
-  const parts: (string | number)[] = [r2(em), r2(blockLeft), r2(blockRight), r2(blockTop), r2(cRect.width), r2(cRect.height)]
+  const parts: (string | number)[] = [
+    r2(em), r2(blockLeft), r2(blockRight), r2(blockTop), r2(cRect.width), r2(cRect.height),
+    String(ink.bg), String(ink.text), String(ink.label), r2(ink.labelPx),
+  ]
   for (const ln of lines) {
     parts.push('|', ln, texts.get(ln) as string)
     for (const b of rowMap.get(ln) as Box[]) parts.push(r2(b.left), r2(b.top), r2(b.right), r2(b.bottom))
@@ -132,9 +184,11 @@ export function measureLayout(container: HTMLElement | null, base: HTMLElement |
     rows: ln => rowMap.get(ln) ?? EMPTY,
     text: ln => texts.get(ln) ?? '',
     charRect,
+    section: ln => sections.has(ln),
     sig: parts.join(' '),
     width: cRect.width,
     height: cRect.height,
+    ink,
   }
 }
 

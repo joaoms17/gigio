@@ -675,6 +675,11 @@
 .annSwatchOn .annSwatch {
   box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text);
 }
+/* Cor do marcador: amostra em barra, como o rasto de um marca-texto */
+.annSwatchHl {
+  width: 28px;
+  height: 14px;
+}
 
 /* Ferramenta fantasma (traços, borracha, desfazer) */
 .annTool {
@@ -694,13 +699,32 @@
   transition: background 0.12s, color 0.12s;
   -webkit-tap-highlight-color: transparent;
 }
-.annTool:active { background: var(--surface-3); }
+.annTool:active:not(:disabled) { background: var(--surface-3); }
 /* Ativa: fundo --surface-3 + traço de sinal em baixo */
 .annToolOn {
   background: var(--surface-3);
   color: var(--text);
   box-shadow: inset 0 -3px 0 var(--accent);
 }
+/* Não se aplica à ferramenta atual (espessuras com o marcador): fica no
+   sítio, esbatida — a fita não muda de tamanho */
+.annTool:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+/* Caneta | Marcador | Borracha — ícone + rótulo curto */
+.annToolWide {
+  width: auto;
+  min-width: var(--ann-w);
+  gap: 6px;
+  padding: 0 12px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.annToolWide svg { flex-shrink: 0; }
 
 /* Amostra do traço — espessura real do traço */
 .annWidthSample {
@@ -775,8 +799,8 @@
 
 @media (hover: hover) {
   .annSwatchBtn:hover,
-  .annTool:not(.annToolOn):hover { background: var(--surface-2); }
-  .annTool:not(.annToolOn):hover { color: var(--text); }
+  .annTool:not(.annToolOn):not(:disabled):hover { background: var(--surface-2); }
+  .annTool:not(.annToolOn):not(:disabled):hover { color: var(--text); }
   .annKey:hover:not(:disabled) .annKeyCap { background: var(--surface-2); border-color: var(--text3); }
   .annClear:hover { background: var(--danger-soft); }
 }
@@ -798,7 +822,7 @@
   width: 100%;
   height: 100%;
   overflow-y: scroll;
-  padding: 20px 20px 96px;     /* folga em baixo: o botão Anotar/Scroll não tapa o fim */
+  padding: 20px 20px 0;        /* a folga de baixo fica no .previewInner (ver lá) */
   /* Barra de scroll larga e sempre visível (no modo anotação é o único scroll) */
   scrollbar-width: auto;
   scrollbar-color: var(--border2) var(--surface-2);
@@ -824,6 +848,13 @@
 .previewInner {
   position: relative;
   min-height: 100%;
+  /* Folga em baixo DENTRO da camada de desenho: o botão Anotar/Scroll não
+     tapa o fim e dá para escrever por baixo da última linha ("FIM", "x2")
+     mesmo quando a letra é mais comprida do que a folha */
+  padding-bottom: 96px;
+  /* Contexto de empilhamento: o marcador (z-index -1) fica atrás da letra
+     e à frente do fundo da folha (ver MarkerUnderlay) */
+  isolation: isolate;
 }
 
 /* Alternar Anotar/Scroll — ancorado ao canto da folha, fora do painel que faz scroll */
@@ -1195,7 +1226,8 @@
 @media (min-width: 641px) {
   .rehearsal { --ann-h: var(--btn-lg); }
   .segBtn { font-size: 12px; min-width: 96px; }
-  .previewPane { padding: 24px 20px 104px; }
+  .previewPane { padding: 24px 20px 0; }
+  .previewInner { padding-bottom: 104px; }
   /* Ensaio sem barra "Concluído": a folha respeita o indicador do iPad */
   .pageRehearsal .content { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
 }
@@ -1204,7 +1236,21 @@
 @media (min-width: 1024px) {
   .rehearsal { --ann-w: var(--btn-lg); }
   .annSwatch { width: 28px; height: 28px; }
+  .annSwatchHl { width: 32px; height: 16px; }
   .annWidthSample { width: 24px; }
+  /* Caneta | Marcador | Borracha: rótulo mono por baixo do ícone (como o
+     rail, §5 do DESIGN-v2) — a fita cabe numa fila nos iPads em paisagem */
+  .annToolWide {
+    flex-direction: column;
+    gap: 4px;
+    min-width: 64px;
+    padding: 0 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
   .detailsCols {
     grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
     gap: 40px;
@@ -1244,7 +1290,19 @@
   .annStrip { border-left: none; border-right: none; border-radius: 0; }
   .previewWrap { border-left: none; border-right: none; border-bottom: none; border-radius: 0; }
   .annGroup { padding: 0; }
-  .previewPane { padding: 16px 16px 88px; }
+  /* Os grupos correm seguidos (sem as duas filas do tablet) e as
+     ferramentas ficam só com o ícone (o aria-label mantém o nome): a fita
+     cabe em 2 linhas num telemóvel de 360px */
+  .annRow { display: contents; }
+  .annToolWide { width: var(--ann-w); padding: 0; }
+  .annToolLabel { display: none; }
+  /* Limpar ocupa o resto da fila: a hairline entre as duas filas fica inteira */
+  .annGroupEnd { flex: 1 0 auto; justify-content: flex-end; }
+  /* A espessura ativa fica por baixo da Caneta ativa: só o traço de sinal
+     (sem o fundo) — senão as duas liam-se como um só botão alto */
+  .annWidthBtn.annToolOn { background: transparent; }
+  .previewPane { padding: 16px 16px 0; }
+  .previewInner { padding-bottom: 88px; }
   .floatBtn { right: 24px; bottom: 12px; min-height: 48px; padding: 0 16px; }
 
   .detailsPane { margin-bottom: -12px; padding-bottom: 32px; }

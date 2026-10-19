@@ -71,6 +71,25 @@
  * 11. Órfãos só voltam a linhas que não correspondem a nenhuma linha do
  *     retrato guardado (ver rebaseStrokes): senão, no carregamento seguinte,
  *     o traço de um refrão apagado reaparecia no refrão que ficou.
+ *
+ * Marcador (highlighter)
+ *  - Gesto sobre o texto → DESTAQUE DE TEXTO (TextHighlight, MODE_HL_TEXT):
+ *    não é um traço, é um intervalo de caracteres de UMA linha, ajustado a
+ *    palavras inteiras com a semântica de uma seleção de texto (da 1.ª
+ *    palavra tocada à última, em ordem de leitura; um registo por linha).
+ *    Desenha-se por trás do texto, um retângulo por row visual: acompanha
+ *    qualquer re-quebra sem nada para ancorar (ver resolveHighlight).
+ *  - Gesto na margem, sobretudo vertical ou numa folha sem letra → traço
+ *    livre de marcador: um AnchoredStroke como os outros (hl = true), largo
+ *    (HL_INK_EM) e translúcido, também por trás do texto.
+ *  - Destaques na mesma linha nunca se sobrepõem (mergeHighlights): a mesma
+ *    cor funde-se, outra cor é recortada.
+ *  - Formato: dentro de `anchored`, com modos que a versão anterior (2b52db3)
+ *    não conhece (MODE_HL_TEXT, MODE_HL_INK) — ela guarda-os em `extra` e
+ *    reescreve-os tal como vieram; nunca os apaga nem os desenha como caneta.
+ *    Como ela também não os re-numera quando a letra muda, viajam com o seu
+ *    próprio retrato das linhas (MODE_HL_LINES): é contra ele, e não contra
+ *    payload.lines, que os itens do marcador passam para a letra atual.
  */
 
 /* ═══ Geometria e contrato do layout ═══ */
@@ -114,6 +133,12 @@ export interface LayoutModel {
    * preguiçosa: só para os caracteres de que o cálculo precisa.
    */
   charRect(ln: number, c: number): Box | null
+  /**
+   * A linha é um rótulo de secção ([Refrão] → REFRÃO: texto pequeno, na cor
+   * de acento — o marcador por baixo dele é mais leve, ver markerAlpha).
+   * Opcional: sem ele, nenhuma é.
+   */
+  section?(ln: number): boolean
 }
 
 /* ═══ Traço ancorado ═══ */
@@ -134,6 +159,52 @@ export const MODE_FREE = 4
 export type StrokeMode =
   | typeof MODE_TEXT | typeof MODE_MARGIN | typeof MODE_MARGIN_ROW | typeof MODE_GAP | typeof MODE_FREE
 const KNOWN_MODES: readonly number[] = [MODE_TEXT, MODE_MARGIN, MODE_MARGIN_ROW, MODE_GAP, MODE_FREE]
+/** Destaque de texto do marcador: intervalo de caracteres de uma linha (TextHighlight) */
+export const MODE_HL_TEXT = 5
+/**
+ * Traço livre de marcador — só no formato guardado: em memória é um
+ * AnchoredStroke com hl = true e o modo de ancoragem (texto, margem…)
+ */
+export const MODE_HL_INK = 6
+/**
+ * Retrato das linhas a que os itens do marcador estão numerados — só no
+ * formato guardado, uma entrada por payload (ver buildPayload). A versão
+ * anterior (2b52db3) re-numera os SEUS traços e reescreve payload.lines com
+ * a letra nova, mas devolve as entradas do marcador tal como vieram (com a
+ * numeração antiga): só um retrato que viaja com elas, em `anchored`, diz a
+ * que letra essa numeração se refere.
+ */
+export const MODE_HL_LINES = 7
+/** Id da entrada do retrato (fixo: as cópias juntam-se por id sem a repetir) */
+const HL_LINES_ID = 'marcador-linhas'
+
+/* ═══ Marcador ═══ */
+
+/** Largura do traço livre de marcador (em do layout onde se desenha) */
+export const HL_INK_EM = 0.9
+/** Toque curto: extensão do gesto abaixo disto (em) destaca a palavra tocada */
+const HL_TAP_EM = 0.3
+/** Gesto sobretudo vertical (altura > isto × largura) → traço livre */
+const HL_VERTICAL = 1.5
+/** Um ponto conta como "em cima do texto" até esta distância (em) da row, na vertical… */
+const HL_NEAR_Y_EM = 0.5
+/** …e para lá das pontas da row, na horizontal */
+const HL_NEAR_X_EM = 0.5
+/** Folga do retângulo de um destaque à volta dos caracteres (em) */
+const HL_PAD_X_EM = 0.08
+const HL_PAD_Y_EM = 0.04
+/** Opacidade dos destaques na cópia antiga em px (os clientes muito antigos desenham-na por cima do texto) */
+export const HL_LEGACY_ALPHA = 0.4
+/** Teto da opacidade do marcador sobre um fundo claro / escuro (ver markerOpacity, markerAlpha) */
+export const HL_OPACITY_LIGHT = 0.42
+export const HL_OPACITY_DARK = 0.52
+/** Contraste mínimo do texto por cima do marcador (DESIGN-v2) */
+export const HL_MIN_CONTRAST = 4.5
+/** Texto grande (WCAG: ≥ 24px): o marcador não fica mais fraco do que isto… */
+export const HL_MIN_ALPHA_LARGE = 0.25
+/** …desde que o texto mantenha este contraste */
+const HL_MIN_CONTRAST_LARGE = 3
+const HL_LARGE_TEXT_PX = 24
 
 /*
  * Y fora da row de referência, no intervalo até à vizinha (na sequência
@@ -205,6 +276,8 @@ export interface AnchoredStroke {
    * x e yv vêm arredondados a 3 casas: o que se grava é o que se desenha.
    */
   p: number[]
+  /** Traço livre de marcador: desenha-se translúcido, por trás do texto (só existe quando true) */
+  hl?: boolean
   /**
    * Só nos traços órfãos (a maioria das suas linhas desapareceu da letra):
    * o texto dessas linhas, para o traço voltar se a letra voltar. Um órfão
@@ -212,6 +285,31 @@ export interface AnchoredStroke {
    */
   lines?: SavedLines
 }
+
+/**
+ * Destaque de texto do marcador: o intervalo [c0, c1) de uma linha, já em
+ * palavras inteiras. Um gesto que atravessa várias linhas dá um por linha.
+ */
+export interface TextHighlight {
+  id: string
+  color: string
+  mode: typeof MODE_HL_TEXT
+  ln: number
+  /** Início, a contar do 1.º carácter não branco da linha (como c nos traços) */
+  c0: number
+  /** Fim (exclusivo), na mesma contagem */
+  c1: number
+  /** O texto destacado: para o reencontrar depois de a linha ser editada */
+  t: string
+  /**
+   * Só nos órfãos (o texto já não está na letra): o texto da linha quando
+   * foi destacada. Escondido, nunca apagado; volta se a linha voltar.
+   */
+  lines?: SavedLines
+}
+
+/** O que a lista de anotações guarda: traços (caneta e marcador livre) e destaques de texto */
+export type AnnItem = AnchoredStroke | TextHighlight
 
 export interface ResolvedStroke {
   id: string
@@ -227,6 +325,17 @@ export interface ResolvedStroke {
    * de fora pela esquerda, -1 = pela direita, 0 = cabia (ver marginGutter)
    */
   edge: number
+  /** Traço livre de marcador (por trás do texto, translúcido) */
+  hl?: boolean
+}
+
+export interface ResolvedHighlight {
+  id: string
+  color: string
+  /** Um retângulo por row visual do intervalo (px), de cima para baixo */
+  rects: Box[]
+  /** true = não se desenha (órfão, texto que já não está na linha, sem caixas) */
+  hidden: boolean
 }
 
 /* ═══ Índice derivado do layout (cache por objeto) ═══ */
@@ -280,6 +389,7 @@ interface Index {
   words: Map<number, Int32Array>
   hits: Map<number, Map<number, CharHit | null>>
   memo: WeakMap<object, WeakMap<AnchoredStroke, ResolvedStroke>>
+  hlMemo: WeakMap<object, WeakMap<TextHighlight, ResolvedHighlight>>
 }
 
 const indexCache = new WeakMap<LayoutModel, Index>()
@@ -354,6 +464,7 @@ function buildIndex(L: LayoutModel): Index {
   return {
     L, em, centerX, minX, maxX, top, rows, lineRows, rowIdx, bands, bandIdx,
     leads: new Map(), rowChars: new Map(), words: new Map(), hits: new Map(), memo: new WeakMap(),
+    hlMemo: new WeakMap(),
   }
 }
 
@@ -995,13 +1106,15 @@ export function resolveStroke(a: AnchoredStroke, layout: LayoutModel, lineMap?: 
   return out
 }
 
-/** resolveStroke de uma lista inteira */
+/** resolveStroke dos traços de uma lista (caneta e marcador livre; os destaques de texto ficam de fora) */
 export function resolveAll(
-  strokes: readonly AnchoredStroke[],
+  strokes: readonly AnnItem[],
   layout: LayoutModel,
   lineMap?: LineMap | null,
 ): ResolvedStroke[] {
-  return strokes.map(s => resolveStroke(s, layout, lineMap))
+  const out: ResolvedStroke[] = []
+  for (const s of strokes) if (!isTextHighlight(s)) out.push(resolveStroke(s, layout, lineMap))
+  return out
 }
 
 function computeStroke(a: AnchoredStroke, ix: Index, lineMap: LineMap | null): ResolvedStroke {
@@ -1017,6 +1130,7 @@ function computeStroke(a: AnchoredStroke, ix: Index, lineMap: LineMap | null): R
     hidden: false,
     edge: 0,
   }
+  if (a.hl) out.hl = true
   const p = Array.isArray(a.p) ? a.p : []
   const n = Math.floor(p.length / P_STRIDE)
   // Folha sem texto: px do bloco em centésimas da largura (não precisa de linhas)
@@ -1310,11 +1424,12 @@ export function remapLines(
  * Retrato do texto (trim) de TODAS as linhas não vazias da letra, para
  * payload.lines — o contexto completo deixa remapLines acertar quando a letra
  * for editada. Também só com órfãos: é o retrato que diz a que linhas um
- * órfão NÃO pode voltar (desvio 11). Sem traços não há nada a guardar.
+ * órfão NÃO pode voltar (desvio 11). Sem traços nem destaques presos à letra
+ * não há nada a guardar.
  */
-export function collectLines(strokes: readonly AnchoredStroke[], lyrics: string | null | undefined): SavedLines {
+export function collectLines(strokes: readonly AnnItem[], lyrics: string | null | undefined): SavedLines {
   const out: SavedLines = {}
-  if (!strokes.some(s => s.mode !== MODE_FREE && s.p.length >= P_STRIDE)) return out
+  if (!strokes.some(s => isTextHighlight(s) || (s.mode !== MODE_FREE && s.p.length >= P_STRIDE))) return out
   const src = String(lyrics ?? '').split('\n')
   for (let ln = 0; ln < src.length; ln++) {
     const t = src[ln].trim()
@@ -1342,20 +1457,41 @@ function pickLines(s: AnchoredStroke, saved: SavedLines): SavedLines {
  * corresponde a uma do retrato já é de outro sítio da letra (ex.: o refrão
  * que ficou quando o outro foi apagado).
  * Os traços livres (MODE_FREE) não dependem da letra: ficam como estão.
+ * Os destaques de texto seguem o mesmo mapa de linhas (ver rebaseHighlight).
+ * `hlSaved`: o retrato a que os itens do MARCADOR (destaques e traços
+ * livres de marcador) estão numerados (payload.hlLines — ver MODE_HL_LINES);
+ * sem ele, o mesmo dos traços da caneta (`saved`).
  * `changed` = false devolve os mesmos objetos (os caches continuam válidos).
  */
 export function rebaseStrokes(
-  strokes: readonly AnchoredStroke[],
+  strokes: readonly AnnItem[],
   saved: SavedLines | null | undefined,
   lyrics: string | null | undefined,
-): { strokes: AnchoredStroke[]; changed: boolean } {
+  hlSaved?: SavedLines | null,
+): { strokes: AnnItem[]; changed: boolean } {
   const shared = saved ? remapLines(saved, lyrics) : null
+  // Marcador: o seu retrato (quando é outro, a versão anterior re-numerou a caneta sem ele)
+  const mSaved = hlSaved ?? saved ?? null
+  const mShared = mSaved === (saved ?? null) ? shared : mSaved ? remapLines(mSaved, lyrics) : null
   let taken: Set<number> | null = null
+  let mTaken: Set<number> | null = null
+  let hlCtx: HlRebase | null = null
   let changed = false
-  const out = strokes.map(s => {
+  const out = strokes.map((s): AnnItem => {
+    if (isTextHighlight(s)) {
+      if (!hlCtx) hlCtx = hlRebaseContext(mSaved, mShared, lyrics)
+      const h = rebaseHighlight(s, hlCtx)
+      if (h !== s) changed = true
+      return h
+    }
     if (s.mode === MODE_FREE) return s
-    if (s.lines && shared && !taken) taken = new Set(shared.values())
-    const map = s.lines ? remapLines(s.lines, lyrics, taken) : shared
+    const sv = s.hl ? mSaved : saved ?? null
+    const sh = s.hl ? mShared : shared
+    if (s.lines && sh) {
+      if (s.hl && !mTaken) mTaken = new Set(sh.values())
+      if (!s.hl && !taken) taken = new Set(sh.values())
+    }
+    const map = s.lines ? remapLines(s.lines, lyrics, s.hl ? mTaken : taken) : sh
     const n = Math.floor(s.p.length / P_STRIDE)
     if (!map || !n) return s
     let lost = 0
@@ -1369,7 +1505,7 @@ export function rebaseStrokes(
     if (lost * 2 > n) {
       if (s.lines) return s
       changed = true
-      return { ...s, lines: pickLines(s, saved ?? {}) }
+      return { ...s, lines: pickLines(s, sv ?? {}) }
     }
     if (!lost && !moved && !s.lines) return s
     changed = true
@@ -1386,9 +1522,728 @@ export function rebaseStrokes(
       gap = false
     }
     const next: AnchoredStroke = { id: s.id, color: s.color, w: s.w, mode: s.mode, p }
+    if (s.hl) next.hl = true
     return next
   })
   return { strokes: out, changed }
+}
+
+/* ═══ Marcador: destaques de texto ═══ */
+
+const WS = /\s/
+
+/** Destaque de texto (e não um traço)? */
+export function isTextHighlight(s: AnnItem | null | undefined): s is TextHighlight {
+  return !!s && s.mode === MODE_HL_TEXT
+}
+
+/** Brancos no início de um texto (o mesmo critério de leadOf) */
+function leadLen(t: string): number {
+  return t.length - t.replace(/^\s+/, '').length
+}
+
+/** Pontos [x0,y0, x1,y1, ...] → coordenadas finitas */
+function validPoints(ptsPx: readonly number[] | null | undefined): { xs: number[]; ys: number[] } {
+  const xs: number[] = []
+  const ys: number[] = []
+  if (!ptsPx) return { xs, ys }
+  for (let i = 0; i + 1 < ptsPx.length; i += 2) {
+    if (fin(ptsPx[i]) && fin(ptsPx[i + 1])) {
+      xs.push(ptsPx[i])
+      ys.push(ptsPx[i + 1])
+    }
+  }
+  return { xs, ys }
+}
+
+/**
+ * Carácter tocado por um ponto do marcador: a row mais próxima na vertical
+ * (até HL_NEAR_Y_EM dela), dentro da sua extensão (± HL_NEAR_X_EM), e aí a
+ * letra debaixo do ponto ou, entre palavras, a mais próxima. null = fora do
+ * texto (margem, intervalo entre estrofes).
+ */
+function pointChar(ix: Index, x: number, y: number): { ln: number; c: number; g: number; inside: boolean } | null {
+  const k = nearest(ix.rows, y)
+  if (k < 0) return null
+  const r = ix.rows[k]
+  const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0
+  if (dy > HL_NEAR_Y_EM * ix.em) return null
+  const slack = HL_NEAR_X_EM * ix.em
+  if (x < r.left - slack || x > r.right + slack) return null
+  const list = charsOf(ix, r.ln)[r.ri] ?? []
+  const ch = letterAt(list, x) ?? nearestChar(list, x)
+  return ch ? { ln: r.ln, c: ch.c, g: k, inside: dy === 0 } : null
+}
+
+/**
+ * O que um gesto do marcador faz (pontos em px do layout de origem):
+ *  'text' — destaque de texto (a maioria dos pontos em cima do texto, ou
+ *           um toque curto em cima de uma palavra)
+ *  'ink'  — traço livre (na margem, sobretudo vertical, folha sem letra)
+ *  null   — nada (sem pontos, toque fora do texto)
+ */
+export function classifyHighlight(ptsPx: readonly number[], layout: LayoutModel): 'text' | 'ink' | null {
+  const ix = indexOf(layout)
+  const { xs, ys } = validPoints(ptsPx)
+  const n = xs.length
+  if (!n) return null
+  if (!ix.rows.length) return n > 1 ? 'ink' : null
+  let l = Infinity
+  let r = -Infinity
+  let t = Infinity
+  let b = -Infinity
+  let on = 0
+  for (let i = 0; i < n; i++) {
+    if (xs[i] < l) l = xs[i]
+    if (xs[i] > r) r = xs[i]
+    if (ys[i] < t) t = ys[i]
+    if (ys[i] > b) b = ys[i]
+    if (pointChar(ix, xs[i], ys[i])) on++
+  }
+  const w = r - l
+  const h = b - t
+  if (Math.max(w, h) < HL_TAP_EM * ix.em) return on ? 'text' : null
+  if (h > HL_VERTICAL * w) return 'ink'
+  return on * 2 >= n ? 'text' : 'ink'
+}
+
+/**
+ * Varrimento de uma row: pelo menos isto (em) de deslocação horizontal…
+ * (uma palavra curta varrida para trás não chega: confunde-se com o começo
+ * de uma diagonal)
+ */
+const HL_SWEEP_EM = 3
+/**
+ * …num troço seguido cujo Y não varia mais do que isto (em). Uma diagonal
+ * de declive s só anda s × isto dentro de uma faixa assim: até s ≈ 7 (uma
+ * linha abaixo e 11em para o lado) não passa por varrimento
+ */
+const HL_SWEEP_BAND_EM = 0.4
+
+interface HlHit {
+  ln: number
+  c: number
+  /** Índice global da row */
+  g: number
+  x: number
+  y: number
+  /** Dentro da caixa do texto da row (não só na folga à volta) */
+  inside: boolean
+}
+
+/**
+ * Destaques de texto de um gesto, com a semântica de uma seleção de texto:
+ * da 1.ª palavra tocada à última, postas em ordem de leitura (um arrasto ao
+ * contrário dá o mesmo). Várias linhas: a 1.ª da palavra até ao fim da
+ * linha, as do meio inteiras, a última do início até ao fim da palavra.
+ * Um registo por linha (rótulos de secção incluídos), c0/c1 a contar do 1.º
+ * carácter não branco. [] se nenhum ponto toca no texto.
+ *  - Numa row só: de ponta a ponta de TUDO o que o gesto tocou nela (o
+ *    vai-e-vem do marca-texto por cima de uma frase).
+ *  - Em várias rows (de várias linhas, ou de uma linha re-quebrada): a 1.ª
+ *    e a última palavra são as dos pontos onde o gesto começou e acabou
+ *    (como a âncora e o foco de uma seleção) — com o mínimo/máximo de tudo
+ *    o que foi tocado, a diagonal de uma row para a outra apanhava as
+ *    palavras por onde passava (à esquerda do início na 1.ª, à direita do
+ *    fim na última). MAS a 1.ª e a última row (em ordem de leitura) vão
+ *    também até onde o gesto as VARREU (troço na mesma row, sobretudo na
+ *    horizontal — ver HL_SWEEP_*): pintar uma linha para a direita e a
+ *    seguinte de volta para a esquerda (em "U") destaca as duas inteiras;
+ *    começar a meio, voltar ao início da linha e descer também. Uma row
+ *    extrema onde o gesto não começou nem acabou (zigue-zague que volta à
+ *    row de partida) conta com tudo o que tocou nela.
+ *  - Rows tocadas só na folga (um desvio do traço para baixo da linha, sem
+ *    entrar na caixa do texto da vizinha) não contam, exceto a do início e a
+ *    do fim.
+ * `id`: ids previsíveis (id, id-1, id-2…), para os testes.
+ */
+export function highlightRange(
+  ptsPx: readonly number[],
+  color: string,
+  layout: LayoutModel,
+  id?: string,
+): TextHighlight[] {
+  const ix = indexOf(layout)
+  const { xs, ys } = validPoints(ptsPx)
+  const all: HlHit[] = []
+  for (let i = 0; i < xs.length; i++) {
+    const h = pointChar(ix, xs[i], ys[i])
+    if (h) all.push({ ...h, x: xs[i], y: ys[i] })
+  }
+  if (!all.length) return []
+  const first = all[0]
+  const last = all[all.length - 1]
+  const counted = new Set<number>([first.g, last.g])
+  for (const h of all) if (h.inside) counted.add(h.g)
+  const hits = all.filter(h => counted.has(h.g))
+  let gMin = Infinity
+  let gMax = -Infinity
+  for (const h of hits) {
+    if (h.g < gMin) gMin = h.g
+    if (h.g > gMax) gMax = h.g
+  }
+  const sLn = ix.rows[gMin].ln
+  const eLn = ix.rows[gMax].ln
+  let sC: number
+  let eC: number
+  if (gMin === gMax) {
+    // Uma row: tudo o que tocou nela
+    sC = eC = first.c
+    for (const h of hits) {
+      if (h.c < sC) sC = h.c
+      if (h.c > eC) eC = h.c
+    }
+  } else {
+    sC = rowEnd(hits, gMin, first, last, ix.em, true)
+    eC = rowEnd(hits, gMax, first, last, ix.em, false)
+    // A mesma linha em várias rows (re-quebrada): a ordem de leitura é a dos caracteres
+    if (sLn === eLn && sC > eC) {
+      const t = sC
+      sC = eC
+      eC = t
+    }
+  }
+  // Palavras inteiras: recua até ao início da 1.ª, avança até ao fim da última
+  const st = textOf(ix.L, sLn)
+  let a = sC
+  while (a > 0 && !WS.test(st[a - 1])) a--
+  const et = textOf(ix.L, eLn)
+  let b = eC + 1
+  while (b < et.length && !WS.test(et[b])) b++
+  const lns: number[] = []
+  ix.lineRows.forEach((_, ln) => { if (ln >= sLn && ln <= eLn) lns.push(ln) })
+  lns.sort((p, q) => p - q)
+  const out: TextHighlight[] = []
+  for (const ln of lns) {
+    const t = textOf(ix.L, ln)
+    const lead = leadOf(ix, ln)
+    const from = ln === sLn ? a : lead
+    const to = ln === eLn ? b : t.replace(/\s+$/, '').length
+    if (to <= from) continue
+    const k = out.length
+    out.push({
+      id: id ? (k ? `${id}-${k}` : id) : newId(),
+      color: typeof color === 'string' && color ? color : DEFAULT_COLOR,
+      mode: MODE_HL_TEXT,
+      ln,
+      c0: from - lead,
+      c1: to - lead,
+      t: t.slice(from, to),
+    })
+  }
+  return out
+}
+
+/**
+ * Ponta de um destaque de várias rows numa row extrema `g` (`start`: a 1.ª
+ * em ordem de leitura → o carácter mais à esquerda; senão o mais à direita).
+ * O do ponto onde o gesto começou/acabou nessa row e, para lá dele, até onde
+ * um troço a varreu na horizontal (ver sweptX: a diagonal que só passa por
+ * ela não conta). Se o gesto não começou nem acabou nela: tudo o que tocou.
+ */
+function rowEnd(hits: readonly HlHit[], g: number, first: HlHit, last: HlHit, em: number, start: boolean): number {
+  const pick = (a: number, b: number) => (start ? Math.min(a, b) : Math.max(a, b))
+  let c = NaN
+  if (first.g === g) c = first.c
+  if (last.g === g) c = isNaN(c) ? last.c : pick(c, last.c)
+  if (isNaN(c)) {
+    for (const h of hits) if (h.g === g) c = isNaN(c) ? h.c : pick(c, h.c)
+    return c
+  }
+  let i = 0
+  while (i < hits.length) {
+    if (hits[i].g !== g) {
+      i++
+      continue
+    }
+    // Troço: pontos seguidos nesta row
+    let cc = hits[i].c
+    let j = i
+    for (; j < hits.length && hits[j].g === g; j++) cc = pick(cc, hits[j].c)
+    if (sweptX(hits, i, j, HL_SWEEP_BAND_EM * em) >= HL_SWEEP_EM * em) c = pick(c, cc)
+    i = j
+  }
+  return c
+}
+
+/**
+ * Maior deslocação horizontal (extensão em X) de um troço seguido de
+ * hits[i..j) cujo Y fica dentro de uma faixa de `band` px — o varrimento de
+ * uma linha (Y quase constante), e não a passagem de uma diagonal.
+ */
+function sweptX(hits: readonly HlHit[], i: number, j: number, band: number): number {
+  let best = 0
+  for (let a = i; a < j; a++) {
+    let x0 = hits[a].x
+    let x1 = x0
+    let y0 = hits[a].y
+    let y1 = y0
+    for (let b = a + 1; b < j; b++) {
+      const h = hits[b]
+      if (h.y < y0) y0 = h.y
+      if (h.y > y1) y1 = h.y
+      if (y1 - y0 > band) break
+      if (h.x < x0) x0 = h.x
+      if (h.x > x1) x1 = h.x
+    }
+    if (x1 - x0 > best) best = x1 - x0
+  }
+  return best
+}
+
+/**
+ * Gesto do marcador → destaques de texto (`marks`) ou um traço livre de
+ * marcador (`ink`: ancorado como os traços da caneta, hl = true, largura
+ * HL_INK_EM). null = nada a acrescentar.
+ */
+export function anchorHighlight(
+  ptsPx: readonly number[],
+  color: string,
+  layout: LayoutModel,
+  id?: string,
+): { marks: TextHighlight[]; ink: AnchoredStroke | null } | null {
+  const kind = classifyHighlight(ptsPx, layout)
+  if (!kind) return null
+  if (kind === 'text') {
+    const marks = highlightRange(ptsPx, color, layout, id)
+    return marks.length ? { marks, ink: null } : null
+  }
+  const width = HL_INK_EM * indexOf(layout).em
+  const a = isLayoutEmpty(layout)
+    ? anchorFree(ptsPx, color, width, layout, id)
+    : anchorStroke(ptsPx, color, width, layout, id)
+  if (!a) return null
+  a.hl = true
+  return { marks: [], ink: a }
+}
+
+/**
+ * Retângulos de um destaque no layout: um por row visual do intervalo, do
+ * left do 1.º carácter visível ao right do último dessa row, com a altura
+ * da caixa do texto da row e uma pequena folga. Uma linha que quebra noutro
+ * sítio (telemóvel, letra maior) dá mais rows e o destaque acompanha-as.
+ * Escondido se é órfão, se a linha não existe ou se o texto do intervalo já
+ * não é `t` (a letra mudou sem rebase). Em cache por (layout, lineMap, destaque).
+ */
+export function resolveHighlight(h: TextHighlight, layout: LayoutModel, lineMap?: LineMap | null): ResolvedHighlight {
+  const ix = indexOf(layout)
+  const key: object = lineMap ?? IDENTITY
+  let memo = ix.hlMemo.get(key)
+  if (!memo) ix.hlMemo.set(key, (memo = new WeakMap()))
+  const hit = memo.get(h)
+  if (hit) return hit
+  const out = computeHighlight(h, ix, lineMap ?? null)
+  memo.set(h, out)
+  return out
+}
+
+/** resolveHighlight dos destaques de texto de uma lista (os traços ficam de fora) */
+export function resolveHighlights(
+  items: readonly AnnItem[],
+  layout: LayoutModel,
+  lineMap?: LineMap | null,
+): ResolvedHighlight[] {
+  const out: ResolvedHighlight[] = []
+  for (const s of items) if (isTextHighlight(s)) out.push(resolveHighlight(s, layout, lineMap))
+  return out
+}
+
+function computeHighlight(h: TextHighlight, ix: Index, lineMap: LineMap | null): ResolvedHighlight {
+  const out: ResolvedHighlight = { id: h.id, color: h.color, rects: [], hidden: true }
+  if (h.lines) return out
+  const ln = lineMap ? lineMap.get(h.ln) : h.ln
+  if (ln === undefined || !fin(ln)) return out
+  const rs = ix.lineRows.get(ln)
+  if (!rs) return out
+  const text = textOf(ix.L, ln)
+  const a = leadOf(ix, ln) + h.c0
+  const b = leadOf(ix, ln) + h.c1
+  if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b > text.length || b <= a) return out
+  if (text.slice(a, b) !== h.t) return out
+  // Extensão dos caracteres visíveis por row (os espaços colapsados numa quebra não contam)
+  const lo: number[] = []
+  const hi: number[] = []
+  for (let c = a; c < b; c++) {
+    const box = ix.L.charRect(ln, c)
+    if (!visibleBox(box)) continue
+    const ri = rowOfBox(rs, box)
+    if (ri < 0) continue
+    if (lo[ri] === undefined || box.left < lo[ri]) lo[ri] = box.left
+    if (hi[ri] === undefined || box.right > hi[ri]) hi[ri] = box.right
+  }
+  // Folga vertical, no máximo até meio caminho da row vizinha menos meio px:
+  // entre os retângulos de duas rows fica sempre ≥ 1px (nunca dupla
+  // opacidade). Com a entrelinha mais apertada (1.0–1.1) as caixas do texto
+  // de rows seguidas já se sobrepõem: o retângulo é cortado a meio dessa
+  // sobreposição, mesmo que fique mais baixo do que a caixa
+  const px = HL_PAD_X_EM * ix.em
+  const py = HL_PAD_Y_EM * ix.em
+  const gs = ix.rowIdx.get(ln) ?? []
+  for (let ri = 0; ri < rs.length; ri++) {
+    if (lo[ri] === undefined) continue
+    const g = gs[ri]
+    const above = g !== undefined && g > 0 ? ix.rows[g - 1] : null
+    const below = g !== undefined && g + 1 < ix.rows.length ? ix.rows[g + 1] : null
+    let top = rs[ri].top - py
+    let bottom = rs[ri].bottom + py
+    if (above) top = Math.max(top, (above.bottom + rs[ri].top) / 2 + 0.5)
+    if (below) bottom = Math.min(bottom, (rs[ri].bottom + below.top) / 2 - 0.5)
+    if (bottom - top < 1) {
+      const mid = (rs[ri].top + rs[ri].bottom) / 2
+      top = mid - 0.5
+      bottom = mid + 0.5
+    }
+    out.rects.push({ left: lo[ri] - px, top, right: hi[ri] + px, bottom })
+  }
+  out.hidden = out.rects.length === 0
+  return out
+}
+
+/** Borracha: ids dos destaques visíveis com algum retângulo a tocar no círculo */
+export function highlightsAt(resolved: readonly ResolvedHighlight[], x: number, y: number, radius: number): string[] {
+  const ids: string[] = []
+  if (!fin(x) || !fin(y) || !fin(radius)) return ids
+  for (const h of resolved) {
+    if (h.hidden) continue
+    for (const r of h.rects) {
+      const dx = Math.max(r.left - x, 0, x - r.right)
+      const dy = Math.max(r.top - y, 0, y - r.bottom)
+      if (dx * dx + dy * dy <= radius * radius) {
+        ids.push(h.id)
+        break
+      }
+    }
+  }
+  return ids
+}
+
+function sameColor(a: string, b: string): boolean {
+  return String(a).toLowerCase() === String(b).toLowerCase()
+}
+
+/** Pedaço [a, b) (absoluto) de um destaque, com outro id */
+function highlightPart(o: TextHighlight, a: number, b: number, lead: number, text: string, id: string): TextHighlight {
+  return { id, color: o.color, mode: MODE_HL_TEXT, ln: o.ln, c0: a - lead, c1: b - lead, t: text.slice(a, b) }
+}
+
+/**
+ * Junta destaques novos à lista sem nunca haver dois por cima um do outro
+ * (dupla opacidade): na mesma linha, os da MESMA cor que se sobreponham ou
+ * toquem (só brancos entre eles) fundem-se com o novo; os de OUTRA cor
+ * perdem a parte sobreposta (partidos em dois se o novo ficar no meio; os
+ * pedaços sem os brancos da ponta cortada). `lineText` = o texto de cada
+ * linha no layout onde se desenhou (LayoutModel.text). Devolve uma lista nova.
+ */
+export function mergeHighlights(
+  items: readonly AnnItem[],
+  added: readonly TextHighlight[],
+  lineText: (ln: number) => string,
+): AnnItem[] {
+  let list: AnnItem[] = items.slice()
+  for (const m of added) {
+    const raw = lineText(m.ln)
+    const text = typeof raw === 'string' ? raw : ''
+    const lead = leadLen(text)
+    let a = lead + m.c0
+    let b = lead + m.c1
+    if (m.lines || text.slice(a, b) !== m.t) {
+      list.push(m)
+      continue
+    }
+    // Intervalo absoluto de um destaque visível desta linha (null se não serve)
+    const span = (o: AnnItem): [number, number] | null => {
+      if (!isTextHighlight(o) || o.lines || o.ln !== m.ln) return null
+      const oa = lead + o.c0
+      const ob = lead + o.c1
+      return ob > oa && text.slice(oa, ob) === o.t ? [oa, ob] : null
+    }
+    const blank = (x: number, y: number) => x >= y || !text.slice(x, y).trim()
+    // 1. Fusão com a mesma cor, até não crescer mais
+    const gone = new Set<AnnItem>()
+    let grew = true
+    while (grew) {
+      grew = false
+      for (const o of list) {
+        if (gone.has(o) || !isTextHighlight(o) || !sameColor(o.color, m.color)) continue
+        const sp = span(o)
+        if (!sp) continue
+        const touch = sp[1] < a ? blank(sp[1], a) : sp[0] > b ? blank(b, sp[0]) : true
+        if (!touch) continue
+        gone.add(o)
+        a = Math.min(a, sp[0])
+        b = Math.max(b, sp[1])
+        grew = true
+      }
+    }
+    // 2. Recorte das outras cores
+    const next: AnnItem[] = []
+    for (const o of list) {
+      if (gone.has(o)) continue
+      const sp = isTextHighlight(o) && !sameColor(o.color, m.color) ? span(o) : null
+      if (!sp || sp[1] <= a || sp[0] >= b) {
+        next.push(o)
+        continue
+      }
+      const oh = o as TextHighlight
+      let keepId: string | null = oh.id
+      let le = a
+      while (le > sp[0] && WS.test(text[le - 1])) le--
+      if (le > sp[0]) {
+        next.push(highlightPart(oh, sp[0], le, lead, text, oh.id))
+        keepId = null
+      }
+      let rs = b
+      while (rs < sp[1] && WS.test(text[rs])) rs++
+      if (sp[1] > rs) next.push(highlightPart(oh, rs, sp[1], lead, text, keepId ?? newId()))
+    }
+    next.push({ id: m.id, color: m.color, mode: MODE_HL_TEXT, ln: m.ln, c0: a - lead, c1: b - lead, t: text.slice(a, b) })
+    list = next
+  }
+  return list
+}
+
+/* ── Destaques depois de a letra ser editada ── */
+
+interface HlRebase {
+  saved: SavedLines | null
+  shared: Map<number, number> | null
+  lyrics: string | null | undefined
+  /** Linhas da letra atual (sem trim) */
+  cur: string[]
+  /** Linhas atuais que já têm par no retrato (não recebem órfãos nem destaques mudados) */
+  used: Set<number>
+  /** Linhas do retrato com par, por ordem */
+  paired: number[]
+}
+
+function hlRebaseContext(saved: SavedLines | null, shared: Map<number, number> | null, lyrics: string | null | undefined): HlRebase {
+  const paired = shared ? [...shared.keys()].sort((p, q) => p - q) : []
+  return {
+    saved,
+    shared,
+    lyrics,
+    cur: String(lyrics ?? '').split('\n'),
+    used: new Set(shared ? shared.values() : []),
+    paired,
+  }
+}
+
+/**
+ * Ocorrência de `t` em `text` mais próxima de `around`; palavras inteiras
+ * primeiro (`wordsOnly`: só essas). -1 se não há
+ */
+function nearestOccurrence(text: string, t: string, around: number, wordsOnly = false): number {
+  let best = -1
+  let bestWord = false
+  if (!t) return best
+  for (let i = text.indexOf(t); i >= 0; i = text.indexOf(t, i + 1)) {
+    const word = (i === 0 || WS.test(text[i - 1])) && (i + t.length >= text.length || WS.test(text[i + t.length]))
+    if (wordsOnly && !word) continue
+    if (best < 0 || (word && !bestWord) || (word === bestWord && Math.abs(i - around) < Math.abs(best - around))) {
+      best = i
+      bestWord = word
+    }
+  }
+  return best
+}
+
+/**
+ * Linha MUDADA (sem par no mapa): o destaque procura o seu texto numa linha
+ * atual também sem par, entre as vizinhas com par (a linha editada fica no
+ * mesmo sítio da estrofe), a mais perto da posição esperada; dentro dela, a
+ * ocorrência mais próxima de c0. null se o texto já não existe ali.
+ */
+function relocateHighlight(h: TextHighlight, ctx: HlRebase): { ln: number; c0: number } | null {
+  const shared = ctx.shared
+  if (!shared) return null
+  let prev = -1
+  let next = -1
+  for (const k of ctx.paired) {
+    if (k < h.ln) prev = k
+    else if (k > h.ln) {
+      next = k
+      break
+    }
+  }
+  const A = prev >= 0 ? (shared.get(prev) as number) : -1
+  const B = next >= 0 ? (shared.get(next) as number) : ctx.cur.length
+  const want = prev >= 0 ? A + (h.ln - prev) : next >= 0 ? B - (next - h.ln) : h.ln
+  let best: { ln: number; c0: number; d: number } | null = null
+  for (let j = A + 1; j < B; j++) {
+    if (ctx.used.has(j)) continue
+    const text = ctx.cur[j]
+    if (!text || !text.trim()) continue
+    const lead = leadLen(text)
+    const at = nearestOccurrence(text, h.t, lead + h.c0)
+    if (at < 0) continue
+    const d = Math.abs(j - want)
+    if (!best || d < best.d) best = { ln: j, c0: at - lead, d }
+  }
+  return best && { ln: best.ln, c0: best.c0 }
+}
+
+/**
+ * Um destaque na numeração da letra atual. Linha igual (com par no mapa,
+ * o mesmo de rebaseStrokes) → só muda o ln (o texto é o mesmo: c0/c1 valem).
+ * Linha mudada → reencontra `t` na linha editada (relocateHighlight); se já
+ * não existir fica ÓRFÃO (escondido, com o texto da linha) e volta se a
+ * linha voltar — só para linhas novas em relação ao retrato (desvio 11).
+ * Sem registo do texto da linha (sem retrato, ou um que não a tem): ver
+ * looseHighlight.
+ */
+function rebaseHighlight(h: TextHighlight, ctx: HlRebase): TextHighlight {
+  if (h.lines) {
+    const j = remapLines(h.lines, ctx.lyrics, ctx.used).get(h.ln)
+    if (j === undefined) return h
+    const text = ctx.cur[j] ?? ''
+    const lead = leadLen(text)
+    if (text.slice(lead + h.c0, lead + h.c1) !== h.t) return h
+    return { id: h.id, color: h.color, mode: MODE_HL_TEXT, ln: j, c0: h.c0, c1: h.c1, t: h.t }
+  }
+  const key = String(h.ln)
+  if (!ctx.saved || !ctx.shared || typeof ctx.saved[key] !== 'string') return looseHighlight(h, ctx)
+  const j = ctx.shared.get(h.ln)
+  if (j !== undefined) return j === h.ln ? h : { ...h, ln: j }
+  const at = relocateHighlight(h, ctx)
+  if (at) return { id: h.id, color: h.color, mode: MODE_HL_TEXT, ln: at.ln, c0: at.c0, c1: at.c0 + h.t.length, t: h.t }
+  return { ...h, lines: { [key]: ctx.saved[key] } }
+}
+
+/** Linhas para cada lado onde se procura um destaque sem registo da sua linha */
+const HL_LOOSE_LINES = 3
+
+/**
+ * Rede de segurança — destaque sem registo do texto da sua linha (não
+ * devia acontecer: o retrato do marcador viaja com ele; ex.: um payload
+ * mexido à mão). Se o texto continua no sítio, fica; senão procura-o, como
+ * palavras inteiras, na própria linha e depois até HL_LOOSE_LINES linhas
+ * para cada lado (a mais perto primeiro). Não o encontrando fica como está:
+ * o resolver esconde-o (não se apaga). Os rótulos de secção mostram-se com
+ * outro texto (REFRÃO): ficam.
+ */
+function looseHighlight(h: TextHighlight, ctx: HlRebase): TextHighlight {
+  const own = ctx.cur[h.ln]
+  if (typeof own === 'string') {
+    const lead = leadLen(own)
+    if (own.slice(lead + h.c0, lead + h.c1) === h.t || /^\[.+\]$/.test(own.trim())) return h
+  }
+  for (let d = 0; d <= HL_LOOSE_LINES; d++) {
+    for (const j of d ? [h.ln + d, h.ln - d] : [h.ln]) {
+      const text = ctx.cur[j]
+      if (typeof text !== 'string' || !text.trim() || /^\[.+\]$/.test(text.trim())) continue
+      const lead = leadLen(text)
+      const at = nearestOccurrence(text, h.t, lead + h.c0, true)
+      if (at < 0) continue
+      return { id: h.id, color: h.color, mode: MODE_HL_TEXT, ln: j, c0: at - lead, c1: at - lead + h.t.length, t: h.t }
+    }
+  }
+  return h
+}
+
+/* ── Cor do marcador ── */
+
+/** #rgb / #rrggbb / rgb() / rgba() → [r, g, b]; null se não se reconhece */
+function rgbOf(color: unknown): [number, number, number] | null {
+  if (typeof color !== 'string') return null
+  const c = color.trim()
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(c)
+  if (hex) {
+    let h = hex[1]
+    if (h.length <= 4) h = h.split('').map(ch => ch + ch).join('')
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
+  }
+  const fn = /^rgba?\(\s*(\d{1,3}(?:\.\d+)?)[\s,]+(\d{1,3}(?:\.\d+)?)[\s,]+(\d{1,3}(?:\.\d+)?)/i.exec(c)
+  if (fn) return [fn[1], fn[2], fn[3]].map(v => Math.min(255, Math.round(Number(v)))) as [number, number, number]
+  return null
+}
+
+/** Cor com transparência (rgba), para a cópia antiga; um formato desconhecido fica como está */
+export function rgbaOf(color: string, alpha: number): string {
+  const rgb = rgbOf(color)
+  return rgb ? `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})` : color
+}
+
+function lumOf(rgb: readonly number[]): number {
+  const lin = (v: number) => {
+    const s = v / 255
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+  }
+  return 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2])
+}
+
+/** Luminância relativa (sRGB, 0 = preto, 1 = branco) de uma cor; null se não se reconhece */
+export function luminanceOf(color: string | null | undefined): number | null {
+  const rgb = rgbOf(color)
+  return rgb ? lumOf(rgb) : null
+}
+
+/** Contraste (WCAG) entre duas luminâncias */
+function contrastOf(a: number, b: number): number {
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+}
+
+/** Contraste (WCAG) entre duas cores; null se alguma não se reconhece */
+export function contrastRatio(a: string | null | undefined, b: string | null | undefined): number | null {
+  const la = luminanceOf(a)
+  const lb = luminanceOf(b)
+  return la === null || lb === null ? null : contrastOf(la, lb)
+}
+
+/** Cor (rgb) de uma camada `color` com opacidade `alpha` por cima de `bg` — como o browser compõe */
+export function blendOver(color: string, bg: string, alpha: number): [number, number, number] | null {
+  const c = rgbOf(color)
+  const b = rgbOf(bg)
+  if (!c || !b) return null
+  return [0, 1, 2].map(i => b[i] + (c[i] - b[i]) * alpha) as [number, number, number]
+}
+
+/**
+ * Teto da opacidade do marcador sobre um fundo com esta luminância. Numa
+ * folha clara, a cor viva meio transparente é o marca-texto do papel; num
+ * fundo escuro um pouco mais (menos turvo) — markerAlpha baixa-a por cor
+ * quando o texto por cima perderia contraste.
+ */
+export function markerOpacity(bgLuminance: number | null | undefined): number {
+  return fin(bgLuminance) && bgLuminance < 0.35 ? HL_OPACITY_DARK : HL_OPACITY_LIGHT
+}
+
+/**
+ * Opacidade de uma cor do marcador debaixo de um texto (`ink`, `textPx`)
+ * sobre o fundo `bg`: a maior até ao teto do fundo (markerOpacity) que
+ * deixa o texto com contraste ≥ HL_MIN_CONTRAST (DESIGN-v2: 4.5:1). Com uma
+ * tinta de cor (concerto: laranja, âmbar…) ou um rótulo de secção na cor de
+ * acento isso pode dar um marcador muito fraco: no texto GRANDE (≥ 24px,
+ * WCAG) nunca fica abaixo de HL_MIN_ALPHA_LARGE, desde que o texto mantenha
+ * ≥ 3:1. Um tema que já tem menos contraste do que o alvo (sem marcador)
+ * pede 80% do que tem. Cores que não se reconhecem → o teto.
+ */
+export function markerAlpha(
+  color: string,
+  bg: string | null | undefined,
+  ink: string | null | undefined,
+  textPx?: number,
+): number {
+  const b = rgbOf(bg)
+  const cap = markerOpacity(b ? lumOf(b) : null)
+  const c = rgbOf(color)
+  const k = rgbOf(ink)
+  if (!b || !c || !k) return cap
+  const inkL = lumOf(k)
+  const base = contrastOf(lumOf(b), inkL)
+  const best = (target: number): number => {
+    const want = Math.min(target, base * 0.8)
+    for (let n = Math.round(cap * 100); n > 0; n--) {
+      const a = n / 100
+      const mix = [0, 1, 2].map(i => b[i] + (c[i] - b[i]) * a)
+      if (contrastOf(lumOf(mix), inkL) >= want) return a
+    }
+    return 0
+  }
+  let a = best(HL_MIN_CONTRAST)
+  if (fin(textPx) && textPx >= HL_LARGE_TEXT_PX && a < HL_MIN_ALPHA_LARGE) {
+    a = Math.max(a, Math.min(HL_MIN_ALPHA_LARGE, best(HL_MIN_CONTRAST_LARGE)))
+  }
+  return a
 }
 
 /* ═══ Formato guardado (compacto) ═══ */
@@ -1401,11 +2256,25 @@ export function rebaseStrokes(
  *  xs   — x × 1000 (inteiro): texto → absoluto; margem → diferença ao anterior
  *  ys   — yv × 1000 (inteiro), em diferença ao anterior
  *  linhas — só nos órfãos
+ * Marcador livre: [id, cor, largura×1000, MODE_HL_INK, runs, cs, xs, ys, modo, linhas?]
+ *  (modo = o de ancoragem: texto, margem, intervalo, livre)
+ * Destaque de texto: [id, cor, 0, MODE_HL_TEXT, ln, c0, c1, texto, linhas?]
+ *  (o 0 está reservado: uma versão futura que o use, ou que junte campos
+ *  depois das linhas, é guardada em `extra` e reescrita tal como veio)
+ * Retrato do marcador: [id fixo, '', 0, MODE_HL_LINES, linhas] — o texto
+ *  (trim) das linhas a que os itens do marcador estão numerados
+ * Os modos do marcador são desconhecidos da versão anterior (2b52db3), que
+ * guarda estas entradas em `extra` e as reescreve tal como vieram.
  */
 export type EncodedStroke = (string | number | number[] | SavedLines)[]
 
-export function encodeAnchored(strokes: readonly AnchoredStroke[]): EncodedStroke[] {
+export function encodeAnchored(strokes: readonly AnnItem[]): EncodedStroke[] {
   return strokes.map(s => {
+    if (isTextHighlight(s)) {
+      const h: EncodedStroke = [s.id, s.color, 0, MODE_HL_TEXT, s.ln, s.c0, s.c1, s.t]
+      if (s.lines) h.push(s.lines)
+      return h
+    }
     const n = Math.floor(s.p.length / P_STRIDE)
     const runs: number[] = []
     const cs: number[] = []
@@ -1432,7 +2301,10 @@ export function encodeAnchored(strokes: readonly AnchoredStroke[]): EncodedStrok
       px = x
       py = y
     }
-    const e: EncodedStroke = [s.id, s.color, Math.round(s.w * 1000), s.mode, runs, cs, xs, ys]
+    const w = Math.round(s.w * 1000)
+    const e: EncodedStroke = s.hl
+      ? [s.id, s.color, w, MODE_HL_INK, runs, cs, xs, ys, s.mode]
+      : [s.id, s.color, w, s.mode, runs, cs, xs, ys]
     if (s.lines) e.push(s.lines)
     return e
   })
@@ -1451,26 +2323,68 @@ function isSavedLines(v: unknown): v is SavedLines {
 }
 
 /** Inverso de encodeAnchored; descarta entradas inválidas em vez de rebentar */
-export function decodeAnchored(raw: unknown): AnchoredStroke[] {
+export function decodeAnchored(raw: unknown): AnnItem[] {
   return decodeAnchoredParts(raw).strokes
+}
+
+/** Destaque de texto guardado → TextHighlight; null se estragado */
+function decodeHighlight(e: readonly unknown[], id: string | number, color: unknown): TextHighlight | null {
+  const [, , , , ln, c0, c1, t, lines] = e
+  if (typeof ln !== 'number' || !Number.isInteger(ln) || ln < 0) return null
+  if (typeof c0 !== 'number' || !Number.isInteger(c0) || c0 < 0) return null
+  if (typeof c1 !== 'number' || !Number.isInteger(c1) || c1 <= c0) return null
+  if (typeof t !== 'string' || t.length !== c1 - c0) return null
+  const h: TextHighlight = {
+    id: String(id),
+    color: typeof color === 'string' && color ? color : DEFAULT_COLOR,
+    mode: MODE_HL_TEXT,
+    ln,
+    c0,
+    c1,
+    t,
+  }
+  if (isSavedLines(lines)) h.lines = lines
+  return h
 }
 
 /**
  * decodeAnchored + as entradas de uma versão FUTURA (modo ou código de Y
  * que esta não conhece), guardadas em bruto em `extra`: quem grava volta a
  * escrevê-las tal como vieram (buildPayload), para um cliente mais antigo
- * nunca apagar o que não sabe desenhar. Entradas estragadas saem.
+ * nunca apagar o que não sabe desenhar. Também em `extra`: campos a mais
+ * depois das linhas (qualquer tipo) e, no destaque, o campo reservado ≠ 0.
+ * Entradas estragadas saem. `hlLines`: o retrato do marcador (MODE_HL_LINES).
  */
-export function decodeAnchoredParts(raw: unknown): { strokes: AnchoredStroke[]; extra: unknown[] } {
-  const out: AnchoredStroke[] = []
+export function decodeAnchoredParts(raw: unknown): { strokes: AnnItem[]; extra: unknown[]; hlLines: SavedLines | null } {
+  const out: AnnItem[] = []
   const extra: unknown[] = []
-  if (!Array.isArray(raw)) return { strokes: out, extra }
+  let hlLines: SavedLines | null = null
+  if (!Array.isArray(raw)) return { strokes: out, extra, hlLines }
   for (const e of raw) {
     if (!Array.isArray(e) || e.length < 4) continue
-    const [id, color, w, mode, runs, cs, xs, ys, lines] = e as unknown[]
+    const [id, color, w, kind, runs, cs, xs, ys] = e as unknown[]
     if ((typeof id !== 'string' || !id) && !fin(id)) continue
-    if (typeof mode !== 'number' || !Number.isInteger(mode) || mode < 0) continue
-    if (KNOWN_MODES.indexOf(mode) < 0) {
+    if (typeof kind !== 'number' || !Number.isInteger(kind) || kind < 0) continue
+    if (kind === MODE_HL_LINES) {
+      if (e.length === 5 && w === 0 && isSavedLines(e[4])) hlLines = hlLines ?? e[4]
+      else extra.push(e)
+      continue
+    }
+    if (kind === MODE_HL_TEXT) {
+      if (w !== 0 || e.length > 9) {
+        extra.push(e)
+        continue
+      }
+      const h = decodeHighlight(e, id as string | number, color)
+      if (h) out.push(h)
+      continue
+    }
+    // Marcador livre: o modo de ancoragem vem a seguir aos pontos
+    const hl = kind === MODE_HL_INK
+    const mode = hl ? e[8] : kind
+    const lines = hl ? e[9] : e[8]
+    if (hl && (typeof mode !== 'number' || !Number.isInteger(mode) || mode < 0)) continue
+    if (KNOWN_MODES.indexOf(mode as number) < 0 || e.length > (hl ? 10 : 9)) {
       extra.push(e)
       continue
     }
@@ -1520,10 +2434,11 @@ export function decodeAnchoredParts(raw: unknown): { strokes: AnchoredStroke[]; 
       mode: mode as StrokeMode,
       p,
     }
+    if (hl) s.hl = true
     if (isSavedLines(lines)) s.lines = lines
     out.push(s)
   }
-  return { strokes: out, extra }
+  return { strokes: out, extra, hlLines }
 }
 
 /** Traço antigo, em px do Ensaio: o que os clientes antigos (PWA em cache) leem */
@@ -1562,13 +2477,23 @@ export interface ParsedPayload {
   strokes: LegacyStroke[]
   em?: number
   /** null = payload antigo, sem âncoras (migrar a partir de `strokes`) */
-  anchored: AnchoredStroke[] | null
+  anchored: AnnItem[] | null
   /** null = sem registo do texto das linhas */
   lines: SavedLines | null
+  /**
+   * Retrato a que os itens do marcador estão numerados (MODE_HL_LINES);
+   * null = sem ele (usa-se `lines`). Vai para rebaseStrokes (hlSaved).
+   */
+  hlLines: SavedLines | null
   /** Entradas de uma versão futura, em bruto (ver decodeAnchoredParts) */
   extra: unknown[]
   /** Por juntar à cloud (ver AnnPayload.pend) */
   pend: boolean
+}
+
+/** Item do marcador (destaque de texto ou traço livre de marcador)? */
+export function isMarkerItem(s: AnnItem): boolean {
+  return isTextHighlight(s) || !!s.hl
 }
 
 /** Payload v2 completo, pronto para JSON.stringify / upsert */
@@ -1577,20 +2502,25 @@ export function buildPayload(o: {
   h: number
   strokes: readonly LegacyStroke[]
   em: number
-  anchored: readonly AnchoredStroke[]
+  anchored: readonly AnnItem[]
   lyrics: string
   /** Entradas de uma versão futura, reescritas tal como vieram */
   extra?: readonly unknown[]
   pend?: boolean
 }): AnnPayload {
+  const lines = collectLines(o.anchored, o.lyrics)
+  const anchored: unknown[] = [...encodeAnchored(o.anchored), ...(o.extra ?? [])]
+  // Itens do marcador → o seu retrato, numa entrada que a versão anterior
+  // reescreve tal como veio (mesmo que ela re-numere a caneta e mude `lines`)
+  if (o.anchored.some(isMarkerItem) && Object.keys(lines).length) anchored.push([HL_LINES_ID, '', 0, MODE_HL_LINES, lines])
   const out: AnnPayload = {
     w: fin(o.w) ? Math.round(o.w * 10) / 10 : 0,
     h: fin(o.h) ? Math.round(o.h * 10) / 10 : 0,
     strokes: o.strokes.slice(),
     v: 2,
     em: fin(o.em) ? r3(o.em) : undefined,
-    anchored: [...encodeAnchored(o.anchored), ...(o.extra ?? [])],
-    lines: collectLines(o.anchored, o.lyrics),
+    anchored,
+    lines,
   }
   if (o.pend) out.pend = 1
   return out
@@ -1607,7 +2537,7 @@ function extraId(e: unknown): string {
  * perde — um traço apagado só numa das cópias volta (melhor do que apagar
  * o que não se viu).
  */
-export function unionById(base: readonly AnchoredStroke[], mine: readonly AnchoredStroke[]): AnchoredStroke[] {
+export function unionById<T extends { id: string }>(base: readonly T[], mine: readonly T[]): T[] {
   const ids = new Set(base.map(s => s.id))
   return [...base, ...mine.filter(s => !ids.has(s.id))]
 }
@@ -1637,7 +2567,7 @@ function legacyList(v: unknown): LegacyStroke[] {
 /** Lê qualquer versão do payload (array antigo, {w,h,strokes}, v2); null se não serve */
 export function readPayload(raw: unknown): ParsedPayload | null {
   if (raw == null) return null
-  if (Array.isArray(raw)) return { w: 0, strokes: legacyList(raw), anchored: null, lines: null, extra: [], pend: false }
+  if (Array.isArray(raw)) return { w: 0, strokes: legacyList(raw), anchored: null, lines: null, hlLines: null, extra: [], pend: false }
   if (typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
   const parts = Array.isArray(o.anchored) ? decodeAnchoredParts(o.anchored) : null
@@ -1646,6 +2576,7 @@ export function readPayload(raw: unknown): ParsedPayload | null {
     strokes: legacyList(o.strokes),
     anchored: parts ? parts.strokes : null,
     lines: isSavedLines(o.lines) ? o.lines : null,
+    hlLines: parts ? parts.hlLines : null,
     extra: parts ? parts.extra : [],
     pend: o.pend === 1 || o.pend === true,
   }
@@ -1668,14 +2599,34 @@ export function payloadHasStrokes(p: ParsedPayload | null | undefined): boolean 
 export function payloadHasVisible(p: ParsedPayload | null | undefined, lyrics: string | null | undefined): boolean {
   if (!p) return false
   if (!p.anchored) return p.strokes.length > 0
-  return rebaseStrokes(p.anchored, p.lines, lyrics).strokes.some(s => !s.lines && s.p.length >= P_STRIDE)
+  const src = String(lyrics ?? '').split('\n')
+  return rebaseStrokes(p.anchored, p.lines, lyrics, p.hlLines).strokes.some(s =>
+    isTextHighlight(s) ? highlightFits(s, src) : !s.lines && s.p.length >= P_STRIDE)
+}
+
+/**
+ * Destaque visível com esta letra (sem layout): não é órfão e o seu texto
+ * está na linha. Os rótulos de secção ([Refrão]) mostram-se com outro texto
+ * (REFRÃO): aí basta a linha ser um rótulo — o resolver confirma no layout.
+ */
+function highlightFits(h: TextHighlight, src: readonly string[]): boolean {
+  if (h.lines) return false
+  const line = src[h.ln]
+  if (typeof line !== 'string') return false
+  const lead = leadLen(line)
+  return line.slice(lead + h.c0, lead + h.c1) === h.t || /^\[.+\]$/.test(line.trim())
 }
 
 /**
  * Traços resolvidos (no layout do Ensaio) → formato antigo: um traço por
- * caminho, px inteiros. Os escondidos ficam de fora.
+ * caminho, px inteiros. Os escondidos ficam de fora. Os do marcador vão com
+ * cor rgba translúcida (os clientes antigos desenham-nos por cima do texto)
+ * e cada row de um destaque de texto vai como um traço horizontal largo.
  */
-export function toLegacyStrokes(resolved: readonly ResolvedStroke[]): LegacyStroke[] {
+export function toLegacyStrokes(
+  resolved: readonly ResolvedStroke[],
+  highlights?: readonly ResolvedHighlight[] | null,
+): LegacyStroke[] {
   const out: LegacyStroke[] = []
   for (const s of resolved) {
     if (s.hidden) continue
@@ -1683,8 +2634,25 @@ export function toLegacyStrokes(resolved: readonly ResolvedStroke[]): LegacyStro
       out.push({
         id: k ? `${s.id}~${k}` : s.id,
         pts: sp.map(v => Math.round(v)),
-        color: s.color,
+        color: s.hl ? rgbaOf(s.color, HL_LEGACY_ALPHA) : s.color,
         width: Math.round(s.width * 10) / 10,
+      })
+    })
+  }
+  for (const h of highlights ?? []) {
+    if (h.hidden) continue
+    h.rects.forEach((r, k) => {
+      const th = r.bottom - r.top
+      const cy = Math.round((r.top + r.bottom) / 2)
+      // Pontas redondas: o traço vai de meia altura para dentro de cada lado
+      let x0 = r.left + th / 2
+      let x1 = r.right - th / 2
+      if (x1 < x0) x0 = x1 = (r.left + r.right) / 2
+      out.push({
+        id: k ? `${h.id}~${k}` : h.id,
+        pts: [Math.round(x0), cy, Math.round(x1), cy],
+        color: rgbaOf(h.color, HL_LEGACY_ALPHA),
+        width: Math.round(th * 10) / 10,
       })
     })
   }
