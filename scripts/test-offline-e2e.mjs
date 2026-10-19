@@ -14,6 +14,8 @@
  *   O2 Arranque a frio sem rede (app fechada, modo avião, servidor em baixo)
  *      em '/' → Concertos → o concerto → modo concerto (iPad e telemóvel).
  *   O3 Arranque a frio sem rede direto em /setlist/<id>/concert (retoma a posição).
+ *      O3b: sem rede, tocar em "Editar música" (✎ da linha, atalho do tom/notas
+ *      no telemóvel, "Editar letra" do painel no iPad deitado).
  *   O4 Sessão: token expirado + modo avião e + Wi-Fi sem internet (35 s) →
  *      nunca /auth; sem sessão nenhuma → /auth.
  *   O5 A rede cai a meio do concerto: avançar (incluindo a música com sync
@@ -25,12 +27,15 @@
  *      primeiro caiu sem "Terminar sessão").
  *   O7 Barra do modo concerto: sem "Depois" no telemóvel, no iPad ao alto e
  *      deitado; o "A seguir" com a música certa e alinhado.
+ *   O8 Guardar em segundo plano interrompido a meio (a app fecha; a rede cai)
+ *      e a app volta a abrir / a rede volta → os concertos que faltavam ficam
+ *      guardados (perfil próprio, não precisa do O1).
  *
  * Uso:
  *   node scripts/test-offline-e2e.mjs [pasta-das-capturas]
  *   (faz o build de mock antes, como scripts/shots.sh; E2E_NO_BUILD=1 usa o
- *    dist que existe; ONLY=O1,O7 corre só esses — O2…O6 precisam do O1;
- *    E2E_VERBOSE=1 mostra também as que passam, com os tempos medidos)
+ *    dist que existe; ONLY=O1,O7 corre só esses — O2…O6 precisam do O1,
+ *    O7 e O8 não; E2E_VERBOSE=1 mostra também as que passam, com os tempos)
  * Saída: "N passaram, 0 falharam"; exit ≠ 0 se alguma asserção falhar.
  * Letras, títulos e nomes INVENTADOS.
  */
@@ -212,8 +217,13 @@ const server = createServer((req, res) => {
 const precacheCount = () => new Set([...readFileSync(path.join(DIST, 'sw.js'), 'utf8').matchAll(/\{url:"([^"]+)"/g)].map(m => m[1])).size
 
 // ── Supabase fictício ───────────────────────────────────────────────────────
-/** down = sem internet (todos os pedidos ao Supabase falham como sem rede) */
-const NET = { down: false, log: [], writes: [], auth: [] }
+/**
+ * down = sem internet (todos os pedidos ao Supabase falham como sem rede).
+ * gate({ table, method, url }) → null, ou uma promessa que PRENDE o pedido até
+ * ser resolvida: 'net' = falha por falta de rede; outra coisa = pedido cortado
+ * (a app fechou entretanto)
+ */
+const NET = { down: false, log: [], writes: [], auth: [], gate: null }
 
 function whoOf(req) {
   const a = req.headers()['authorization'] ?? ''
@@ -250,6 +260,12 @@ async function restRoute(route) {
   const method = req.method()
   const who = whoOf(req)
   NET.log.push({ table, method, query: decodeURIComponent(url.search), who, down: NET.down })
+  const held = NET.gate?.({ table, method, url })
+  if (held) {
+    const how = await held
+    // A página pode já não existir (a app fechou): o erro do abort não interessa
+    return route.abort(how === 'net' ? 'internetdisconnected' : 'failed').catch(() => {})
+  }
   if (NET.down) return route.abort('internetdisconnected')
   const wantsObject = (req.headers()['accept'] ?? '').includes('vnd.pgrst.object')
   const json = (status, data) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) })
@@ -525,6 +541,26 @@ await mkdir(OUT, { recursive: true })
 await new Promise(r => server.listen(PORT, r))
 
 const needO1 = ['O1', 'O2', 'O3', 'O4', 'O5', 'O6'].some(want)
+const concertKeys = async page => (await idbKeys(page)).filter(k => k.includes(':concert:')).sort()
+/** Avisos (toasts) mostrados desde a última chamada: um observador na página guarda-os todos */
+async function trackToasts(page) {
+  await page.evaluate(() => {
+    window.__toasts = []
+    if (window.__toastObs) return
+    window.__toastObs = new MutationObserver(ms => {
+      for (const m of ms) {
+        for (const n of m.addedNodes) {
+          if (n.nodeType !== 1) continue
+          const els = n.matches('[role="alert"], [role="status"]') ? [n] : [...n.querySelectorAll('[role="alert"], [role="status"]')]
+          for (const e of els) window.__toasts.push(e.textContent.replace(/\s+/g, ' ').trim())
+        }
+      }
+    })
+    window.__toastObs.observe(document.body, { childList: true, subtree: true })
+  })
+}
+const toastSeen = (page, text, timeout = 3000) =>
+  until(() => page.evaluate(t => (window.__toasts ?? []).some(x => x.includes(t)), text), timeout)
 /** Corre um cenário: uma exceção conta como falha e não pára os outros */
 async function scenario(name, title, fn) {
   console.log(`— ${name}. ${title}`)
@@ -536,6 +572,7 @@ async function scenario(name, title, fn) {
   } finally {
     for (const c of opened) await c.close().catch(() => {})
     NET.down = false
+    NET.gate = null
     SRV.down = false
   }
 }
@@ -637,7 +674,7 @@ try {
     ok(pathOf(page) === '/', 'O2: abre a app sem rede (nunca /auth)', page.url())
     ok(await page.evaluate(() => !!navigator.serviceWorker.controller), 'O2: a página veio do service worker')
     const home = await textOf(page, '[data-offline-concerts]')
-    ok(home.includes(OFF_NAME), `O2: Projetos mostra "Disponíveis offline" com o concerto (${Date.now() - t0} ms)`, home.slice(0, 200))
+    ok(/Disponíveis offline/.test(home) && home.includes(OFF_NAME), `O2: Projetos mostra "Disponíveis offline" com o concerto (${Date.now() - t0} ms)`, home.slice(0, 200))
     const banner = await textOf(page, '[data-offline-banner]')
     ok(/\d+ concertos guardados funcionam sem rede/.test(banner), 'O2: aviso "N concertos guardados funcionam sem rede"', banner)
     await shot(page, 'O2-projetos-offline', { fullPage: true })
@@ -786,6 +823,61 @@ try {
     await page.waitForSelector('[data-offline-status="readonly"]', { timeout: 5000 }).catch(() => {})
     ok(await countOf(page, '[data-offline-status="readonly"]') === 1, 'O3: /setlist/<id> por link direto sem rede')
     ok(errors.length === 0, 'O3: sem erros na página', errors)
+
+    // ── O3b: sem rede, tocar em "Editar música" ──
+    console.log('— O3b. Sem rede: tocar em "Editar música" (iPad ao alto, telemóvel, iPad deitado)')
+    const BLOCK = 'Sem ligação — não é possível alterar o concerto agora'
+    const here = `/setlist/${SID}`
+    // iPad ao alto: o ✎ de cada linha
+    await trackToasts(page)
+    await page.locator('button[aria-label="Editar música"]').first().click()
+    ok(!!(await toastSeen(page, BLOCK)), `O3b iPad ao alto: ✎ "Editar música" → aviso "${BLOCK}"`, await page.evaluate(() => window.__toasts))
+    await page.waitForTimeout(500)
+    ok(pathOf(page) === here, 'O3b iPad ao alto: fica na página do concerto (nada se abre sem dados)', page.url())
+
+    // Telemóvel: o ✎ está escondido; o toque na linha abre o tom/notas, com o atalho para a música
+    await page.setViewportSize(PHONE)
+    await page.waitForTimeout(300)
+    await page.locator('[class*="_songTitle_"]', { hasText: 'Carrossel de Agosto' }).first().click()
+    const dlg = page.locator('[role="dialog"]', { hasText: 'Só neste concerto' })
+    await dlg.waitFor({ timeout: 3000 }).catch(() => {})
+    ok(/Sem ligação — o tom e as notas não podem ser guardados agora/.test(await dlg.textContent().catch(() => '')), 'O3b telemóvel: tom/notas com o aviso "Sem ligação"')
+    ok(await dlg.locator('button', { hasText: /^Guardar$/ }).isDisabled().catch(() => false), 'O3b telemóvel: "Guardar" desativado')
+    await trackToasts(page)
+    await dlg.locator('button', { hasText: 'Editar letra e música' }).click()
+    ok(!!(await toastSeen(page, BLOCK)), 'O3b telemóvel: "Editar letra e música" → aviso "Sem ligação"', await page.evaluate(() => window.__toasts))
+    await page.waitForTimeout(500)
+    ok(pathOf(page) === here && await dlg.count() === 1, 'O3b telemóvel: fica no tom/notas (nada se perde)', page.url())
+    await shot(page, 'O3b-editar-musica-telemovel')
+    await dlg.locator('button[aria-label="Fechar"]').click().catch(() => {})
+
+    // iPad deitado (≥1024px): a linha seleciona; o painel tem "Editar letra"
+    await page.setViewportSize(TABLET_LAND)
+    await page.waitForTimeout(300)
+    await page.locator('[class*="_songTitle_"]', { hasText: 'Barraca das Farturas' }).first().click()
+    const edit = page.locator('aside button', { hasText: 'Editar letra' }).first()
+    await edit.waitFor({ timeout: 3000 }).catch(() => {})
+    await trackToasts(page)
+    const t1 = Date.now()
+    await edit.click().catch(() => {})
+    await page.waitForTimeout(600)
+    const where = pathOf(page)
+    let seen = null
+    if (where !== here) {
+      // Abriu a página da música sem rede: o que mostra quando o pedido falha?
+      seen = await until(async () => {
+        const txt = (await page.locator('main').first().textContent().catch(() => '')) ?? ''
+        if (/Música não encontrada/.test(txt)) return 'Música não encontrada'
+        if (txt.includes('Açúcar e canela na ponta dos dedos')) return 'letra'
+        return null
+      }, 15000, 300)
+      await shot(page, 'O3b-editar-letra-ipad-paisagem')
+    }
+    ok(where === here || seen === 'letra',
+      'O3b iPad deitado: "Editar letra" do painel sem rede é bloqueado como o ✎ (ou abre a letra guardada) — nunca "Música não encontrada"',
+      { url: page.url(), mostra: seen, aoFimDe: `${Math.round((Date.now() - t1) / 100) / 10} s`, avisos: await page.evaluate(() => window.__toasts).catch(() => null) })
+    await page.setViewportSize(TABLET_PORT)
+    ok(errors.length === 0, 'O3b: sem erros na página', errors)
   })
 
   // ══ O4 ═════════════════════════════════════════════════════════════════════
@@ -952,8 +1044,14 @@ try {
       navigator.serviceWorker.addEventListener('controllerchange', () => { window.__cc++ })
     })
     SRV.swTag = `nova-versao-${Date.now()}`
-    await page.evaluate(() => navigator.serviceWorker.getRegistration().then(r => r?.update()).catch(() => {}))
-    const swapped = await until(() => page.evaluate(() => window.__cc > 0).catch(() => false), 15000, 300)
+    // update() repetido: o recarregar acima pode ter deixado em curso a verificação
+    // do próprio browser (com o sw.js antigo) e um update() feito nesse instante
+    // junta-se a ela — não vê a versão nova até à verificação seguinte (60 s)
+    const swapped = await until(async () => {
+      if (await page.evaluate(() => window.__cc > 0).catch(() => false)) return true
+      await page.evaluate(() => navigator.serviceWorker.getRegistration().then(r => r?.update()).catch(() => {})).catch(() => {})
+      return false
+    }, 20000, 1000)
     ok(!!swapped, 'O5b: a versão nova do SW ficou ativa')
     await page.waitForTimeout(2500)
     const still = await page.evaluate(() => window.__palco === 1).catch(() => false)
@@ -1133,6 +1231,104 @@ try {
     ok(!!gone, 'O6: as cópias do u1 saem quando entra outro utilizador', await idbKeys(page))
     await u2SeesNothing('O6 u2 depois de a sessão do u1 cair')
     ok(errors.length === 0, 'O6: sem erros na página', errors)
+  })
+
+  // ══ O8 ═════════════════════════════════════════════════════════════════════
+  if (want('O8')) await scenario('O8', 'Guardar em segundo plano interrompido a meio (a app fecha; a rede cai) e retomado', async opened => {
+    // O guardar vai por data, um concerto de cada vez: s4 (hoje), s1 (amanhã),
+    // sOff (+3), s2 (+7), s3 (+14). Prende-se o pedido das músicas do sOff:
+    // s4 e s1 ficam guardados, sOff, s2 e s3 ainda não.
+    const ALL = ['s4', 's1', SID, 's2', 's3'].map(s => `u:u1:concert:${s}`)
+    const missing = keys => ALL.filter(k => !keys.includes(k)).map(k => k.split(':').pop())
+    function holdOffSongs() {
+      let release = () => {}
+      const hit = new Promise(resolve => {
+        NET.gate = ({ table, method, url }) => {
+          if (table !== 'setlist_songs' || method !== 'GET' || url.searchParams.get('setlist_id') !== `eq.${SID}`) return null
+          NET.gate = null
+          resolve(true)
+          return new Promise(r => { release = r })
+        }
+      })
+      return { hit: Promise.race([hit, sleep(15000).then(() => false)]), release: how => release(how) }
+    }
+    /** Outro aparelho (perfil próprio, sem SW: aqui só interessa o guardar), já com sessão */
+    async function launchDevice(profile) {
+      const ctx = await chromium.launchPersistentContext(profile, {
+        executablePath: EXE, viewport: TABLET_PORT, deviceScaleFactor: 2, serviceWorkers: 'block',
+      })
+      await wire(ctx)
+      await ctx.addInitScript(([k, v]) => { try { if (!localStorage.getItem(k)) localStorage.setItem(k, v) } catch { /* */ } }, [AUTH_KEY, JSON.stringify(fresh(SESSION))])
+      const page = ctx.pages()[0] ?? await ctx.newPage()
+      const errors = []
+      page.on('pageerror', e => errors.push(String(e).split('\n')[0]))
+      return { ctx, page, errors }
+    }
+    const throttleOf = page => page.evaluate(() => {
+      const v = Number(localStorage.getItem(Object.keys(localStorage).find(k => k.startsWith('gigio-offline-prefetch-')) ?? '')) || 0
+      return v ? `há ${Math.round((Date.now() - v) / 100) / 10} s` : 'sem limite marcado'
+    }).catch(() => '?')
+
+    // a) A app fecha a meio do guardar (o iOS mata-a em segundo plano) e é reaberta logo, com rede
+    const profA = mkdtempSync(path.join(os.tmpdir(), 'gigio-off-e2e-o8a-'))
+    tmpDirs.push(profA)
+    let hold = holdOffSongs()
+    let { ctx, page, errors } = await launchDevice(profA)
+    opened.push(ctx)
+    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' })
+    ok(await hold.hit, 'O8a: o guardar em segundo plano chegou ao 3.º concerto (sOff) e ficou preso')
+    let keys = await until(async () => { const k = await concertKeys(page); return k.includes('u:u1:concert:s1') ? k : null }, 5000) ?? await concertKeys(page)
+    ok(JSON.stringify(missing(keys)) === JSON.stringify([SID, 's2', 's3']), 'O8a: a meio — s4 e s1 guardados; sOff, s2 e s3 ainda não', keys)
+    ok(errors.length === 0, 'O8a: sem erros na página (1.ª abertura)', errors)
+    await ctx.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {})
+    hold.release('closed')
+    await ctx.close()
+    opened.length = 0
+    ;({ ctx, page, errors } = await launchDevice(profA))
+    opened.push(ctx)
+    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' })
+    await page.waitForTimeout(1000)
+    await page.goto(`${BASE}/setlists`, { waitUntil: 'domcontentloaded' })
+    keys = await until(async () => { const k = await concertKeys(page); return missing(k).length === 0 ? k : null }, 10000, 300) ?? await concertKeys(page)
+    ok(missing(keys).length === 0, 'O8a: reaberta com rede (Projetos e Concertos), o guardar completa os que faltavam',
+      { faltam: missing(keys), limiteDoGuardar: await throttleOf(page) })
+    await page.waitForSelector('[data-offline]', { timeout: 3000 }).catch(() => {})
+    const chips = await page.$$eval('[role="button"]', rows => rows.filter(r => r.querySelector('[data-offline]')).map(r => r.textContent.replace(/\s+/g, ' ').trim().slice(0, 30)))
+    await shot(page, 'O8a-concertos-reaberta', { fullPage: true })
+    // Passado o limite de 10 min (simulado) e a app de volta ao primeiro plano: completa
+    if (missing(keys).length) {
+      await page.evaluate(() => {
+        const k = Object.keys(localStorage).find(x => x.startsWith('gigio-offline-prefetch-'))
+        if (k) localStorage.setItem(k, String(Date.now() - 11 * 60 * 1000))
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      keys = await until(async () => { const k = await concertKeys(page); return missing(k).length === 0 ? k : null }, 10000, 300) ?? await concertKeys(page)
+      ok(missing(keys).length === 0, 'O8a: (controlo) passado o limite de 10 min, o guardar completa', { faltam: missing(keys), chipsAntes: chips })
+    }
+    ok(errors.length === 0, 'O8a: sem erros na página', errors)
+    await ctx.close()
+    opened.length = 0
+
+    // b) A rede cai a meio do guardar (Wi-Fi da sala que vai e vem) e volta com a app aberta
+    const profB = mkdtempSync(path.join(os.tmpdir(), 'gigio-off-e2e-o8b-'))
+    tmpDirs.push(profB)
+    hold = holdOffSongs()
+    ;({ ctx, page, errors } = await launchDevice(profB))
+    opened.push(ctx)
+    await page.goto(`${BASE}/setlists`, { waitUntil: 'domcontentloaded' })
+    ok(await hold.hit, 'O8b: o guardar chegou ao sOff e ficou preso')
+    await until(async () => (await concertKeys(page)).includes('u:u1:concert:s1'), 5000)
+    await netOff(ctx)
+    hold.release('net')
+    await page.waitForTimeout(1500)
+    keys = await concertKeys(page)
+    ok(JSON.stringify(missing(keys)) === JSON.stringify([SID, 's2', 's3']), 'O8b: com a rede em baixo ficam só s4 e s1', keys)
+    await netOn(ctx)
+    const tBack = Date.now()
+    keys = await until(async () => { const k = await concertKeys(page); return missing(k).length === 0 ? k : null }, 15000, 300) ?? await concertKeys(page)
+    ok(missing(keys).length === 0, 'O8b: a rede volta → o guardar retoma e guarda os que faltavam',
+      { faltam: missing(keys), esperei: `${Math.round((Date.now() - tBack) / 1000)} s`, limiteDoGuardar: await throttleOf(page) })
+    ok(errors.length === 0, 'O8b: sem erros na página', errors)
   })
 } catch (e) {
   ok(false, 'exceção no teste', String(e?.stack ?? e).split('\n').slice(0, 4).join(' | '))
