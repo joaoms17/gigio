@@ -1,0 +1,24 @@
+/* Letra + anotações no modo concerto.
+   .host é um contexto de empilhamento: o marcador (MarkerUnderlay, z-index
+   -1) fica atrás da letra e à frente do fundo do palco. A faixa tintada da
+   linha ativa passa para um ::before a z-index -2 — atrás dos destaques —
+   para nunca os tapar nem os tingir; o aspeto é o mesmo do LyricsView. */
+.host {
+  position: relative;
+  isolation: isolate;
+}
+
+.host [data-activeline] {
+  position: relative;
+  background: transparent;
+  box-shadow: none;
+}
+.host [data-activeline]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background: var(--lyric-accent-soft, var(--accent-soft));
+  box-shadow: inset 3px 0 0 var(--lyric-accent, var(--accent));
+}

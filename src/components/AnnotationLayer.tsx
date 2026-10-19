@@ -2,11 +2,15 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, for
 import { createPortal, flushSync } from 'react-dom'
 import LyricsView, { type SectionMetrics } from './LyricsView'
 import {
-  anchorFree, anchorLegacy, anchorStroke, buildPayload, collectLines, isLayoutEmpty, marginGutter, pathFromSubpaths,
-  payloadHasStrokes, rebaseStrokes, resolveAll, smoothPath, strokesAt, toLegacyStrokes, unionById, unionExtra,
-  type AnchoredStroke, type AnnPayload, type ParsedPayload,
+  HL_INK_EM, anchorFree, anchorHighlight, anchorLegacy, anchorStroke, buildPayload, classifyHighlight, collectLines,
+  highlightRange, highlightsAt, isLayoutEmpty, marginGutter, mergeHighlights, payloadHasStrokes,
+  rebaseStrokes, resolveAll, resolveHighlight, resolveHighlights, smoothPath, strokesAt, toLegacyStrokes, unionById,
+  unionExtra,
+  type AnchoredStroke, type AnnItem, type AnnPayload, type ParsedPayload,
 } from '../lib/annotations/anchor'
 import { measureLayout, watchFonts, whenFontsReady, type MeasuredLayout } from '../lib/annotations/measure'
+import { buildView, highlightRadius, markerPaint, type MarkerShape } from '../lib/annotations/view'
+import MarkerUnderlay from './MarkerUnderlay'
 import {
   ANN_STORAGE_KEY, LEGACY_PULL_WAIT_MS, cachedLegacy, fetchAnnotations, legacyKey, loadAnnotations, pushAnnotations,
   rememberLegacy,
@@ -21,7 +25,12 @@ interface DraftStroke {
   pts: number[]   // [x0,y0, x1,y1, ...]
   color: string
   width: number
+  /** Caneta, ou marcador (destaque de texto / traço livre — decide-se ao levantar) */
+  kind: 'pen' | 'hl'
 }
+
+/** Ferramenta do Ensaio */
+export type AnnTool = 'pen' | 'highlighter' | 'eraser'
 
 interface Props {
   /** Carrega uma vez por montagem: quem usa dá key={songId} */
@@ -31,8 +40,10 @@ interface Props {
   lyrics: string
   /** Tamanho da letra (A−/A+): ao mudar, re-mede antes de pintar */
   fontSize?: number
-  tool: 'pen' | 'eraser'
+  tool: AnnTool
+  /** Cor da ferramenta ativa (a caneta e o marcador têm paletas próprias) */
   color: string
+  /** Espessura da caneta (px); o marcador tem a sua (HL_INK_EM) */
   strokeWidth: number
   disabled?: boolean   // when true, pointer-events:none so page can scroll
   /**
@@ -97,7 +108,7 @@ function freshId(): string {
 }
 
 /** Ids repetidos (cópias antigas partidas em vários traços) estragavam a borracha e as keys */
-function uniqueIds(list: AnchoredStroke[]): AnchoredStroke[] {
+function uniqueIds(list: AnnItem[]): AnnItem[] {
   const seen = new Set<string>()
   return list.map(s => {
     if (!seen.has(s.id)) {
@@ -223,7 +234,7 @@ export function LegacyReference({ payload, lyrics, width, onReady }: {
 /* ═══ Camada de desenho do Ensaio ═══ */
 
 interface Initial {
-  strokes: AnchoredStroke[]
+  strokes: AnnItem[]
   /** Entradas de uma versão futura (em bruto) — regravadas tal como vieram */
   extra: unknown[]
   /** Payload antigo (px, sem âncoras) à espera do DOM e das fontes para ser ancorado */
@@ -237,7 +248,7 @@ function initialLoad(songId: string, lyrics: string): Initial {
   const p = loadAnnotations(songId)
   if (!p) return { strokes: [], extra: [], legacy: null, save: SAVE_NONE, kind: 'none' }
   if (p.anchored) {
-    const r = rebaseStrokes(p.anchored, p.lines, lyrics)
+    const r = rebaseStrokes(p.anchored, p.lines, lyrics, p.hlLines)
     const has = r.strokes.length > 0 || p.extra.length > 0
     return {
       strokes: uniqueIds(r.strokes),
@@ -259,6 +270,10 @@ function initialLoad(songId: string, lyrics: string): Initial {
  * contra a medição atual do LyricsView — A+/A−, rotação, resize e letra
  * editada só re-medem e re-resolvem; nada é re-escalado por rácios.
  * Sem letra ("Sem letra") os traços ficam livres na folha (MODE_FREE).
+ * Marcador: os destaques de texto e os traços livres de marcador entram na
+ * mesma lista (e no mesmo Desfazer) e desenham-se por trás do texto
+ * (MarkerUnderlay, irmã da camada): o PAI da camada tem de ser um contexto
+ * de empilhamento (isolation: isolate) — no Ensaio, o .previewInner.
  *
  * Cloud: o local ganha, exceto (1) uma cópia antiga em px deste aparelho,
  * que perde para uma v2 da cloud (é mais velha), e (2) o que se desenhou
@@ -272,7 +287,7 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
 ) {
   const layerRef = useRef<HTMLDivElement>(null)
   const [init] = useState(() => initialLoad(songId, lyrics))
-  const [strokes, setStrokes] = useState<AnchoredStroke[]>(init.strokes)
+  const [strokes, setStrokes] = useState<AnnItem[]>(init.strokes)
   const [layout, setLayout] = useState<MeasuredLayout | null>(null)
   const [current, setCurrent] = useState<DraftStroke | null>(null)
   const [eraserPos, setEraserPos] = useState<{ x: number; y: number } | null>(null)
@@ -283,7 +298,7 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   const activePointerRef = useRef<number | null>(null)
 
   // Espelhos do estado para os handlers e efeitos (sempre o mais recente)
-  const strokesRef = useRef<AnchoredStroke[]>(init.strokes)
+  const strokesRef = useRef<AnnItem[]>(init.strokes)
   const extraRef = useRef<unknown[]>(init.extra)
   const layoutRef = useRef<MeasuredLayout | null>(null)
   // Letra a que os traços (e os snapshots de Desfazer) estão numerados
@@ -303,9 +318,9 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Payload à espera do debounce — para flush em pagehide/visibilitychange
   const pendingPushRef = useRef<AnnPayload | null>(null)
-  const historyRef = useRef<AnchoredStroke[][]>([])  // undo snapshots (listas ancoradas)
+  const historyRef = useRef<AnnItem[][]>([])  // undo snapshots (listas ancoradas); um gesto = um passo
   // Limpar também apaga as entradas de versões futuras; Desfazer devolve-as
-  const clearedExtraRef = useRef(new WeakMap<AnchoredStroke[], unknown[]>())
+  const clearedExtraRef = useRef(new WeakMap<AnnItem[], unknown[]>())
   // Borracha: o snapshot de Desfazer só entra quando o gesto apaga alguma coisa
   const eraseSnapRef = useRef(false)
   // Pan com 2 dedos: posições dos pointers ativos + estado do gesto de scroll
@@ -333,14 +348,14 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     return next
   }, [contentRef])
 
-  const commit = useCallback((next: AnchoredStroke[], save: number) => {
+  const commit = useCallback((next: AnnItem[], save: number) => {
     strokesRef.current = next
     saveRef.current = Math.max(saveRef.current, save)
     setStrokes(next)
   }, [])
 
   /** Alteração feita pelo utilizador: snapshot para Desfazer + grava (local e cloud) */
-  const edit = useCallback((next: AnchoredStroke[]) => {
+  const edit = useCallback((next: AnnItem[]) => {
     historyRef.current.push(strokesRef.current)
     touchedRef.current = true
     commit(next, SAVE_ALL)
@@ -351,7 +366,7 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
    * aqui e gravam-se. Deste aparelho: mostram-se já, mas só se gravam depois
    * de a cloud responder (se ela tiver uma v2, ganha — ver reconcile).
    */
-  const finishLegacy = useCallback((list: AnchoredStroke[], origin: 'local' | 'remote') => {
+  const finishLegacy = useCallback((list: AnnItem[], origin: 'local' | 'remote') => {
     // Sem nada ancorado não se toca em nada: o payload antigo fica como está
     if (!list.length) return
     if (origin === 'local') {
@@ -412,7 +427,7 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     // do que uma cópia antiga daqui
     const v2 = R?.anchored && (remote || kind === 'legacy') ? R : null
     if (v2?.anchored) {
-      const r = rebaseStrokes(v2.anchored, v2.lines, lyricsRef.current)
+      const r = rebaseStrokes(v2.anchored, v2.lines, lyricsRef.current, v2.hlLines)
       const base = uniqueIds(r.strokes)
       let mine = strokesRef.current
       if (kind === 'legacy') {
@@ -468,7 +483,7 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     const prev = lyricsRef.current
     if (prev !== lyrics) {
       lyricsRef.current = lyrics
-      const rebase = (list: AnchoredStroke[]) => rebaseStrokes(list, collectLines(list, prev), lyrics)
+      const rebase = (list: AnnItem[]) => rebaseStrokes(list, collectLines(list, prev), lyrics)
       historyRef.current = historyRef.current.map(snap => rebase(snap).strokes)
       const r = rebase(strokesRef.current)
       if (r.changed) commit(r.strokes, SAVE_ALL)
@@ -547,7 +562,7 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     const base = {
       w: L ? L.width : 0,
       h: L ? L.height : 0,
-      strokes: L ? toLegacyStrokes(resolveAll(strokes, L)) : [],
+      strokes: L ? toLegacyStrokes(resolveAll(strokes, L), resolveHighlights(strokes, L)) : [],
       em: L ? L.em : NaN,
       anchored: strokes,
       lyrics: lyricsRef.current,
@@ -624,19 +639,30 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   useEffect(() => watchFonts(() => { measure() }), [measure])
 
   // Caminhos resolvidos no layout atual (cache por traço e por layout em
-  // anchor.ts), a calha que as margens pedem e até onde os traços descem
+  // anchor.ts): a caneta por cima do texto, o marcador por trás; a calha
+  // que as margens pedem e até onde o desenho desce
   const view = useMemo(() => {
-    if (!layout) return { paths: [], gutter: 0, bottom: 0 }
-    const resolved = resolveAll(strokes, layout)
-    let bottom = 0
-    const paths: { id: string; color: string; width: number; d: string }[] = []
-    for (const s of resolved) {
-      if (s.hidden) continue
-      for (const sp of s.subpaths) for (let i = 1; i < sp.length; i += 2) bottom = Math.max(bottom, sp[i] + s.width / 2)
-      paths.push({ id: s.id, color: s.color, width: s.width, d: pathFromSubpaths(s.subpaths) })
-    }
-    return { paths, gutter: marginGutter(resolved, layout), bottom }
+    if (!layout) return { paths: [], marker: [] as MarkerShape[], gutter: 0, bottom: 0 }
+    const v = buildView(strokes, layout)
+    return { paths: v.pen, marker: v.marker, gutter: marginGutter(v.resolved, layout), bottom: Math.max(0, v.bottom) }
   }, [strokes, layout])
+
+  // Gesto do marcador em curso: o que vai ficar quando se levantar — as
+  // palavras inteiras já ajustadas (como uma seleção de texto) ou o traço livre
+  const draftMarker = useMemo((): MarkerShape[] => {
+    if (!current || current.kind !== 'hl' || !layout) return []
+    const kind = classifyHighlight(current.pts, layout)
+    if (kind === 'text') {
+      const radius = highlightRadius(layout.em)
+      return highlightRange(current.pts, current.color, layout, 'rascunho').map(m => ({
+        key: `rascunho:${m.id}`, id: m.id, color: m.color, label: !!layout.section?.(m.ln), rects: resolveHighlight(m, layout).rects, radius,
+      }))
+    }
+    if (kind === 'ink' && current.pts.length >= 4) {
+      return [{ key: 'rascunho', id: 'rascunho', color: current.color, label: false, d: smoothPath(current.pts), width: HL_INK_EM * layout.em }]
+    }
+    return []
+  }, [current, layout])
 
   // Calha pedida pelas margens → quem usa aplica-a ao LyricsView e devolve-a
   // em `gutter` (o efeito de cima re-mede). Só depende do X das margens, que
@@ -651,11 +677,15 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     return { x: e.clientX - rect.left, y: e.clientY - rect.top }
   }, [])
 
-  /** Borracha: apaga (por id) os traços cujo desenho atual passa no círculo */
+  /** Borracha: apaga (por id) os traços e os destaques cujo desenho atual passa no círculo */
   function eraseAt(x: number, y: number) {
     const L = layoutRef.current
     if (!L) return
-    const ids = strokesAt(resolveAll(strokesRef.current, L), x, y, ERASER_RADIUS)
+    const list = strokesRef.current
+    const ids = [
+      ...strokesAt(resolveAll(list, L), x, y, ERASER_RADIUS),
+      ...highlightsAt(resolveHighlights(list, L), x, y, ERASER_RADIUS),
+    ]
     if (!ids.length) return
     const next = strokesRef.current.filter(s => ids.indexOf(s.id) < 0)
     if (!eraseSnapRef.current) {
@@ -703,7 +733,7 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
       return
     }
 
-    const stroke: DraftStroke = { pts: [x, y], color, width: strokeWidth }
+    const stroke: DraftStroke = { pts: [x, y], color, width: strokeWidth, kind: tool === 'highlighter' ? 'hl' : 'pen' }
     currentRef.current = stroke
     setCurrent(stroke)
   }
@@ -759,11 +789,25 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     currentRef.current = null
     setCurrent(null)
 
-    if (tool !== 'eraser' && finished && finished.pts.length >= 4) {
+    if (tool === 'eraser' || !finished) return
+    // Marcador: sobre o texto → destaque das palavras tocadas (um toque
+    // destaca a palavra), fundido com os da mesma cor e a recortar os de
+    // outra; na margem/vertical/folha sem letra → traço livre de marcador.
+    // Um gesto = um passo de Desfazer, mesmo com várias linhas
+    if (finished.kind === 'hl') {
+      const L = measure()
+      const res = L ? anchorHighlight(finished.pts, finished.color, L) : null
+      if (!L || !res) return
+      if (res.ink) addedRef.current.add(res.ink.id)
+      for (const m of res.marks) addedRef.current.add(m.id)
+      edit(res.ink ? [...strokesRef.current, res.ink] : mergeHighlights(strokesRef.current, res.marks, ln => L.text(ln)))
+      return
+    }
+    if (finished.pts.length >= 4) {
       // Ancora contra o DOM de agora (o que o músico viu ao desenhar); sem
       // texto onde ancorar ("Sem letra") fica livre na folha
       const L = measure()
-      const a = !L ? null
+      const a: AnchoredStroke | null = !L ? null
         : isLayoutEmpty(L) ? anchorFree(finished.pts, finished.color, finished.width, L)
           : anchorStroke(finished.pts, finished.color, finished.width, L)
       if (a) {
@@ -777,53 +821,63 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   // letra encolheu com A−… ou cresceu e a camada acaba no texto): a SVG
   // estende-se até eles, para se verem, apagarem e chegar-lhes com o scroll
   const svgHeight = view.bottom > svgH ? Math.ceil(view.bottom) : undefined
+  // Marcador (e o gesto do marcador em curso), por trás do texto
+  const marker = draftMarker.length ? [...view.marker, ...draftMarker] : view.marker
+  // Opacidade por cor: depende da folha (--surface do tema da app) e da cor
+  // e do tamanho da letra e dos rótulos por cima (medidos com o layout)
+  const paint = useMemo(() => markerPaint(layout?.ink), [layout])
 
   return (
-    <div ref={layerRef} className={styles.layer}>
-      {svgW > 0 && (
-        // Sem viewBox: as unidades são os px da própria SVG (o referencial
-        // dos pontos). Com um viewBox posto pelo ResizeObserver, durante um
-        // frame depois de A±/rodar os traços certos eram esticados ao novo tamanho
-        <svg
-          className={styles.svg}
-          style={{
-            cursor: disabled ? 'default' : tool === 'eraser' ? 'none' : 'crosshair',
-            pointerEvents: disabled ? 'none' : 'all',
-            touchAction: disabled ? 'auto' : 'none',
-            height: svgHeight,
-            overflow: 'visible',
-          }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          onPointerLeave={onPointerUp}
-        >
-          {view.paths.map(s => (
-            <path key={s.id} d={s.d}
-              stroke={s.color} strokeWidth={s.width}
-              fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          ))}
-          {current && current.pts.length >= 4 && (
-            <path d={smoothPath(current.pts)}
-              stroke={current.color} strokeWidth={current.width}
-              fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          )}
-          {tool === 'eraser' && eraserPos && (
-            <g className={styles.eraser} aria-hidden="true">
-              <circle className={styles.eraserRing} cx={eraserPos.x} cy={eraserPos.y} r={ERASER_RADIUS} />
-              <path
-                className={styles.eraserCross}
-                d={`M ${eraserPos.x - 4} ${eraserPos.y} H ${eraserPos.x + 4} M ${eraserPos.x} ${eraserPos.y - 4} V ${eraserPos.y + 4}`}
-              />
-            </g>
-          )}
-        </svg>
-      )}
-      {legacyJob && (
-        <LegacyReference payload={legacyJob.payload} lyrics={lyrics} width={legacyJob.width} onReady={onLegacyReady} />
-      )}
-    </div>
+    <>
+      <div ref={layerRef} className={styles.layer}>
+        {svgW > 0 && (
+          // Sem viewBox: as unidades são os px da própria SVG (o referencial
+          // dos pontos). Com um viewBox posto pelo ResizeObserver, durante um
+          // frame depois de A±/rodar os traços certos eram esticados ao novo tamanho
+          <svg
+            className={styles.svg}
+            style={{
+              cursor: disabled ? 'default' : tool === 'eraser' ? 'none' : 'crosshair',
+              pointerEvents: disabled ? 'none' : 'all',
+              touchAction: disabled ? 'auto' : 'none',
+              height: svgHeight,
+              overflow: 'visible',
+            }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            onPointerLeave={onPointerUp}
+          >
+            {view.paths.map(s => (
+              <path key={s.id} d={s.d}
+                stroke={s.color} strokeWidth={s.width}
+                fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            ))}
+            {current && current.kind === 'pen' && current.pts.length >= 4 && (
+              <path d={smoothPath(current.pts)}
+                stroke={current.color} strokeWidth={current.width}
+                fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            )}
+            {tool === 'eraser' && eraserPos && (
+              <g className={styles.eraser} aria-hidden="true">
+                <circle className={styles.eraserRing} cx={eraserPos.x} cy={eraserPos.y} r={ERASER_RADIUS} />
+                <path
+                  className={styles.eraserCross}
+                  d={`M ${eraserPos.x - 4} ${eraserPos.y} H ${eraserPos.x + 4} M ${eraserPos.x} ${eraserPos.y - 4} V ${eraserPos.y + 4}`}
+                />
+              </g>
+            )}
+          </svg>
+        )}
+        {legacyJob && (
+          <LegacyReference payload={legacyJob.payload} lyrics={lyrics} width={legacyJob.width} onReady={onLegacyReady} />
+        )}
+      </div>
+      {/* Irmã da camada (que tem z-index 2, por cima da letra): fica por trás
+          do texto — o pai da camada tem de ser um contexto de empilhamento */}
+      <MarkerUnderlay shapes={marker} paint={paint} height={svgHeight} />
+    </>
   )
 })
 

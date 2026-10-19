@@ -1,0 +1,15 @@
+/* Marcador — por trás do texto (ver MarkerUnderlay.tsx).
+   z-index -1: o contentor é um contexto de empilhamento (isolation:
+   isolate), por isso a camada fica à frente do fundo da folha e atrás da
+   letra. As cores são DADOS (gravadas em cada destaque), não tokens. */
+.under {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: -1;
+  display: block;
+}
