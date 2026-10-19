@@ -778,9 +778,10 @@ export default function SetlistPage() {
             ) : (
               <h1 className={styles.title}>
                 {setlist ? (
-                  <button type="button" className={styles.titleBtn} onClick={() => { if (!blocked()) setEditingName(true) }} title={readOnly ? 'Editar nome — precisa de rede' : 'Editar nome'}>
+                  <button type="button" className={styles.titleBtn} onClick={() => { if (!blocked('Mudar o nome precisa de rede')) setEditingName(true) }} title={readOnly ? 'Editar nome — precisa de rede' : 'Editar nome'}>
                     <span className={styles.titleText}>{setlist.name}</span>
-                    <span className={styles.editHint} aria-hidden="true"><Ico size={18}>{P.pencil}</Ico></span>
+                    {/* Sem rede não se edita: sem o ✎ (o toque no título diz porquê) */}
+                    {!readOnly && <span className={styles.editHint} aria-hidden="true"><Ico size={18}>{P.pencil}</Ico></span>}
                   </button>
                 ) : (
                   <span className={`skeleton ${styles.titleSkeleton}`} aria-label="A carregar" />
@@ -792,7 +793,11 @@ export default function SetlistPage() {
                 Dashboard e Concertos: SEG 28 SET 2026 · LOCAL · 12 MÚS · 40 MIN
                 Data e local editáveis inline — parecem texto; hairline só em hover/foco */}
             <div className={styles.metaRow}>
-              <label className={`${styles.metaField} ${styles.dateField} ${!date ? styles.metaEmpty : ''}`}>
+              {/* Sem rede: o seletor não abre (o input não apanha o toque) e o toque explica */}
+              <label
+                className={`${styles.metaField} ${styles.dateField} ${!date ? styles.metaEmpty : ''} ${readOnly ? styles.metaLocked : ''}`}
+                onClick={() => { if (readOnly) blocked('Mudar a data precisa de rede') }}
+              >
                 <span className={styles.metaBox}>
                   <span className={styles.metaText} aria-hidden="true">{date ? fmtDateLabel(date) : 'Sem data'}</span>
                 </span>
@@ -822,6 +827,7 @@ export default function SetlistPage() {
                         aria-label="Local do concerto"
                         autoComplete="off"
                         readOnly={readOnly}
+                        onClick={() => { if (readOnly) blocked('Mudar o local precisa de rede') }}
                       />
                     </span>
                   </span>
@@ -847,41 +853,53 @@ export default function SetlistPage() {
               </span>
             </div>
 
-            {/* Para usar sem rede: "● DISPONÍVEL OFFLINE · GUARDADO ÀS 14:32";
-                sem ligação, só leitura (o modo concerto funciona na mesma) */}
-            {setlist && (
-              <div className={styles.offlineStatus} role="status" data-offline-status={readOnly ? 'readonly' : copySavedAt ? 'saved' : 'none'}>
-                {readOnly ? (
-                  <>
-                    <span className={`${styles.offlineStatusLed} ${styles.offlineStatusLedWarn}`} aria-hidden="true" />
-                    <span className={styles.offlineStatusMain}>Sem ligação · só leitura</span>
-                    {copySavedAt && <>
-                      <span aria-hidden="true">·</span>
-                      <span>Cópia guardada {savedAtLabel(copySavedAt, new Date())}</span>
-                    </>}
-                  </>
-                ) : copySavedAt ? (
-                  <>
-                    <span className={styles.offlineStatusLed} aria-hidden="true" />
-                    <span className={styles.offlineStatusMain}>Disponível offline</span>
-                    <span aria-hidden="true">·</span>
-                    <span>Guardado {savedAtLabel(copySavedAt, new Date())}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className={`${styles.offlineStatusLed} ${styles.offlineStatusLedOff}`} aria-hidden="true" />
-                    <span className={styles.offlineStatusMain}>
-                      {storeOk ? 'Ainda não está guardado para offline' : 'Este browser não deixa guardar para offline'}
-                    </span>
-                    {storeOk && (
+            {/* Para usar sem rede: "● DISPONÍVEL OFFLINE · GUARDADO ÀS 14:32" só
+                com a cópia MESMO guardada neste aparelho; sem ligação, só leitura
+                (o modo concerto funciona na mesma). Os "·" vão com o texto
+                seguinte (sem rede, no telemóvel a linha parte sem um "·" pendurado) */}
+            {setlist && (() => {
+              const shownAt = copySavedAt ?? shownCopyAt
+              const status = readOnly ? 'readonly'
+                : !storeChecked ? 'checking'
+                  : copySavedAt ? 'saved'
+                    : storeState === 'blocked' ? 'blocked'
+                      : storeState === 'opening' ? 'opening' : 'none'
+              return (
+                <div className={styles.offlineStatus} role="status" data-offline-status={status}>
+                  {status === 'readonly' ? (
+                    <>
+                      <span className={`${styles.offlineStatusLed} ${styles.offlineStatusLedWarn}`} aria-hidden="true" />
+                      <span className={`${styles.offlineStatusMain} ${styles.offlineStatusItem}`}>Sem ligação · só leitura</span>
+                      {shownAt && <span className={styles.offlineStatusItem}>· Cópia guardada {savedAtLabel(shownAt, new Date())}</span>}
+                    </>
+                  ) : status === 'checking' ? null : status === 'saved' && copySavedAt ? (
+                    <>
+                      <span className={styles.offlineStatusLed} aria-hidden="true" />
+                      <span className={`${styles.offlineStatusMain} ${styles.offlineStatusItem}`}>Disponível offline</span>
+                      <span className={styles.offlineStatusItem}>· Guardado {savedAtLabel(copySavedAt, new Date())}</span>
+                    </>
+                  ) : status === 'blocked' ? (
+                    <>
+                      <span className={`${styles.offlineStatusLed} ${styles.offlineStatusLedOff}`} aria-hidden="true" />
+                      <span className={styles.offlineStatusMain}>Este browser não deixa guardar para offline</span>
+                    </>
+                  ) : status === 'opening' ? (
+                    <>
+                      <span className={`${styles.offlineStatusLed} ${styles.offlineStatusLedOff}`} aria-hidden="true" />
+                      <span className={styles.offlineStatusMain}>A guardar neste aparelho…</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`${styles.offlineStatusLed} ${styles.offlineStatusLedOff}`} aria-hidden="true" />
+                      <span className={styles.offlineStatusMain}>Ainda não está guardado para offline</span>
                       <button type="button" className={styles.offlineSaveBtn} onClick={saveForOffline} disabled={savingCopy}>
                         {savingCopy ? 'A guardar…' : 'Guardar para offline'}
                       </button>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
+                    </>
+                  )}
+                </div>
+              )
+            })()}
           </div>
 
           <div className={styles.headActions}>
@@ -900,7 +918,7 @@ export default function SetlistPage() {
               {/* Importar escreve no alinhamento (setlist_songs): só o dono do concerto pode — senão
                   as músicas novas eram criadas no repertório e o alinhamento recusado (RLS) */}
               {setlist && setlist.owner_id === user?.id && (
-                <button className={styles.toolBtn} onClick={() => { if (!blocked()) setShowImport(true) }} disabled={readOnly} title="Importar lista (PDF, foto ou texto)">
+                <button className={`${styles.toolBtn} ${readOnly ? styles.isOff : ''}`} onClick={() => { if (!blocked('Importar precisa de rede')) setShowImport(true) }} aria-disabled={readOnly || undefined} title="Importar lista (PDF, foto ou texto)">
                   <Ico size={16}>{P.import}</Ico><span className={styles.toolLabel}>Importar</span>
                 </button>
               )}
@@ -912,7 +930,7 @@ export default function SetlistPage() {
                 <Ico size={16}>{P.download}</Ico>
                 <span className={styles.toolLabel}>Repertório <span className={styles.toolTag}>PDF</span></span>
               </button>
-              <button className={styles.toolBtn} onClick={() => { if (!blocked()) setDuplicating(true) }} disabled={readOnly} title="Duplicar para outro projeto">
+              <button className={`${styles.toolBtn} ${readOnly ? styles.isOff : ''}`} onClick={() => { if (!blocked('Duplicar precisa de rede')) setDuplicating(true) }} aria-disabled={readOnly || undefined} title="Duplicar para outro projeto">
                 <Ico size={16}>{P.copy}</Ico><span className={styles.toolLabel}>Duplicar</span>
               </button>
             </div>
@@ -931,12 +949,13 @@ export default function SetlistPage() {
               <div className={styles.listHeadActions}>
                 {songs.length > 0 && (
                   <button
-                    className={`${styles.editToggle} ${editMode ? styles.editToggleOn : ''}`}
-                    onClick={() => setEditMode(v => !v)}
+                    className={`${styles.editToggle} ${editMode ? styles.editToggleOn : ''} ${readOnly && !editMode ? styles.isOff : ''}`}
+                    onClick={() => { if (editMode || !blocked('Editar o alinhamento precisa de rede')) setEditMode(v => !v) }}
                     aria-pressed={editMode}
+                    aria-disabled={(readOnly && !editMode) || undefined}
                   >{editMode ? 'Concluir' : 'Editar'}</button>
                 )}
-                <button className={styles.secondaryBtn} onClick={loadLibrary} disabled={libraryLoading || readOnly}>
+                <button className={`${styles.secondaryBtn} ${readOnly ? styles.isOff : ''}`} onClick={loadLibrary} disabled={libraryLoading} aria-disabled={readOnly || undefined}>
                   <Ico size={16} sw={2.2}>{P.plus}</Ico>
                   {libraryLoading ? 'A carregar…' : 'Adicionar'}
                 </button>
@@ -954,7 +973,7 @@ export default function SetlistPage() {
                 <span className={styles.emptyIcon} aria-hidden="true"><Ico size={28} sw={1.8}>{P.list}</Ico></span>
                 <p className={styles.emptyTitle}>Sem músicas ainda</p>
                 <p className={styles.emptyText}>Adiciona músicas do repertório para montar o alinhamento.</p>
-                <button className={styles.secondaryBtn} onClick={loadLibrary} disabled={libraryLoading || readOnly}>
+                <button className={`${styles.secondaryBtn} ${readOnly ? styles.isOff : ''}`} onClick={loadLibrary} disabled={libraryLoading} aria-disabled={readOnly || undefined}>
                   <Ico size={16} sw={2.2}>{P.plus}</Ico>Adicionar música
                 </button>
               </div>
@@ -971,9 +990,10 @@ export default function SetlistPage() {
                         selected={selectedRow?.id === ss.id}
                         readOnly={readOnly}
                         onSelect={row => setSelectedId(row.id)}
-                        onEdit={songId => { if (!blocked()) navigate(`/songs/${songId}?setlist=${id}`) }}
+                        onEdit={songId => { if (!blocked('Editar a música precisa de rede')) navigate(`/songs/${songId}?setlist=${id}`) }}
                         onRemove={removeSong}
                         onOverrides={openOverrides}
+                        onLocked={what => blocked(what)}
                       />
                     ))}
                   </SortableContext>
@@ -1019,9 +1039,11 @@ export default function SetlistPage() {
                     </div>
                   )}
                   <div className={styles.previewActions}>
+                    {/* Sem rede: apagado como o ✎ da linha (a página da música precisa de rede) */}
                     <button
-                      className={styles.secondaryBtn}
-                      onClick={() => navigate(`/songs/${selectedRow.song_id}?setlist=${id}`)}
+                      className={`${styles.secondaryBtn} ${readOnly ? styles.isOff : ''}`}
+                      onClick={() => { if (!blocked('Editar a letra precisa de rede')) navigate(`/songs/${selectedRow.song_id}?setlist=${id}`) }}
+                      aria-disabled={readOnly || undefined}
                     ><Ico size={16}>{P.pencil}</Ico>Editar letra</button>
                     <button
                       className={styles.secondaryBtn}
@@ -1039,8 +1061,9 @@ export default function SetlistPage() {
                     <p className={styles.emptyTitle}>Sem letra</p>
                     <p className={styles.emptyText}>Esta música ainda não tem letra.</p>
                     <button
-                      className={styles.secondaryBtn}
-                      onClick={() => navigate(`/songs/${selectedRow.song_id}?setlist=${id}`)}
+                      className={`${styles.secondaryBtn} ${readOnly ? styles.isOff : ''}`}
+                      onClick={() => { if (!blocked('Acrescentar a letra precisa de rede')) navigate(`/songs/${selectedRow.song_id}?setlist=${id}`) }}
+                      aria-disabled={readOnly || undefined}
                     ><Ico size={16} sw={2.2}>{P.plus}</Ico>Adicionar letra</button>
                   </div>
                 )}
@@ -1050,7 +1073,7 @@ export default function SetlistPage() {
         </div>
 
         {canDelete && (
-          <button className={styles.deleteLink} onClick={deleteSetlist} disabled={readOnly}>
+          <button className={`${styles.deleteLink} ${readOnly ? styles.isOff : ''}`} onClick={deleteSetlist} aria-disabled={readOnly || undefined}>
             <Ico size={16}>{P.trash}</Ico>
             Apagar este concerto
           </button>
@@ -1081,12 +1104,17 @@ export default function SetlistPage() {
             </div>
 
             <div className={styles.modalBody}>
+              {/* Sem rede: o aviso no topo do corpo (à vista sem scroll, na margem dos campos) */}
+              {readOnly && (
+                <p className={styles.ovOffline} role="status">Sem ligação — o tom e as notas não podem ser guardados agora.</p>
+              )}
               <div className={styles.ovField}>
                 <label className={styles.ovLabel} htmlFor="ov-key">Tom nesta setlist</label>
                 <input
                   id="ov-key"
                   className={`${styles.input} ${styles.inputMono}`}
                   value={ovKey}
+                  readOnly={readOnly}
                   onChange={e => setOvKey(e.target.value)}
                   placeholder={overrideRow.song?.performance_key || overrideRow.song?.original_key || 'ex: G, Am, F#'}
                   autoComplete="off"
@@ -1099,6 +1127,7 @@ export default function SetlistPage() {
                   id="ov-intro"
                   className={styles.input}
                   value={ovIntro}
+                  readOnly={readOnly}
                   onChange={e => setOvIntro(e.target.value)}
                   placeholder="ex: 4 compassos só bateria"
                 />
@@ -1110,6 +1139,7 @@ export default function SetlistPage() {
                   id="ov-ending"
                   className={styles.input}
                   value={ovEnding}
+                  readOnly={readOnly}
                   onChange={e => setOvEnding(e.target.value)}
                   placeholder="ex: termina em fade, segue direto para a próxima"
                 />
@@ -1121,6 +1151,7 @@ export default function SetlistPage() {
                   id="ov-notes"
                   className={`${styles.input} ${styles.textarea}`}
                   value={ovNotes}
+                  readOnly={readOnly}
                   onChange={e => setOvNotes(e.target.value)}
                   placeholder="Notas visíveis no modo concerto..."
                   rows={3}
@@ -1128,19 +1159,16 @@ export default function SetlistPage() {
               </div>
 
               {/* Atalho para a música (no telemóvel substitui o ✎ da linha) */}
-              <button className={styles.ovSongLink} onClick={openSongFromOverrides} disabled={ovSaving}>
+              <button className={`${styles.ovSongLink} ${readOnly ? styles.isOff : ''}`} onClick={openSongFromOverrides} disabled={ovSaving} aria-disabled={readOnly || undefined}>
                 <Ico size={16}>{P.pencil}</Ico>
                 <span className={styles.ovSongLinkLabel}>Editar letra e música</span>
                 <Ico size={16}>{P.chevron}</Ico>
               </button>
             </div>
 
-            {readOnly && (
-              <p className={styles.ovOffline} role="status">Sem ligação — o tom e as notas não podem ser guardados agora.</p>
-            )}
             <div className={`${styles.modalFooter} ${styles.modalFooterSplit}`}>
-              <button className={styles.secondaryBtn} onClick={() => setOverrideRow(null)}>Cancelar</button>
-              <button className={styles.primaryBtn} onClick={saveOverrides} disabled={ovSaving || readOnly}>
+              <button className={styles.secondaryBtn} onClick={() => setOverrideRow(null)}>{readOnly ? 'Fechar' : 'Cancelar'}</button>
+              <button className={`${styles.primaryBtn} ${readOnly ? styles.isOff : ''}`} onClick={saveOverrides} disabled={ovSaving} aria-disabled={readOnly || undefined}>
                 {ovSaving ? 'A guardar…' : 'Guardar'}
               </button>
             </div>
