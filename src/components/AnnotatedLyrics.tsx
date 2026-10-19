@@ -2,11 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { flushSync } from 'react-dom'
 import LyricsView, { withAlpha } from './LyricsView'
 import { LegacyReference } from './AnnotationLayer'
-import { LEGACY_PULL_WAIT_MS, cachedLegacy, legacyKey, loadAnnotations, pullAnnotations } from '../lib/annotations/storage'
+import { LEGACY_PULL_WAIT_MS, cachedLegacy, fetchAnnotations, legacyKey, loadAnnotations } from '../lib/annotations/storage'
 import {
-  marginGutter, payloadHasStrokes, rebaseStrokes, unionById,
+  marginGutter, payloadHasStrokes, readPayload, rebaseStrokes, unionById,
   type AnchoredStroke, type AnnItem, type ParsedPayload,
 } from '../lib/annotations/anchor'
+import { isLikelyOffline } from '../lib/offline/net'
 import { measureLayout, watchFonts, type MeasuredLayout } from '../lib/annotations/measure'
 import { buildView, markerPaint, type MarkerShape, type PenPath } from '../lib/annotations/view'
 import MarkerUnderlay from './MarkerUnderlay'
@@ -33,12 +34,18 @@ function legacyOf(p: ParsedPayload | null): ParsedPayload | null {
  * aparece no tamanho e entrelinha do palco; os traços, ancorados ao texto
  * no Ensaio, redesenham-se presos aos mesmos caracteres deste layout.
  * Carrega uma vez por montagem: quem usa dá key={songId}. Nunca grava.
+ *
+ * `cloudCopy`: a linha da cloud (song_annotations.strokes) guardada com o
+ * concerto para usar sem rede. Faz de "cloud" quando ela não responde — e
+ * só em memória: gravada como cópia deste aparelho (gigio_ann_v1_*), uma v2
+ * local ganha sempre e escondia as versões mais novas de outros aparelhos.
  */
 export default function AnnotatedLyrics({
-  songId, lyrics, userId, bgColor, textColor, activeLine, accentColor, fontSize, lineHeight,
+  songId, lyrics, userId, cloudCopy, bgColor, textColor, activeLine, accentColor, fontSize, lineHeight,
   noPadding = false,
 }: {
   songId: string; lyrics: string; userId?: string
+  cloudCopy?: unknown
   bgColor?: string; textColor?: string
   activeLine?: number; accentColor?: string
   fontSize?: number; lineHeight?: number
@@ -48,21 +55,27 @@ export default function AnnotatedLyrics({
   const padV = noPadding ? 0 : PAD_V
   const innerRef = useRef<HTMLDivElement>(null)
   const [local] = useState(() => loadAnnotations(songId))
-  const [remote, setRemote] = useState<ParsedPayload | null>(null)
+  const [copy] = useState(() => (cloudCopy != null ? readPayload(cloudCopy) : null))
+  // Sem rede ao abrir: não se espera pela cloud — a cópia guardada faz de cloud
+  const [offline] = useState(isLikelyOffline)
+  // A cópia aparece logo (Wi-Fi sem internet: a cloud pode demorar a falhar);
+  // a resposta da cloud, quando chega, substitui-a
+  const [remote, setRemote] = useState<ParsedPayload | null>(copy)
   // Uma v2 deste aparelho ganha (como no Ensaio). A cloud lê-se se aqui não
   // há nada, se o que há é antigo (a v2 da cloud é mais recente) ou se está
   // por juntar (gravado sem a conseguir ler)
   const localFinal = !!local?.anchored && !local.pend && payloadHasStrokes(local)
-  const needPull = !!userId && !localFinal
+  const needPull = !!userId && !localFinal && !offline
   // A cloud já respondeu (ou cansou-se de esperar: LEGACY_PULL_WAIT_MS)
   const [pulled, setPulled] = useState(!needPull)
 
   useEffect(() => {
-    if (!userId || localFinal) return
+    if (!userId || localFinal || offline) return
     let alive = true
-    pullAnnotations(songId, userId).then(r => {
+    fetchAnnotations(songId, userId).then(r => {
       if (!alive) return
-      if (r) setRemote(r)
+      // Respondeu: manda a cloud (mesmo sem nada). Não respondeu: fica a cópia
+      if (r.ok) setRemote(r.payload)
       setPulled(true)
     })
     const t = setTimeout(() => { if (alive) setPulled(true) }, LEGACY_PULL_WAIT_MS)
@@ -70,7 +83,7 @@ export default function AnnotatedLyrics({
       alive = false
       clearTimeout(t)
     }
-  }, [songId, userId, localFinal])
+  }, [songId, userId, localFinal, offline])
 
   // Ancorados (v2), na numeração desta letra (pode ter sido editada depois
   // de desenhar). Só em memória — o concerto não grava

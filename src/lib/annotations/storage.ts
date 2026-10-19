@@ -5,6 +5,7 @@
  * e pelo ConcertPage (tecla "Anotações de ensaio").
  */
 import { supabase } from '../supabase'
+import { runQuery } from '../offline/net'
 import { loadRehearsalFont } from '../rehearsalFont'
 import { readPayload, type AnchoredStroke, type AnnPayload, type ParsedPayload } from './anchor'
 
@@ -36,16 +37,20 @@ export async function fetchAnnotations(
   songId: string,
   userId: string,
 ): Promise<{ ok: boolean; payload: ParsedPayload | null }> {
-  try {
-    const { data, error } = await supabase
+  // Sem rede responde logo (não espera pelas retentativas nem pela renovação
+  // da sessão); com rede, desiste ao fim de 15 s — é como uma falha de leitura
+  const { data, error } = await runQuery(
+    supabase
       .from('song_annotations')
       .select('strokes, updated_at')
       .eq('song_id', songId)
       .eq('user_id', userId)
-      .maybeSingle()
-    if (error) return { ok: false, payload: null }
-    return { ok: true, payload: data?.strokes ? readPayload(data.strokes) : null }
-  } catch { return { ok: false, payload: null } }
+      .maybeSingle(),
+    15000,
+  )
+  if (error) return { ok: false, payload: null }
+  const strokes = (data as { strokes?: unknown } | null)?.strokes
+  return { ok: true, payload: strokes ? readPayload(strokes) : null }
 }
 
 export async function pullAnnotations(songId: string, userId: string): Promise<ParsedPayload | null> {

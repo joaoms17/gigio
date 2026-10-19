@@ -3,6 +3,8 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { signOut } from '../lib/auth'
 import { useAuth } from '../hooks/useAuth'
 import { useConfirm } from './ConfirmDialog'
+import { useOnline } from '../hooks/useNetworkStatus'
+import { listConcerts, onOfflineChange } from '../lib/offline/store'
 import styles from './Layout.module.css'
 import Wordmark, { BrandMark } from './Wordmark'
 
@@ -96,27 +98,32 @@ export default function Layout({ children }: Props) {
   const { pathname, search } = useLocation()
   const { user } = useAuth()
   const confirmDialog = useConfirm()
-  const [offline, setOffline] = useState(!navigator.onLine)
-
+  // Sem rede: o browser diz que não há, ou um pedido acabou de falhar (Wi-Fi sem internet)
+  const offline = !useOnline()
+  const userId = user?.id
+  // Concertos guardados neste aparelho — o aviso diz que esses funcionam
+  const [savedCount, setSavedCount] = useState(0)
   useEffect(() => {
-    const on = () => setOffline(false)
-    const off = () => setOffline(true)
-    window.addEventListener('online', on)
-    window.addEventListener('offline', off)
-    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
-  }, [])
+    if (!offline || !userId) return
+    let alive = true
+    const count = () => { listConcerts(userId).then(l => { if (alive) setSavedCount(l.length) }, () => {}) }
+    count()
+    const unsub = onOfflineChange(count)
+    return () => { alive = false; unsub() }
+  }, [offline, userId])
   const displayName: string = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? ''
 
   async function handleSignOut() {
     const ok = await confirmDialog({
       title: 'Terminar sessão',
-      message: 'Tens a certeza que queres terminar a sessão?',
+      message: 'Terminar a sessão neste dispositivo? Os concertos guardados para usar sem rede são apagados.',
       confirmLabel: 'Sair',
       danger: true,
     })
     if (!ok) return
     await signOut()
-    navigate('/auth')
+    // Recarrega: o cliente do Supabase arranca sem a sessão em memória
+    window.location.href = '/auth'
   }
 
   const sectionKey = activeSection(pathname, search)
@@ -138,7 +145,11 @@ export default function Layout({ children }: Props) {
         <div className={styles.offlineBanner} role="status" aria-live="polite" data-offline-banner="">
           <span className={styles.offlineLed} aria-hidden="true" />
           <span className={styles.offlineLabel}>Sem ligação</span>
-          <span className={styles.offlineText}>As alterações podem não ser guardadas</span>
+          <span className={styles.offlineText}>
+            {savedCount > 0
+              ? `${savedCount} ${savedCount === 1 ? 'concerto guardado funciona' : 'concertos guardados funcionam'} sem rede · edições bloqueadas`
+              : 'As alterações não são guardadas sem rede'}
+          </span>
         </div>
       )}
 

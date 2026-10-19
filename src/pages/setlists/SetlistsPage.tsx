@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
+import { useOnline } from '../../hooks/useNetworkStatus'
+import { runQuery } from '../../lib/offline/net'
+import { sortIndex, type OfflineIndexEntry } from '../../lib/offline/logic'
+import { listConcerts, onOfflineChange } from '../../lib/offline/store'
+import { prefetchUpcoming } from '../../lib/offline/sync'
 import styles from './SetlistsPage.module.css'
 import { mapLegacyProjectColor } from '../../lib/projectColor'
 import { concertWhen, isUpcoming, compareUpcoming, comparePast, type ConcertWhen } from '../../lib/concertWhen'
@@ -52,6 +57,19 @@ function projectLedColor(band: { color?: string | null } | null | undefined): st
 /** Concerto pessoal = sem projeto (band_id null). Sem a coluna, vale a ausência do projeto. */
 function isPersonal(r: Row): boolean {
   return r.band_id === undefined ? !r.band : r.band_id === null
+}
+
+/** Concerto guardado neste aparelho → linha da lista (sem rede) */
+function savedToRow(e: OfflineIndexEntry): Row {
+  return {
+    id: e.setlistId,
+    name: e.name,
+    date: e.date,
+    venue: e.venue,
+    band_id: e.bandId,
+    band: e.bandId ? { name: e.bandName ?? '', color: e.bandColor ?? '' } : null,
+    setlist_songs: [{ count: e.songCount }],
+  }
 }
 
 function toYMD(d: Date): string {
@@ -174,19 +192,53 @@ export default function SetlistsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [pastOpen, setPastOpen] = useState(readPastOpen)
+  const online = useOnline()
+  // Sem rede: a lista é a dos concertos guardados neste aparelho
+  const [offlineList, setOfflineList] = useState(false)
+  // Guardados neste aparelho (marca "Disponível offline" em cada linha)
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     if (!user) return
-    supabase
-      .from('setlists')
-      .select('id, name, date, venue, band_id, band:bands(name, color), setlist_songs(count)')
-      .eq('owner_id', user.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setSetlists((data ?? []) as unknown as Row[])
+    let alive = true
+    const userId = user.id
+    const refreshSaved = () => {
+      listConcerts(userId).then(l => { if (alive) setSavedIds(new Set(l.map(e => e.setlistId))) }, () => {})
+    }
+    refreshSaved()
+    const unsub = onOfflineChange(refreshSaved)
+    // Sem rede responde logo; com rede lenta desiste aos 8 s (nunca "Ainda sem concertos" por engano)
+    runQuery(
+      supabase
+        .from('setlists')
+        .select('id, name, date, venue, band_id, band:bands(name, color), setlist_songs(count)')
+        .eq('owner_id', userId)
+        .order('created_at', { ascending: false }),
+      8000,
+    ).then(async ({ data, error }) => {
+      if (!alive) return
+      if (!error && Array.isArray(data)) {
+        setSetlists(data as unknown as Row[])
+        setOfflineList(false)
         setLoading(false)
-      })
-  }, [user])
+        // Com rede: guarda em segundo plano os próximos concertos (no máximo de 10 em 10 min)
+        prefetchUpcoming(userId)
+        return
+      }
+      const saved = await listConcerts(userId).catch(() => [] as OfflineIndexEntry[])
+      if (!alive) return
+      setSetlists(sortIndex(saved, new Date()).map(savedToRow))
+      setOfflineList(true)
+      setLoading(false)
+    })
+    return () => { alive = false; unsub() }
+  }, [user, reloadKey])
+
+  // A rede voltou: troca a lista dos guardados pela verdadeira
+  useEffect(() => {
+    if (online && offlineList) setReloadKey(k => k + 1)
+  }, [online, offlineList])
 
   /* Assistente de criação (escolhe o projeto em "PARA:" e a origem da lista) */
   function createConcert() {
@@ -237,7 +289,9 @@ export default function SetlistsPage() {
     ? 'A carregar…'
     : search
       ? `${filtered.length} de ${setlists.length} concertos`
-      : `${setlists.length} concerto${setlists.length !== 1 ? 's' : ''}`
+      : offlineList
+        ? `${setlists.length} guardado${setlists.length !== 1 ? 's' : ''} neste aparelho`
+        : `${setlists.length} concerto${setlists.length !== 1 ? 's' : ''}`
 
   /* Linha de concerto unificada (Concertos / Calendário / Dashboard):
      data "26 / SÁB" | LED + nome / meta | chips | ▶ fantasma */
@@ -247,7 +301,9 @@ export default function SetlistsPage() {
     const personal = isPersonal(s)
     const isToday = when.kind === 'today'
     const isPast = when.kind === 'past'
-    const hasChips = !!when.label || personal
+    // Guardado neste aparelho: abre (e entra em palco) sem rede
+    const saved = offlineList || savedIds.has(s.id)
+    const hasChips = !!when.label || personal || saved
     /* Campos curtos antes do local: a elipse corta o local, nunca a contagem */
     const rest = [`${songCount} mús`, s.venue].filter(Boolean).join(' · ')
     const ledColor = projectLedColor(s.band)
@@ -306,6 +362,11 @@ export default function SetlistsPage() {
           <div className={styles.chips}>
             <WhenChip when={when} />
             {personal && <span className={styles.chip}>Pessoal</span>}
+            {saved && (
+              <span className={styles.chip} data-offline="" title="Disponível offline">
+                Offline<span className={styles.srOnly}> — disponível sem rede</span>
+              </span>
+            )}
           </div>
         )}
 
@@ -352,13 +413,22 @@ export default function SetlistsPage() {
               Calendário
             </button>
             {!isEmpty && (
-              <button className={styles.primaryBtn} onClick={createConcert}>
+              <button className={styles.primaryBtn} onClick={createConcert} disabled={!online} title={online ? undefined : 'Criar um concerto precisa de rede'}>
                 <IconPlus />
                 Novo concerto
               </button>
             )}
           </div>
         </header>
+
+        {/* Sem rede: a lista é a dos concertos guardados neste aparelho */}
+        {offlineList && !loading && (
+          <div className={styles.offlineNote} role="status" data-offline-list="">
+            <span className={styles.offlineNoteLed} aria-hidden="true" />
+            <span className={styles.offlineNoteMain}>Sem ligação</span>
+            <span>Concertos disponíveis offline neste aparelho</span>
+          </div>
+        )}
 
         {setlists.length > 3 && (
           <div className={styles.searchWrap}>
@@ -392,6 +462,12 @@ export default function SetlistsPage() {
                 </div>
               </section>
             ))}
+          </div>
+        ) : isEmpty && offlineList ? (
+          <div className={styles.emptyState}>
+            <span className={styles.emptyIcon}><IconMic /></span>
+            <h2 className={styles.emptyTitle}>Nenhum concerto guardado</h2>
+            <p className={styles.emptySub}>Sem ligação. Abre os teus concertos com rede uma vez — os de hoje e dos próximos 14 dias ficam guardados sozinhos.</p>
           </div>
         ) : isEmpty ? (
           <div className={styles.emptyState}>

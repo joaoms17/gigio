@@ -1,0 +1,189 @@
+/* "DISPONÍVEIS OFFLINE ──────── 03" + painel com as linhas de concerto
+   (a mesma linha da agenda: data "26 / SÁB" · LED + nome / meta · chip · ▶) */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 16px;
+}
+/* LED de sucesso: estes funcionam sem rede */
+.led {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--success-fg);
+}
+.label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text2);
+}
+.rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border2);
+}
+.count {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text3);
+}
+
+.empty {
+  margin: 0;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text2);
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto 44px;
+  align-items: center;
+  column-gap: 14px;
+  min-height: 68px;
+  padding: 10px 12px 10px 16px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.row + .row { border-top: 1px solid var(--border); }
+.row:active { background: var(--surface-2); }
+.row:focus-visible { outline: none; box-shadow: inset 0 0 0 3px var(--ring); }
+@media (hover: hover) {
+  .row:hover { background: var(--surface-2); }
+}
+
+.date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.day {
+  font-family: var(--font-display);
+  font-stretch: 75%;
+  font-weight: 800;
+  font-size: 24px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.dayToday { color: var(--accent-text); }
+.weekday {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.info {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 3px;
+  align-items: center;
+  min-width: 0;
+}
+.bandLed {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.name {
+  min-width: 0;
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.25;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta {
+  grid-column: 2;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip {
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.chip[data-when="today"] { background: var(--accent); color: var(--on-accent); }
+.chip[data-when="tomorrow"],
+.chip[data-when="soon"] { background: var(--accent-soft); color: var(--accent-text); }
+
+/* ▶ fantasma (igual a Concertos / Projeto) — 44×44 */
+.play {
+  grid-column: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  color: var(--text2);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .play:hover { background: var(--surface-3); color: var(--text); }
+}
+.play:active { background: var(--surface-3); }
+
+/* Telemóvel: sem chip (o dia já diz quando) */
+@media (max-width: 640px) {
+  .row { grid-template-columns: 40px minmax(0, 1fr) 44px; column-gap: 12px; }
+  .chip { display: none; }
+  .play { grid-column: 3; }
+}

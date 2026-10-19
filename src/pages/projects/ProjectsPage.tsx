@@ -12,6 +12,10 @@ import {
   ROLE_LABELS,
 } from '../../types'
 import { cacheProjects, getCachedProjects } from '../../lib/concertCache'
+import { runQuery } from '../../lib/offline/net'
+import { prefetchUpcoming } from '../../lib/offline/sync'
+import OfflineConcerts from '../../components/OfflineConcerts'
+import { useOnline } from '../../hooks/useNetworkStatus'
 import styles from './ProjectsPage.module.css'
 import { mapLegacyProjectColor } from '../../lib/projectColor'
 import { extractInviteCode, joinProjectWithCode, takePendingInvite } from '../../lib/invites'
@@ -173,6 +177,12 @@ export default function ProjectsPage() {
     if (user) loadProjects()
   }, [user])
 
+  // A rede voltou: troca a cópia pelos projetos verdadeiros
+  const online = useOnline()
+  useEffect(() => {
+    if (online && isOffline && user) loadProjects()
+  }, [online])
+
   // Convite aberto antes de ter conta (ex.: criou conta e confirmou o email,
   // e o link de confirmação trouxe-o para aqui): retoma-o uma vez
   useEffect(() => {
@@ -185,20 +195,28 @@ export default function ProjectsPage() {
     if (!user) return
     setLoading(true)
 
-    const { data: memberships, error } = await supabase
-      .from('band_members')
-      .select('band_id, role, bands(*)')
-      .eq('user_id', user.id)
-      .order('joined_at', { ascending: false })
+    // Sem rede responde logo (e com rede lenta desiste aos 8 s): a cópia
+    // guardada e os concertos disponíveis offline aparecem sem esperar
+    const { data: memberships, error } = await runQuery(
+      supabase
+        .from('band_members')
+        .select('band_id, role, bands(*)')
+        .eq('user_id', user.id)
+        .order('joined_at', { ascending: false }),
+      8000,
+    )
 
-    if (!memberships || error) {
+    if (!Array.isArray(memberships) || error) {
       const cached = getCachedProjects<ProjectWithCounts[]>(user.id)
-      if (cached) { setProjects(cached); setIsOffline(true) }
+      if (cached) setProjects(cached)
+      setIsOffline(true)
       setLoading(false)
       return
     }
 
     setIsOffline(false)
+    // Com rede: guarda em segundo plano os próximos concertos (no máximo de 10 em 10 min)
+    prefetchUpcoming(user.id)
     const rawProjects = memberships
       .map((m: any) => ({ ...m.bands, myRole: m.role }))
       .filter(Boolean)
@@ -315,7 +333,7 @@ export default function ProjectsPage() {
         {isOffline && (
           <div className={styles.offlineBanner} role="status">
             <span className={styles.offlineLed} aria-hidden="true" />
-            Sem ligação — a mostrar dados em cache
+            {projects.length > 0 ? 'Sem ligação — a mostrar a última cópia' : 'Sem ligação'}
           </div>
         )}
 
@@ -323,6 +341,9 @@ export default function ProjectsPage() {
           <h1 className={styles.pageTitle}>Projetos</h1>
           <p className={styles.kicker}>Bandas · tributos · colaborações</p>
         </header>
+
+        {/* Sem rede: o caminho mais curto para o palco — os concertos guardados neste aparelho */}
+        {isOffline && user && <OfflineConcerts userId={user.id} />}
 
         {/* CTAs: criar projeto (primário) + entrar com código (painel) */}
         <div className={styles.ctaRow}>
@@ -396,6 +417,12 @@ export default function ProjectsPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : projects.length === 0 && isOffline ? (
+            <div className={styles.empty}>
+              <span className={styles.emptyIcon}><IconUsers size={28} /></span>
+              <h3 className={styles.emptyTitle}>Sem ligação</h3>
+              <p className={styles.emptySub}>Os projetos aparecem quando houver rede.</p>
             </div>
           ) : projects.length === 0 ? (
             <div className={styles.empty}>

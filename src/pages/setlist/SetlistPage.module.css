@@ -15,37 +15,62 @@
 /* Duas colunas a partir de 1024px — a página alarga para acomodar o painel */
 @media (min-width: 1024px) { .page { max-width: 1320px; } }
 
-/* ── Aviso offline: painel com LED de aviso ── */
-.offlineBanner {
+/* ── Para usar sem rede: linha mono por baixo dos metadados ──
+   "● DISPONÍVEL OFFLINE · GUARDADO ÀS 14:32" (LED de sucesso),
+   "○ AINDA NÃO ESTÁ GUARDADO PARA OFFLINE  [GUARDAR PARA OFFLINE]",
+   "● SEM LIGAÇÃO · SÓ LEITURA  CÓPIA GUARDADA ÀS 14:32" (LED de aviso) */
+.offlineStatus {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  padding: 10px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-btn);
-  color: var(--text2);
-  font-size: 14px;
+  gap: 4px 8px;
+  margin-top: 10px;
+  min-height: 20px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1.4;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
 }
-.offlineLed {
+.offlineStatusLed {
   flex-shrink: 0;
   width: 8px;
   height: 8px;
   border-radius: 2px;
-  background: var(--warn-fg);
+  background: var(--success-fg);
 }
-.offlineTag {
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: 11px;
+.offlineStatusLedOff {
+  background: transparent;
+  border: 1.5px solid var(--text3);
+}
+.offlineStatusLedWarn { background: var(--warn-fg); }
+.offlineStatusMain { color: var(--text2); font-weight: 700; }
+.offlineSaveBtn {
+  min-height: var(--btn, 44px);
+  padding: 0 14px;
+  margin-left: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  color: var(--text);
+  font: inherit;
   font-weight: 700;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .offlineSaveBtn:hover:not(:disabled) { background: var(--surface-2); border-color: var(--text3); }
+}
+.offlineSaveBtn:disabled { opacity: 0.6; cursor: default; }
+/* Modal de tom/notas sem rede */
+.ovOffline {
+  margin: 0;
+  padding: 10px 20px 0;
+  font-size: 14px;
   color: var(--warn-fg);
 }
-.offlineText { min-width: 0; }
 
 /* ──────────────────────────────────────────
    HEADER — título condensado + linha mono; ações à direita em ≥1024px
@@ -443,7 +468,7 @@
 }
 .toolBtn svg { flex-shrink: 0; color: var(--text2); }
 @media (hover: hover) {
-  .toolBtn:hover { background: var(--surface-2); border-color: var(--text3); }
+  .toolBtn:hover:not(:disabled) { background: var(--surface-2); border-color: var(--text3); }
 }
 .toolBtn:active:not(:disabled) { background: var(--surface-3); }
 .toolLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -723,7 +748,7 @@
   touch-action: none;
   -webkit-tap-highlight-color: transparent;
 }
-@media (hover: hover) { .dragHandle:hover { color: var(--text); background: var(--surface-3); } }
+@media (hover: hover) { .dragHandle:hover:not(:disabled) { color: var(--text); background: var(--surface-3); } }
 .dragHandle:active:not(:disabled) { transform: none; cursor: grabbing; color: var(--text); }
 
 /* Número de setlist — a assinatura: mono, grande, 2 dígitos */
@@ -890,9 +915,9 @@
   transition: background-color 0.12s, color 0.12s;
   -webkit-tap-highlight-color: transparent;
 }
-@media (hover: hover) { .iconBtn:hover { background: var(--surface-3); color: var(--text); } }
+@media (hover: hover) { .iconBtn:hover:not(:disabled) { background: var(--surface-3); color: var(--text); } }
 .iconBtn:active:not(:disabled) { background: var(--surface-3); color: var(--text); }
-@media (hover: hover) { .iconBtnDanger:hover { color: var(--danger); } }
+@media (hover: hover) { .iconBtnDanger:hover:not(:disabled) { color: var(--danger); } }
 .iconBtnDanger:active:not(:disabled) { color: var(--danger); }
 
 /* ── Telemóvel: a linha é só  01 · título/artista · 4:02  (toque abre tom/notas).
@@ -1082,7 +1107,12 @@
   -webkit-tap-highlight-color: transparent;
   transition: background-color 0.12s;
 }
-.deleteLink:hover { background: var(--danger-soft); }
+.deleteLink:hover:not(:disabled) { background: var(--danger-soft); }
+/* Sem rede (só leitura): ações de edição apagadas */
+.toolBtn:disabled,
+.deleteLink:disabled,
+.iconBtn:disabled,
+.dragHandle:disabled { opacity: 0.4; cursor: default; }
 .deleteLink:active:not(:disabled) { background: var(--danger-soft); }
 
 /* ──────────────────────────────────────────
