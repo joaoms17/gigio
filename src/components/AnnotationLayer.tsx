@@ -1,13 +1,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react'
-import { createPortal } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
 import LyricsView, { type SectionMetrics } from './LyricsView'
-import { supabase } from '../lib/supabase'
 import {
   anchorFree, anchorLegacy, anchorStroke, buildPayload, collectLines, isLayoutEmpty, marginGutter, pathFromSubpaths,
-  payloadHasStrokes, readPayload, rebaseStrokes, resolveAll, smoothPath, strokesAt, toLegacyStrokes, unionById, unionExtra,
+  payloadHasStrokes, rebaseStrokes, resolveAll, smoothPath, strokesAt, toLegacyStrokes, unionById, unionExtra,
   type AnchoredStroke, type AnnPayload, type ParsedPayload,
 } from '../lib/annotations/anchor'
 import { measureLayout, watchFonts, whenFontsReady, type MeasuredLayout } from '../lib/annotations/measure'
+import {
+  ANN_STORAGE_KEY, LEGACY_PULL_WAIT_MS, cachedLegacy, fetchAnnotations, legacyKey, loadAnnotations, pushAnnotations,
+  rememberLegacy,
+} from '../lib/annotations/storage'
 import {
   LEGACY_NO_H_FONT, LEGACY_TABLET_MIN_W, REHEARSAL_LINE_HEIGHT, loadRehearsalFont, rehearsalFontCandidates,
 } from '../lib/rehearsalFont'
@@ -52,59 +55,6 @@ export interface AnnotationHandle {
   undo: () => void
   /** Limpar: apaga tudo (também os traços escondidos); Desfazer recupera */
   clear: () => void
-}
-
-export const ANN_STORAGE_KEY = (id: string) => `gigio_ann_v1_${id}`
-
-/** Payload guardado neste dispositivo (qualquer versão), já lido — null se não há */
-export function loadAnnotations(songId: string): ParsedPayload | null {
-  try {
-    const raw = localStorage.getItem(ANN_STORAGE_KEY(songId))
-    return raw ? readPayload(JSON.parse(raw)) : null
-  } catch { return null }
-}
-
-/**
- * Lê a cópia da cloud. ok = false quando não foi possível ler (rede, erro):
- * não é o mesmo que "não há nada na cloud" — sem a ler, não se pode gravar
- * por cima dela.
- */
-export async function fetchAnnotations(
-  songId: string,
-  userId: string,
-): Promise<{ ok: boolean; payload: ParsedPayload | null }> {
-  try {
-    const { data, error } = await supabase
-      .from('song_annotations')
-      .select('strokes, updated_at')
-      .eq('song_id', songId)
-      .eq('user_id', userId)
-      .maybeSingle()
-    if (error) return { ok: false, payload: null }
-    return { ok: true, payload: data?.strokes ? readPayload(data.strokes) : null }
-  } catch { return { ok: false, payload: null } }
-}
-
-export async function pullAnnotations(songId: string, userId: string): Promise<ParsedPayload | null> {
-  return (await fetchAnnotations(songId, userId)).payload
-}
-
-export async function pushAnnotations(
-  songId: string,
-  userId: string,
-  payload: AnnPayload,
-  retry = true
-) {
-  try {
-    const { error } = await supabase.from('song_annotations').upsert(
-      { song_id: songId, user_id: userId, strokes: payload, updated_at: new Date().toISOString() },
-      { onConflict: 'song_id,user_id' }
-    )
-    if (error) throw error
-  } catch {
-    // Rede fraca em palco: uma retentativa única após 2s em vez de falhar em silêncio
-    if (retry) setTimeout(() => pushAnnotations(songId, userId, payload, false), 2000)
-  }
 }
 
 const ERASER_RADIUS = 18
@@ -212,29 +162,6 @@ function fitLegacyReference(box: HTMLElement, root: HTMLElement, h: number | und
     }
   }
   set(best.m, best.s)
-}
-
-/* Migrações já feitas nesta sessão (o concerto não grava: sem isto, cada
-   abertura da vista de anotações voltava a montar e a medir a referência) */
-const legacyCache = new Map<string, AnchoredStroke[]>()
-const LEGACY_CACHE_MAX = 24
-
-/** Chave da migração de um payload antigo para uma letra (o tamanho guardado entra no desempate) */
-export function legacyKey(p: ParsedPayload, lyrics: string): string {
-  return JSON.stringify([p.w, p.h ?? 0, p.strokes, lyrics, loadRehearsalFont()])
-}
-
-/** Traços antigos já ancorados para esta chave nesta sessão (ver legacyKey) */
-export function cachedLegacy(key: string): AnchoredStroke[] | null {
-  return legacyCache.get(key) ?? null
-}
-
-function rememberLegacy(key: string, strokes: AnchoredStroke[]) {
-  if (legacyCache.size >= LEGACY_CACHE_MAX) {
-    const first = legacyCache.keys().next()
-    if (!first.done) legacyCache.delete(first.value)
-  }
-  legacyCache.set(key, strokes)
 }
 
 /**
@@ -385,7 +312,11 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
   const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
   const panRef = useRef<{ el: HTMLElement | null; lastY: number } | null>(null)
   const onGutterRef = useRef(onGutter)
-  onGutterRef.current = onGutter
+  useLayoutEffect(() => { onGutterRef.current = onGutter })
+  // A cloud já respondeu à 1.ª leitura (bem ou mal), ou passou
+  // LEGACY_PULL_WAIT_MS: só então se migra uma cópia antiga deste aparelho
+  // (a cloud pode ter uma v2, que ganha — ver reconcile)
+  const [cloudSettled, setCloudSettled] = useState(!userId || init.kind !== 'legacy')
 
   /**
    * Mede o LyricsView agora. Mesma geometria que a medição anterior → fica a
@@ -545,13 +476,20 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     measure()
   }, [lyrics, fontSize, gutter, measure, commit])
 
-  // Payload antigo neste dispositivo: ancora quando as fontes estiverem
-  // prontas (medido com a fonte de recurso, o texto tinha outra largura)
+  // Payload antigo neste dispositivo: ancora quando a cloud tiver respondido
+  // (se tiver uma v2, esta cópia já não conta) e as fontes estiverem prontas
+  // (medido com a fonte de recurso, o texto tinha outra largura)
   useEffect(() => {
     const legacy = init.legacy
-    if (!legacy) return
+    if (!legacy || !cloudSettled) return
     return whenFontsReady(() => { if (localLegacyRef.current) adoptLegacy(legacy, 'local') })
-  }, [init, adoptLegacy])
+  }, [init, adoptLegacy, cloudSettled])
+
+  useEffect(() => {
+    if (cloudSettled) return
+    const t = setTimeout(() => setCloudSettled(true), LEGACY_PULL_WAIT_MS)
+    return () => clearTimeout(t)
+  }, [cloudSettled])
 
   // Cloud: lida ao abrir; se falhar, volta a tentar (e quando a rede volta).
   // Enquanto não for lida, nada do que se grava aqui segue para lá
@@ -566,12 +504,14 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
       fetchAnnotations(songId, userId).then(res => {
         if (!alive) return
         if (!res.ok) {
+          setCloudSettled(true)
           timer = setTimeout(run, PULL_RETRY_MS[Math.min(attempt++, PULL_RETRY_MS.length - 1)])
           return
         }
         pullOkRef.current = true
         window.removeEventListener('online', onOnline)
         cancel = reconcile(res.payload)
+        setCloudSettled(true)
       })
     }
     const onOnline = () => {
@@ -653,7 +593,10 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
 
   // Rotação, resize, barra de scroll: re-mede uma vez por frame. Os traços
   // só se redesenham se a geometria do texto mudou de facto (sig) — redesenhar
-  // não muda o tamanho de nada observado, por isso não há ciclo
+  // não muda o tamanho de nada observado, por isso não há ciclo. flushSync:
+  // os caminhos novos entram já neste frame (fora de um evento, o React só
+  // os escrevia numa tarefa seguinte, depois de pintar — mais um frame com
+  // os traços no sítio antigo por cima do texto já re-fluído)
   useEffect(() => {
     const el = layerRef.current
     if (!el) return
@@ -661,13 +604,13 @@ const AnnotationLayer = forwardRef<AnnotationHandle, Props>(function AnnotationL
     let raf = 0
     const obs = new ResizeObserver(entries => {
       for (const en of entries) {
-        // The svg canvas always spans the layer itself
+        // A SVG ocupa sempre a camada (só decide se se monta e até onde desce)
         if (en.target === el) {
           setSvgW(en.contentRect.width)
           setSvgH(en.contentRect.height)
         }
       }
-      if (!raf) raf = requestAnimationFrame(() => { raf = 0; measure() })
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; flushSync(() => { measure() }) })
     })
     obs.observe(el)
     if (basisEl !== el) obs.observe(basisEl)

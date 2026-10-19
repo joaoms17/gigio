@@ -792,7 +792,7 @@ export function anchorStroke(
     const r = ix.rows[ref[i]]
     if (xs[i] >= r.left - slack && xs[i] <= r.right + slack) inside++
   }
-  let mode: StrokeMode = inside * 2 >= n ? MODE_TEXT : opts?.marginRows ? MODE_MARGIN_ROW : MODE_MARGIN
+  const mode: StrokeMode = inside * 2 >= n ? MODE_TEXT : opts?.marginRows ? MODE_MARGIN_ROW : MODE_MARGIN
   // Margem presa à row (modelo literal): a row mais próxima, ponto a ponto
   if (mode === MODE_MARGIN_ROW) ref = textRefRows(ix, ys, true)
   // Nota no intervalo (desvio 8): rígida, presa a um carácter e à linha
@@ -1658,6 +1658,17 @@ export function readPayload(raw: unknown): ParsedPayload | null {
 export function payloadHasStrokes(p: ParsedPayload | null | undefined): boolean {
   if (!p) return false
   return p.anchored ? p.anchored.length > 0 : p.strokes.length > 0
+}
+
+/**
+ * payloadHasStrokes com esta letra: os órfãos (as suas linhas saíram da
+ * letra; escondidos até voltarem) não contam — senão a tecla "Anotações de
+ * ensaio" do concerto levava a uma vista vazia
+ */
+export function payloadHasVisible(p: ParsedPayload | null | undefined, lyrics: string | null | undefined): boolean {
+  if (!p) return false
+  if (!p.anchored) return p.strokes.length > 0
+  return rebaseStrokes(p.anchored, p.lines, lyrics).strokes.some(s => !s.lines && s.p.length >= P_STRIDE)
 }
 
 /**

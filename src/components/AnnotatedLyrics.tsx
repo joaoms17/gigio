@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { flushSync } from 'react-dom'
 import LyricsView, { withAlpha } from './LyricsView'
-import { LegacyReference, cachedLegacy, legacyKey, loadAnnotations, pullAnnotations } from './AnnotationLayer'
+import { LegacyReference } from './AnnotationLayer'
+import { LEGACY_PULL_WAIT_MS, cachedLegacy, legacyKey, loadAnnotations, pullAnnotations } from '../lib/annotations/storage'
 import {
   marginGutter, pathFromSubpaths, payloadHasStrokes, rebaseStrokes, resolveAll, unionById,
   type AnchoredStroke, type ParsedPayload,
@@ -48,12 +50,23 @@ export default function AnnotatedLyrics({
   // há nada, se o que há é antigo (a v2 da cloud é mais recente) ou se está
   // por juntar (gravado sem a conseguir ler)
   const localFinal = !!local?.anchored && !local.pend && payloadHasStrokes(local)
+  const needPull = !!userId && !localFinal
+  // A cloud já respondeu (ou cansou-se de esperar: LEGACY_PULL_WAIT_MS)
+  const [pulled, setPulled] = useState(!needPull)
 
   useEffect(() => {
     if (!userId || localFinal) return
     let alive = true
-    pullAnnotations(songId, userId).then(r => { if (alive && r) setRemote(r) })
-    return () => { alive = false }
+    pullAnnotations(songId, userId).then(r => {
+      if (!alive) return
+      if (r) setRemote(r)
+      setPulled(true)
+    })
+    const t = setTimeout(() => { if (alive) setPulled(true) }, LEGACY_PULL_WAIT_MS)
+    return () => {
+      alive = false
+      clearTimeout(t)
+    }
   }, [songId, userId, localFinal])
 
   // Ancorados (v2), na numeração desta letra (pode ter sido editada depois
@@ -72,8 +85,9 @@ export default function AnnotatedLyrics({
 
   // Antigos (px do Ensaio, sem âncoras), quando não há v2 nenhuma: ancorados
   // contra um layout de referência com as definições do Ensaio
-  // (LegacyReference), só em memória e uma vez por sessão (cache)
-  const legacy = anchored ? null : legacyOf(local) ?? legacyOf(remote)
+  // (LegacyReference), só em memória e uma vez por sessão (cache). A cópia
+  // antiga daqui só depois de a cloud responder (pode ter uma v2)
+  const legacy = anchored ? null : (pulled ? legacyOf(local) : null) ?? legacyOf(remote)
   const key = useMemo(() => (legacy ? legacyKey(legacy, lyrics) : ''), [legacy, lyrics])
   const [migrated, setMigrated] = useState<{ key: string; strokes: AnchoredStroke[] } | null>(null)
   const migratedStrokes = !legacy ? null
@@ -131,13 +145,14 @@ export default function AnnotatedLyrics({
   // calha só depende do X das margens, que ela não muda: estabiliza à primeira
   useLayoutEffect(() => { measure() }, [lyrics, fontSize, lineHeight, view.gutter, measure])
 
-  // Resize/rotação: uma medição por frame, no máximo
+  // Resize/rotação: uma medição por frame, no máximo. flushSync: os caminhos
+  // novos entram já neste frame, não numa tarefa depois de pintar
   useEffect(() => {
     const el = innerRef.current
     if (!el) return
     let raf = 0
     const obs = new ResizeObserver(() => {
-      if (!raf) raf = requestAnimationFrame(() => { raf = 0; measure() })
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; flushSync(() => { measure() }) })
     })
     obs.observe(el)
     return () => {

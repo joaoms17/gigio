@@ -8,7 +8,13 @@
  * letras no próprio Ensaio (A+ ×2, rodar) e no modo concerto em vários
  * layouts (tablet paisagem/retrato, telemóvel, entrelinhas 1.3 e 2.0).
  * Cenário B: payload ANTIGO {w,h,strokes} (sem âncoras) aberto diretamente no
- * concerto (layout de referência) e depois no Ensaio (migra para v2).
+ * concerto (layout de referência) e depois no Ensaio (migra para v2); também
+ * o formato mais antigo, sem h (sempre desenhado a 32px).
+ * Cenário D: sincronização com a cloud — cópia antiga local contra uma v2 na
+ * cloud, traço desenhado antes de a cloud responder, cloud a falhar.
+ * Cenário E: música sem letra (traços livres). Cenário F: nota "FIM" abaixo
+ * da última linha (não pode ser cortada). E, no cenário A, cada fotograma
+ * depois de A+ (o sublinhado nunca sai de baixo do verso).
  *
  * Uso:
  *   node scripts/test-annotations-e2e.mjs [pasta-das-capturas]
@@ -76,6 +82,24 @@ TABLES.setlist_songs.push({
   performance_key: null, notes: null, custom_intro: null, custom_ending: null, song: SONG,
 })
 
+/** Outra música num concerto só com ela (cenários que não podem mexer na sgE) */
+function addSong(id, setlistId, lyrics) {
+  const song = { ...SONG, id, title: `Teste ${id}`, lyrics }
+  TABLES.songs.push(song)
+  TABLES.setlists.push({ ...TABLES.setlists[0], id: setlistId, name: `Teste ${id}`, setlist_songs: [{ count: 1 }] })
+  TABLES.setlist_songs.push({
+    ...TABLES.setlist_songs[0], id: `ss_${id}`, setlist_id: setlistId, song_id: id, position: 0,
+    performance_key: null, notes: null, custom_intro: null, custom_ending: null, song,
+  })
+  return song
+}
+// Instrumental ("Sem letra"): os traços ficam livres na folha
+const FREE_ID = 'sgV'
+addSong(FREE_ID, 'sV', '')
+// A mesma letra, para a nota "FIM" abaixo da última linha
+const FIM_ID = 'sgF'
+addSong(FIM_ID, 'sF', LYRICS)
+
 // ── Resultados ──────────────────────────────────────────────────────────────
 let passed = 0
 const failures = []
@@ -94,13 +118,15 @@ const r3 = v => Math.round(v * 1000) / 1000
  * Contexto novo = outro aparelho. `seed` vai para o localStorage UMA vez (no
  * 1.º carregamento do separador); `cloud` é a linha de song_annotations do
  * utilizador; `concertTheme` é o profiles.concert_theme.
+ * Rede da cloud: `dev.pullDelay` (ms) atrasa cada leitura de
+ * song_annotations; `dev.pullFail` = quantas leituras ainda falham (500).
  */
 async function newDevice(browser, { viewport, phone = false, seed = {}, cloud = null, concertTheme = null }) {
   const ctx = await browser.newContext({
     viewport, deviceScaleFactor: 2, hasTouch: true, isMobile: phone, serviceWorkers: 'block',
   })
-  const dev = { ctx, cloud, writes: 0 }
-  await ctx.route('**/rest/v1/**', route => {
+  const dev = { ctx, cloud, writes: 0, reads: 0, pullDelay: 0, pullFail: 0 }
+  await ctx.route('**/rest/v1/**', async route => {
     const req = route.request()
     const url = new URL(req.url())
     const table = url.pathname.split('/rest/v1/')[1]?.split('/')[0]
@@ -116,6 +142,12 @@ async function newDevice(browser, { viewport, phone = false, seed = {}, cloud = 
         const body = JSON.parse(req.postData() ?? '{}')
         dev.cloud = Array.isArray(body) ? body[0] : body
         return json(201, wantsObject ? dev.cloud : [dev.cloud])
+      }
+      dev.reads++
+      if (dev.pullDelay) await new Promise(r => setTimeout(r, dev.pullDelay))
+      if (dev.pullFail > 0) {
+        dev.pullFail--
+        return json(500, { message: 'falha simulada' })
       }
       const row = dev.cloud && url.searchParams.get('song_id') === `eq.${dev.cloud.song_id}` ? dev.cloud : null
       return json(200, wantsObject ? row : row ? [row] : [])
@@ -184,7 +216,7 @@ async function touchStroke(page, pts) {
   await cdp.detach()
 }
 
-const payloadOf = page => page.evaluate(k => JSON.parse(localStorage.getItem(k) ?? 'null'), ANN_KEY)
+const payloadOf = (page, key = ANN_KEY) => page.evaluate(k => JSON.parse(localStorage.getItem(k) ?? 'null'), key)
 const annStorage = page => page.evaluate(() => {
   const o = {}
   for (let i = 0; i < localStorage.length; i++) {
@@ -505,20 +537,26 @@ function shapes(S) {
 }
 
 // ── Navegação ───────────────────────────────────────────────────────────────
-async function openEnsaio(page) {
-  await page.goto(`${BASE}/songs/${SONG_ID}`, { waitUntil: 'networkidle' })
+/**
+ * Abre o Ensaio. `wait: false` não espera pela rede parada nem pelos traços
+ * (a leitura da cloud pode estar atrasada de propósito); `withText: false`
+ * para uma música sem letra (não há [data-ln])
+ */
+async function openEnsaio(page, { song = SONG_ID, wait = true, withText = true } = {}) {
+  await page.goto(`${BASE}/songs/${song}`, { waitUntil: wait ? 'networkidle' : 'domcontentloaded' })
   await page.click('button[title="Ensaio: ler e anotar a letra"]')
-  await page.waitForSelector(`${ENSAIO} [data-ln]`)
+  if (withText) await page.waitForSelector(`${ENSAIO} [data-ln]`)
   await page.waitForSelector(`${ENSAIO} svg`)
-  await settle(page, ENSAIO)
+  if (wait) await settle(page, ENSAIO)
+  else await page.evaluate(() => document.fonts.ready.then(() => undefined))
 }
 
-async function openConcert(page, nPaths = 4) {
-  await page.goto(`${BASE}/setlist/${SETLIST_ID}/concert`, { waitUntil: 'networkidle' })
+async function openConcert(page, nPaths = 4, { setlist = SETLIST_ID, withText = true } = {}) {
+  await page.goto(`${BASE}/setlist/${setlist}/concert`, { waitUntil: 'networkidle' })
   const key = await page.waitForSelector('button[aria-label="Anotações de ensaio"]', { timeout: 8000 }).catch(() => null)
   if (!ok(!!key, 'concerto: a tecla "Anotações de ensaio" aparece')) return false
   await key.click()
-  await page.waitForSelector(`${CONCERT} [data-ln]`)
+  await page.waitForSelector(withText ? `${CONCERT} [data-ln]` : CONCERT)
   const drawn = await page.waitForFunction(([root, n]) => document.querySelector(root)?.querySelectorAll('svg > path').length === n,
     [CONCERT, nPaths], { timeout: 8000 }).then(() => true, () => false)
   ok(drawn, `concerto: ${nPaths} traços aparecem`)
@@ -541,6 +579,53 @@ async function shots(page, name, scrollSel) {
     await page.evaluate(sel => { document.querySelector(sel).scrollTop = 0 }, scrollSel)
   }
 }
+/**
+ * Fotogramas: regista onde está o sublinhado (cor `color`) em relação ao
+ * texto da linha `ln` em cada rAF e em cada callback de um ResizeObserver
+ * registado DEPOIS dos da app — corre depois do layout, mesmo antes de
+ * pintar —, sobre a SVG, o bloco e o próprio caminho (o caminho muda de
+ * caixa quando é redesenhado). Ler com window.__stopFrames().
+ */
+async function watchFrames(page, root, ln, color) {
+  await page.evaluate(([root, ln, color]) => {
+    const host = document.querySelector(root)
+    const svg = host.querySelector('svg')
+    const path = [...svg.querySelectorAll(':scope > path')].find(p => (p.getAttribute('stroke') ?? '').toLowerCase() === color)
+    const log = []
+    const snap = ev => {
+      const el = host.querySelector(`[data-ln="${ln}"]`)
+      const n = el && [...el.childNodes].find(x => x.nodeType === 3)
+      if (!n || !path || !path.isConnected) return
+      const g = document.createRange()
+      g.selectNodeContents(n)
+      const rs = [...g.getClientRects()].filter(b => b.width > 0)
+      const pb = path.getBoundingClientRect()
+      const em = parseFloat(getComputedStyle(el).fontSize)
+      log.push({
+        ev, em,
+        dy: (pb.top - rs[rs.length - 1].bottom) / em,
+        dl: (pb.left - Math.min(...rs.map(b => b.left))) / em,
+        dr: (pb.right - Math.max(...rs.map(b => b.right))) / em,
+      })
+    }
+    const ro = new ResizeObserver(() => snap('RO'))
+    for (const t of [svg, host, path]) if (t) ro.observe(t)
+    let alive = true
+    const tick = () => { if (!alive) return; snap('rAF'); requestAnimationFrame(tick) }
+    requestAnimationFrame(tick)
+    window.__stopFrames = () => { alive = false; ro.disconnect(); return log }
+  }, [root, ln, color])
+}
+
+/** Em todos os fotogramas registados o sublinhado está por baixo do verso (no intervalo) e da mesma largura */
+function checkFrames(label, log) {
+  const bad = log.filter(f => !(f.dy >= -0.02 && f.dy <= 0.45 && Math.abs(f.dl) <= 0.3 && Math.abs(f.dr) <= 0.3))
+  const ems = [...new Set(log.map(f => f.em))]
+  ok(log.length >= 3 && ems.length >= 2, `${label}: fotogramas registados antes e depois da mudança`, { fotogramas: log.length, em: ems })
+  ok(bad.length === 0, `${label}: em nenhum fotograma o sublinhado sai de baixo do verso (nem é esticado)`,
+    bad.slice(0, 4).map(f => ({ ev: f.ev, em: f.em, dy: r3(f.dy), dl: r3(f.dl), dr: r3(f.dr) })))
+}
+
 const ENSAIO_SCROLL = '[class*="previewPane"]'
 const CONCERT_SCROLL = `[class*="lyricsScroll"]:has(${CONCERT})`
 
@@ -622,9 +707,14 @@ try {
   await shots(page, 'A1-ensaio-ipad-retrato-32px', ENSAIO_SCROLL)
 
   console.log('— A. Ensaio: A+ ×2 (40px)')
+  ok(await page.evaluate(root => !document.querySelector(root).querySelector('svg').hasAttribute('viewBox'), ENSAIO),
+    'Ensaio: SVG sem viewBox (unidades = px da camada, nunca esticada ao novo tamanho)')
+  await watchFrames(page, ENSAIO, LN_UNDER, C.under)
   await page.click('button[aria-label="Aumentar letra"]')
   await page.click('button[aria-label="Aumentar letra"]')
   await page.waitForFunction(root => parseFloat(getComputedStyle(document.querySelector(root).querySelector('[data-ln="1"]')).fontSize) === 40, ENSAIO)
+  await page.waitForTimeout(250)
+  checkFrames('Ensaio A+ ×2', await page.evaluate(() => window.__stopFrames()))
   await settle(page, ENSAIO)
   S = await snapshot(page, ENSAIO)
   checkAll('Ensaio retrato 40px', S, { expectLongWrap: true })
@@ -698,12 +788,36 @@ try {
   }
   const legacyRaw = JSON.stringify(LEGACY)
 
+  // Payload antigo SEM h ({w, strokes}, clientes até ao #37): o Ensaio ainda
+  // não tinha A−/A+ e a letra era sempre 32px (SongPage: fontSize={32}) — por
+  // isso fabrica-se a partir do Ensaio a 32px, seja qual for o tamanho que o
+  // aparelho que vê tem guardado agora
+  console.log('— B. Medir o Ensaio a 32px (iPad retrato) para fabricar o payload antigo sem h')
+  const NOH_FONT = 32
+  const M32 = await newDevice(browser, { viewport: TABLET_PORT, seed: { [FONT_KEY]: String(NOH_FONT), [ANN_KEY]: null } })
+  await openEnsaio(M32.page)
+  const S32 = await snapshot(M32.page, ENSAIO)
+  const box32 = await M32.page.evaluate(root => document.querySelector(root).firstElementChild.offsetWidth, ENSAIO)
+  ok(S32.em === NOH_FONT, `pré-condição: Ensaio a ${NOH_FONT}px`, S32.em)
+  await M32.ctx.close()
+  const sh32 = shapes(S32)
+  const toLayer32 = pts => pts.flatMap(([x, y]) => [x - S32.layer.l, y - S32.layer.t])
+  const LEGACY_NOH = {
+    w: box32,
+    strokes: [
+      { id: 'velho-1', pts: toLayer32(sh32.under), color: C.under.toUpperCase(), width: W.under },
+      { id: 'velho-2', pts: toLayer32(sh32.bracket), color: C.bracket.toUpperCase(), width: W.bracket },
+      { id: 'velho-3', pts: toLayer32(sh32.circle), color: C.circle.toUpperCase(), width: W.circle },
+      { id: 'velho-4', pts: toLayer32(sh32.long), color: C.long.toUpperCase(), width: W.long },
+    ],
+  }
+
   /**
    * Ensaio no telemóvel depois do concerto: o payload antigo (local ou da
    * cloud) migra para v2 contra a referência — as âncoras gravadas têm de
    * apontar para as linhas onde se desenhou, e ficam alinhadas aqui.
    */
-  async function phoneEnsaio(dev, tag, shot) {
+  async function phoneEnsaio(dev, tag, shot, emDrawn = LEGACY_FONT) {
     console.log(`— ${tag}. Depois o Ensaio no telemóvel: migra para v2`)
     await dev.page.evaluate(() => { window.__refLog = [] })
     await openEnsaio(dev.page)
@@ -717,7 +831,7 @@ try {
       enc[C.bracket]?.[3] === 1 && [C.under, C.circle, C.long].every(c => enc[c]?.[3] === 0),
     `${tag} Ensaio telemóvel: âncoras gravadas nas linhas e modos onde se desenhou`, got)
     await settle(dev.page, ENSAIO)
-    checkAll(`${tag} Ensaio migrado, telemóvel ${LEGACY_FONT}px`, await snapshot(dev.page, ENSAIO), { emDrawn: LEGACY_FONT })
+    checkAll(`${tag} Ensaio migrado, telemóvel ${LEGACY_FONT}px`, await snapshot(dev.page, ENSAIO), { emDrawn })
     await shots(dev.page, shot, ENSAIO_SCROLL)
     // A migração segue para a cloud (debounce 1.5s): é o que os outros aparelhos passam a ver
     for (let t = 0; t < 40 && !(dev.cloud?.strokes?.v === 2); t++) await dev.page.waitForTimeout(100)
@@ -726,7 +840,7 @@ try {
   }
 
   /** O iPad onde se desenhou abre o concerto com o v2 que outro aparelho migrou e mandou para a cloud */
-  async function ipadFromCloud(row, tag, shot) {
+  async function ipadFromCloud(row, tag, shot, emDrawn = LEGACY_FONT) {
     if (!row) return
     console.log(`— ${tag}. iPad retrato recebe da cloud o v2 migrado no telemóvel`)
     const dev = await newDevice(browser, {
@@ -734,18 +848,18 @@ try {
       seed: { [FONT_KEY]: String(LEGACY_FONT), [ANN_KEY]: null }, cloud: row,
     })
     if (await openConcert(dev.page)) {
-      checkAll(`${tag} concerto iPad retrato (v2 vindo do telemóvel)`, await snapshot(dev.page, CONCERT), { emDrawn: LEGACY_FONT })
+      checkAll(`${tag} concerto iPad retrato (v2 vindo do telemóvel)`, await snapshot(dev.page, CONCERT), { emDrawn })
       await shots(dev.page, shot, CONCERT_SCROLL)
     }
     await dev.ctx.close()
   }
 
-  const refCheck = async (page, label, wantSize) => {
+  const refCheck = async (page, label, wantSize, wantW = LEGACY.w) => {
     const log = await page.evaluate(() => window.__refLog)
     const mounts = log.filter(e => e.ev === 'mount')
     const sizes = log.filter(e => e.size).map(e => e.size)
     ok(mounts.length >= 1, `${label}: usou o layout de referência`, log)
-    ok(mounts.every(m => m.width === `${LEGACY.w}px`), `${label}: referência com a largura guardada (${LEGACY.w}px)`, mounts)
+    ok(mounts.every(m => m.width === `${wantW}px`), `${label}: referência com a largura guardada (${wantW}px)`, mounts)
     ok(sizes.length && sizes[sizes.length - 1] === `${wantSize}px`, `${label}: referência com o tamanho do Ensaio que dá a altura guardada (${wantSize}px)`, sizes)
     ok(await page.evaluate(() => !document.querySelector('body > div[aria-hidden="true"] [data-ln]')), `${label}: referência desmontada`)
   }
@@ -760,6 +874,18 @@ try {
     await refCheck(B1.page, 'concerto antigo iPad retrato', LEGACY_FONT)
     ok(await B1.page.evaluate(k => localStorage.getItem(k), ANN_KEY) === legacyRaw && B1.writes === 0, 'concerto não migra nem grava o payload antigo', { cloud: B1.writes })
     await shots(B1.page, 'B1-concerto-antigo-ipad-retrato-46px', CONCERT_SCROLL)
+    // Desligar e voltar a ligar a vista de anotações: a migração fica em
+    // memória (cache da sessão) — não se volta a montar e medir a referência
+    const mounts0 = await B1.page.evaluate(() => window.__refLog.filter(e => e.ev === 'mount').length)
+    for (let k = 0; k < 2; k++) {
+      await B1.page.click('button[aria-label="Anotações de ensaio"]')
+      await B1.page.waitForTimeout(150)
+    }
+    const again = await B1.page.waitForFunction(root => document.querySelector(root)?.querySelectorAll('svg > path').length === 4, CONCERT, { timeout: 5000 }).then(() => true, () => false)
+    const mounts1 = await B1.page.evaluate(() => window.__refLog.filter(e => e.ev === 'mount').length)
+    ok(again && mounts1 === mounts0, 'concerto: voltar a abrir as anotações usa a migração em cache (sem nova referência)', { antes: mounts0, depois: mounts1, traços: again })
+    await settle(B1.page, CONCERT)
+    checkAll('Concerto antigo, iPad retrato 46px (cache)', await snapshot(B1.page, CONCERT), { emDrawn: LEGACY_FONT })
   }
   console.log('— B1. Depois o Ensaio no mesmo iPad: migra para v2')
   await openEnsaio(B1.page)
@@ -791,22 +917,23 @@ try {
   await B2.ctx.close()
   await ipadFromCloud(rowB2, 'B2c', 'B3c-concerto-ipad-com-v2-do-telemovel')
 
-  // Clientes até ao #36 gravavam só {w, strokes}: sem h, a referência fica no
-  // tamanho guardado (28px) e só os rótulos de secção (px fixos por media
-  // query) diferem entre o iPad onde se desenhou e o telemóvel
-  console.log('— B2b. Telemóvel: concerto DIRETAMENTE com um payload antigo sem h ({w, strokes})')
+  // Clientes até ao #37 gravavam só {w, strokes}, sempre a 32px: sem h, a
+  // referência fica nos 32px (não no tamanho guardado agora, 28) e com os
+  // rótulos de secção do iPad onde se desenhou (deduzidos da largura), não
+  // os do telemóvel que vê
+  console.log('— B2b. Telemóvel (28px guardado): concerto DIRETAMENTE com um payload antigo sem h ({w, strokes}) desenhado a 32px')
   const B2b = await newDevice(browser, {
     viewport: PHONE, phone: true, concertTheme: { font_size: 32, line_height: 1.6 },
-    seed: { [FONT_KEY]: String(LEGACY_FONT), [ANN_KEY]: JSON.stringify({ w: LEGACY.w, strokes: LEGACY.strokes }) },
+    seed: { [FONT_KEY]: String(LEGACY_FONT), [ANN_KEY]: JSON.stringify(LEGACY_NOH) },
   })
   if (await openConcert(B2b.page)) {
-    checkAll('Concerto antigo sem h, telemóvel 32px', await snapshot(B2b.page, CONCERT), { emDrawn: LEGACY_FONT, expectLongWrap: true })
-    await refCheck(B2b.page, 'concerto antigo sem h, telemóvel', LEGACY_FONT)
+    checkAll('Concerto antigo sem h, telemóvel 32px', await snapshot(B2b.page, CONCERT), { emDrawn: NOH_FONT, expectLongWrap: true })
+    await refCheck(B2b.page, 'concerto antigo sem h, telemóvel', NOH_FONT, LEGACY_NOH.w)
     await shots(B2b.page, 'B3b-concerto-antigo-sem-h-telemovel-32px', CONCERT_SCROLL)
   }
-  const rowB2b = await phoneEnsaio(B2b, 'B2b', 'B3b-ensaio-migrado-sem-h-telemovel-28px')
+  const rowB2b = await phoneEnsaio(B2b, 'B2b', 'B3b-ensaio-migrado-sem-h-telemovel-28px', NOH_FONT)
   await B2b.ctx.close()
-  await ipadFromCloud(rowB2b, 'B2d', 'B3d-concerto-ipad-com-v2-sem-h-do-telemovel')
+  await ipadFromCloud(rowB2b, 'B2d', 'B3d-concerto-ipad-com-v2-sem-h-do-telemovel', NOH_FONT)
 
   console.log('— B3. iPad paisagem com outro tamanho guardado (44): concerto DIRETAMENTE, depois o Ensaio')
   const B3 = await newDevice(browser, {
@@ -828,6 +955,200 @@ try {
   checkAll('Ensaio migrado, iPad paisagem 44px', await snapshot(B3.page, ENSAIO), { emDrawn: LEGACY_FONT })
   await shots(B3.page, 'B5-ensaio-migrado-ipad-paisagem-44px', ENSAIO_SCROLL)
   await B3.ctx.close()
+
+  // Sem h a largura bate certo com o bloco de agora, mas o tamanho não (40
+  // guardado, desenhado a 32): adotar "como hoje" (rácios = 1) prendia os
+  // sublinhados às linhas erradas — tem de ir pela referência a 32px
+  console.log('— B4. iPad retrato com 40px guardado: Ensaio com o payload antigo sem h (desenhado a 32px)')
+  const B4 = await newDevice(browser, { viewport: TABLET_PORT, seed: { [FONT_KEY]: '40', [ANN_KEY]: JSON.stringify(LEGACY_NOH) } })
+  await openEnsaio(B4.page)
+  const migrated4 = await B4.page.waitForFunction(k => JSON.parse(localStorage.getItem(k) ?? 'null')?.v === 2, ANN_KEY, { timeout: 5000 }).then(() => true, () => false)
+  ok(migrated4, 'B4 Ensaio 40px: payload antigo sem h passa a v2')
+  await refCheck(B4.page, 'B4 Ensaio iPad 40px, payload sem h', NOH_FONT, LEGACY_NOH.w)
+  await settle(B4.page, ENSAIO)
+  checkAll('B4 Ensaio migrado, iPad retrato 40px (sem h)', await snapshot(B4.page, ENSAIO), { emDrawn: NOH_FONT })
+  await shots(B4.page, 'B6-ensaio-migrado-sem-h-ipad-40px', ENSAIO_SCROLL)
+  await B4.ctx.close()
+
+  // ══ Cenário D: sincronização com a cloud ════════════════════════════════
+  const cloudV2 = () => ({ song_id: SONG_ID, user_id: 'u1', strokes: P, updated_at: new Date().toISOString() })
+  const idsP = (P?.anchored ?? []).map(e => e[0]).sort()
+  const ids = p => (p?.anchored ?? []).map(e => e[0]).sort()
+  /** Sublinhado (px do viewport) da linha `ln`, como o shapes() */
+  const underOf = (S, ln) => {
+    const r = S.rows[ln][0]
+    return Array.from({ length: 31 }, (_, i) => [r.l - 3 + (r.r - r.l + 6) * i / 30, r.b + 0.16 * S.em + 0.6 * Math.sin(i * 1.7)])
+  }
+  const pathCount = (page, root) => page.evaluate(root => document.querySelector(root)?.querySelectorAll('svg > path').length ?? 0, root)
+
+  console.log('— D1. Telemóvel com uma cópia ANTIGA local (cliente antigo) e a v2 na cloud (o iPad já migrou)')
+  const D1 = await newDevice(browser, {
+    viewport: PHONE, phone: true, concertTheme: { font_size: 32, line_height: 1.6 },
+    seed: { [FONT_KEY]: String(LEGACY_FONT), [ANN_KEY]: legacyRaw }, cloud: cloudV2(),
+  })
+  if (await openConcert(D1.page)) {
+    // As larguras dizem de onde vêm os traços: a v2 foi desenhada a 32px, a cópia antiga a 28
+    checkAll('D1 concerto telemóvel (a v2 da cloud ganha à cópia antiga local)', await snapshot(D1.page, CONCERT), { emDrawn: 32, expectLongWrap: true })
+    ok(await D1.page.evaluate(() => !window.__refLog.some(e => e.ev === 'mount')), 'D1 concerto: não migra a cópia antiga (a cloud tem âncoras)', await D1.page.evaluate(() => window.__refLog))
+  }
+  await openEnsaio(D1.page)
+  ok(await D1.page.evaluate(() => !window.__refLog.some(e => e.ev === 'mount')), 'D1 Ensaio: espera pela cloud antes de migrar a cópia antiga (não chega a montar a referência)', await D1.page.evaluate(() => window.__refLog))
+  const switched = await D1.page.waitForFunction(([k, want]) => {
+    const p = JSON.parse(localStorage.getItem(k) ?? 'null')
+    return p?.v === 2 && JSON.stringify((p.anchored ?? []).map(e => e[0]).sort()) === JSON.stringify(want)
+  }, [ANN_KEY, idsP], { timeout: 5000 }).then(() => true, () => false)
+  ok(switched, 'D1 Ensaio: a cópia local passa a ser a v2 da cloud (não a migração da antiga)', ids(await payloadOf(D1.page)))
+  await D1.page.waitForTimeout(2000)
+  ok(D1.writes === 0 && JSON.stringify(D1.cloud.strokes.anchored) === JSON.stringify(P.anchored),
+    'D1 Ensaio: não grava a cópia antiga por cima da v2 da cloud', { escritas: D1.writes, cloud: ids(D1.cloud.strokes) })
+  await settle(D1.page, ENSAIO)
+  checkAll(`D1 Ensaio telemóvel ${LEGACY_FONT}px (v2 da cloud)`, await snapshot(D1.page, ENSAIO), { emDrawn: 32 })
+  await D1.ctx.close()
+
+  console.log('— D2. iPad sem cópia local, a v2 na cloud e a leitura dela atrasada 7s: desenha-se antes de a cloud responder')
+  const D2 = await newDevice(browser, { viewport: TABLET_PORT, seed: { [FONT_KEY]: null, [ANN_KEY]: null }, cloud: cloudV2() })
+  D2.pullDelay = 7000
+  // (a leitura só começa depois de t2: até t2 + 7s a cloud não respondeu)
+  const t2 = Date.now()
+  await openEnsaio(D2.page, { wait: false })
+  ok(await pathCount(D2.page, ENSAIO) === 0, 'D2: folha vazia enquanto a cloud não responde')
+  await penStroke(D2.page, underOf(await snapshot(D2.page, ENSAIO), 4))
+  const drawn2 = await D2.page.waitForFunction(k => JSON.parse(localStorage.getItem(k) ?? 'null')?.anchored?.length === 1, ANN_KEY, { timeout: 3000 }).then(() => true, () => false)
+  await D2.page.waitForTimeout(1700)   // > debounce do envio (1.5s)
+  ok(drawn2 && Date.now() - t2 < 6900 && D2.writes === 0, 'D2: antes de a cloud responder o traço fica só neste aparelho (nada é enviado)', { ms: Date.now() - t2, escritas: D2.writes })
+  for (let t = 0; t < 100 && !(D2.cloud?.strokes?.anchored?.length === 5); t++) await D2.page.waitForTimeout(100)
+  const cloud2 = D2.cloud?.strokes
+  const merged2 = cloud2?.anchored?.length === 5
+  ok(merged2 && idsP.every(id => ids(cloud2).includes(id)), 'D2: quando a cloud responde, junta-se a v2 dela ao traço novo e envia-se tudo (5 traços)', { cloud: ids(cloud2), escritas: D2.writes })
+  ok(ids(await payloadOf(D2.page)).length === 5 && await pathCount(D2.page, ENSAIO) === 5, 'D2: o Ensaio mostra e guarda os 5 traços', { local: ids(await payloadOf(D2.page)).length, caminhos: await pathCount(D2.page, ENSAIO) })
+  await D2.ctx.close()
+
+  console.log('— D3. Leitura da cloud a falhar: o traço fica "por juntar" e junta-se quando a cloud volta')
+  const D3 = await newDevice(browser, { viewport: TABLET_PORT, seed: { [FONT_KEY]: null, [ANN_KEY]: null }, cloud: cloudV2() })
+  D3.pullFail = 1000
+  await openEnsaio(D3.page, { wait: false })
+  await penStroke(D3.page, underOf(await snapshot(D3.page, ENSAIO), 4))
+  const drawn3 = await D3.page.waitForFunction(k => JSON.parse(localStorage.getItem(k) ?? 'null')?.anchored?.length === 1, ANN_KEY, { timeout: 3000 }).then(() => true, () => false)
+  await D3.page.waitForTimeout(3500)
+  const P3 = await payloadOf(D3.page)
+  ok(drawn3 && P3?.pend === 1 && D3.writes === 0 && D3.reads >= 2, 'D3: sem conseguir ler a cloud nada é enviado; o local fica marcado "por juntar" e volta a tentar ler', { pend: P3?.pend, escritas: D3.writes, leituras: D3.reads })
+  D3.pullFail = 0
+  await openEnsaio(D3.page)
+  for (let t = 0; t < 60 && !(D3.cloud?.strokes?.anchored?.length === 5); t++) await D3.page.waitForTimeout(100)
+  const P3b = await payloadOf(D3.page)
+  ok(D3.cloud?.strokes?.anchored?.length === 5 && idsP.every(id => ids(D3.cloud.strokes).includes(id)) && ids(P3).every(id => ids(D3.cloud.strokes).includes(id)),
+    'D3: a cloud volta → junta-se (v2 dela + o traço daqui) e envia-se', { cloud: ids(D3.cloud?.strokes), escritas: D3.writes })
+  ok(P3b?.anchored?.length === 5 && P3b.pend === undefined && await pathCount(D3.page, ENSAIO) === 5, 'D3: o local fica com os 5 traços e deixa de estar "por juntar"', { local: P3b?.anchored?.length, pend: P3b?.pend })
+  await D3.ctx.close()
+
+  // ══ Cenário E: música sem letra (instrumental) ═══════════════════════════
+  const FREE_KEY = `gigio_ann_v1_${FREE_ID}`
+  /** Caixa (viewport) do bloco da letra, da SVG e dos caminhos, sem [data-ln] */
+  const freeSnap = (page, root) => page.evaluate(root => {
+    const host = document.querySelector(root)
+    const svg = host?.querySelector('svg')
+    const block = host?.querySelector('[class*="hint"]')?.parentElement
+    const box = el => { const b = el.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: b.width } }
+    return svg && block ? { block: box(block), svg: box(svg), paths: [...svg.querySelectorAll(':scope > path')].map(p => ({ ...box(p), width: parseFloat(p.getAttribute('stroke-width')) })) } : null
+  }, root)
+  console.log('— E1. Instrumental: desenhar no Ensaio (iPad) e ver no concerto')
+  const E1 = await newDevice(browser, { viewport: TABLET_PORT, seed: { [FREE_KEY]: null }, concertTheme: { font_size: 32, line_height: 1.6 } })
+  await openEnsaio(E1.page, { song: FREE_ID, withText: false })
+  const fe = await freeSnap(E1.page, ENSAIO)
+  // Diagonal (o caminho suavizado passa pelos pontos: a caixa é a dos extremos)
+  const zig = Array.from({ length: 25 }, (_, i) => [fe.block.l + 120 + i * 8, fe.block.t + 160 + i * 1.25])
+  await penStroke(E1.page, zig)
+  const savedE = await E1.page.waitForFunction(k => JSON.parse(localStorage.getItem(k) ?? 'null')?.anchored?.length === 1, FREE_KEY, { timeout: 3000 }).then(() => true, () => false)
+  const PE = await payloadOf(E1.page, FREE_KEY)
+  const fe2 = await freeSnap(E1.page, ENSAIO)
+  ok(savedE && PE.anchored[0][3] === 4, 'E1: o traço numa folha sem letra é gravado (modo livre)', PE?.anchored?.map(e => e[3]))
+  const zb = bbox(zig)
+  const pe = fe2?.paths[0]
+  ok(fe2?.paths.length === 1 && Math.abs(pe.l - zb.l) < 1.5 && Math.abs(pe.t - zb.t) < 1.5 && Math.abs(pe.r - zb.r) < 1.5 && Math.abs(pe.b - zb.b) < 1.5,
+    'E1: depois de levantar a caneta o traço fica onde foi desenhado', { caminhos: fe2?.paths.length, traço: pe, desenhado: zb })
+  if (await openConcert(E1.page, 1, { setlist: 'sV', withText: false })) {
+    const fc = await freeSnap(E1.page, CONCERT)
+    const k = fc.block.w / fe.block.w
+    const want = { l: fc.block.l + (zb.l - fe.block.l) * k, t: fc.block.t + (zb.t - fe.block.t) * k, r: fc.block.l + (zb.r - fe.block.l) * k, b: fc.block.t + (zb.b - fe.block.t) * k }
+    const pc = fc.paths[0]
+    // (traço fino por omissão: 2px)
+    ok(fc.paths.length === 1 && ['l', 't', 'r', 'b'].every(s => Math.abs(pc[s] - want[s]) < 2) && Math.abs(pc.width - Math.max(1.5, 2 * k)) < 0.1,
+      'E1 concerto: o traço livre aparece escalado pela largura da folha', { traço: pc, esperado: want, k: r3(k) })
+  }
+  await E1.ctx.close()
+
+  console.log('— E2. Instrumental com um payload ANTIGO (px): vê-se no concerto e no Ensaio (e migra)')
+  const oldFree = { w: fe.block.w, h: 40, strokes: [{ id: 'livre-1', pts: zig.flatMap(([x, y]) => [x - fe.svg.l, y - fe.svg.t]), color: '#2563EB', width: 4 }] }
+  const E2 = await newDevice(browser, { viewport: PHONE, phone: true, seed: { [FREE_KEY]: JSON.stringify(oldFree) }, concertTheme: { font_size: 32, line_height: 1.6 } })
+  if (await openConcert(E2.page, 1, { setlist: 'sV', withText: false })) {
+    const fc = await freeSnap(E2.page, CONCERT)
+    const k = fc.block.w / oldFree.w
+    ok(fc.paths.length === 1 && Math.abs(fc.paths[0].l - (fc.block.l + (zb.l - fe.svg.l) * k)) < 2 && Math.abs(fc.paths[0].t - (fc.block.t + (zb.t - fe.svg.t) * k)) < 2,
+      'E2 concerto: o traço antigo de uma música sem letra aparece (escalado pela largura)', { caminhos: fc.paths.length, traço: fc.paths[0] })
+  }
+  await openEnsaio(E2.page, { song: FREE_ID, withText: false })
+  const migratedE = await E2.page.waitForFunction(k => JSON.parse(localStorage.getItem(k) ?? 'null')?.v === 2, FREE_KEY, { timeout: 5000 }).then(() => true, () => false)
+  const fe3 = await freeSnap(E2.page, ENSAIO)
+  ok(migratedE && (await payloadOf(E2.page, FREE_KEY)).anchored[0][3] === 4 && fe3.paths.length === 1, 'E2 Ensaio: o traço antigo vê-se e passa a v2 (livre)', { caminhos: fe3?.paths.length })
+  await E2.ctx.close()
+
+  // ══ Cenário F: nota escrita abaixo da última linha ("FIM") ═══════════════
+  console.log('— F. Nota "FIM" abaixo da última linha: inteira no concerto e no Ensaio depois de A+')
+  const FIM_KEY = `gigio_ann_v1_${FIM_ID}`
+  const F = await newDevice(browser, { viewport: TABLET_PORT, seed: { [FONT_KEY]: null, [FIM_KEY]: null }, concertTheme: { font_size: 32, line_height: 1.6 } })
+  await openEnsaio(F.page, { song: FIM_ID })
+  const SF = await snapshot(F.page, ENSAIO)
+  const lastF = SF.rows[14][0]
+  const fimTop = lastF.b + 0.8 * SF.em
+  const fimH = 0.7 * SF.em
+  const fim = Array.from({ length: 31 }, (_, i) => [(lastF.l + lastF.r) / 2 - SF.em + i * (2 * SF.em / 30), fimTop + (i % 2 ? 0 : fimH)])
+  await penStroke(F.page, fim)
+  const savedF = await F.page.waitForFunction(k => JSON.parse(localStorage.getItem(k) ?? 'null')?.anchored?.length === 1, FIM_KEY, { timeout: 3000 }).then(() => true, () => false)
+  ok(savedF, 'F: nota gravada')
+  /** A nota (o único caminho) em relação à última linha, à SVG e ao que o scroll alcança */
+  const fimCheck = async (label, root, scrollSel, frameSel) => {
+    const g = await F.page.evaluate(([root, scrollSel, frameSel]) => {
+      const host = document.querySelector(root)
+      const p = host.querySelector('svg > path')
+      if (!p) return null
+      const n = [...host.querySelector('[data-ln="14"]').childNodes].find(x => x.nodeType === 3)
+      const rg = document.createRange()
+      rg.selectNodeContents(n)
+      const rs = [...rg.getClientRects()].filter(b => b.width > 0)
+      const pb = p.getBoundingClientRect()
+      const sv = host.querySelector('svg').getBoundingClientRect()
+      const sc = document.querySelector(scrollSel)
+      const scb = sc.getBoundingClientRect()
+      const fr = frameSel ? document.querySelector(frameSel).getBoundingClientRect() : null
+      return {
+        em: parseFloat(getComputedStyle(n.parentElement).fontSize), w: parseFloat(p.getAttribute('stroke-width')),
+        p: { t: pb.top, b: pb.bottom, l: pb.left, r: pb.right }, last: rs[rs.length - 1].bottom, svgBottom: sv.bottom,
+        reach: scb.top - sc.scrollTop + sc.scrollHeight, frame: fr && { t: fr.top, b: fr.bottom, l: fr.left, r: fr.right },
+      }
+    }, [root, scrollSel, frameSel])
+    if (!ok(!!g, `${label}: nota desenhada`)) return
+    const h = g.p.b - g.p.t
+    ok(g.p.t > g.last + 0.5 * g.em && Math.abs(h - fimH * g.em / SF.em) <= 0.25 * fimH * g.em / SF.em,
+      `${label}: nota abaixo da última linha, com a altura de quando foi escrita`, { topo_em: r3((g.p.t - g.last) / g.em), altura: r1(h), esperada: r1(fimH * g.em / SF.em) })
+    // No Ensaio a SVG estende-se até à nota (a borracha tem de lhe chegar);
+    // no concerto (só leitura) desenha fora da sua caixa, dentro da moldura
+    if (!frameSel) ok(g.p.b + g.w / 2 <= g.svgBottom + 0.5, `${label}: a SVG estende-se até à nota`, { nota: r1(g.p.b + g.w / 2), svg: r1(g.svgBottom) })
+    ok(g.p.b + g.w / 2 <= g.reach + 0.5, `${label}: o scroll chega à nota`, { nota: r1(g.p.b + g.w / 2), scroll: r1(g.reach) })
+    if (g.frame) ok(g.p.t - g.w / 2 >= g.frame.t - 0.5 && g.p.b + g.w / 2 <= g.frame.b + 0.5 && g.p.l >= g.frame.l - 0.5 && g.p.r <= g.frame.r + 0.5,
+      `${label}: a nota não é cortada pela moldura`, { nota: g.p, moldura: g.frame })
+  }
+  await fimCheck('F Ensaio 32px', ENSAIO, ENSAIO_SCROLL, null)
+  if (await openConcert(F.page, 1, { setlist: 'sF' })) {
+    await fimCheck('F concerto iPad retrato 46px', CONCERT, `[class*="lyricsScroll"]`, `${CONCERT} > div`)
+    await shots(F.page, 'F1-concerto-nota-fim', CONCERT_SCROLL)
+  }
+  await openEnsaio(F.page, { song: FIM_ID })
+  for (let k = 0; k < 6; k++) await F.page.click('button[aria-label="Aumentar letra"]')
+  await F.page.waitForFunction(root => parseFloat(getComputedStyle(document.querySelector(root).querySelector('[data-ln="1"]')).fontSize) === 56, ENSAIO)
+  await settle(F.page, ENSAIO)
+  await fimCheck('F Ensaio 56px (letra mais alta do que o painel)', ENSAIO, ENSAIO_SCROLL, null)
+  await shots(F.page, 'F2-ensaio-nota-fim-56px', ENSAIO_SCROLL)
+  await F.ctx.close()
 } catch (e) {
   ok(false, 'exceção no teste', String(e?.stack ?? e).split('\n').slice(0, 4).join(' | '))
 } finally {

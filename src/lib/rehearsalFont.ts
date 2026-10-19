@@ -22,11 +22,20 @@ export const REHEARSAL_LINE_HEIGHT = 1.6
  */
 export const LEGACY_NO_H_FONT = 32
 /**
- * Largura do bloco do Ensaio a partir da qual quem desenhou tinha as medidas
- * de tablet nos rótulos de secção (ecrã ≥ 768px). No layout dos payloads
- * sem h o bloco era o ecrã menos 54px (padding 20+20 e a barra de 14px).
+ * Largura do bloco do Ensaio a partir da qual quem desenhou tinha (muito
+ * provavelmente) as medidas de tablet nos rótulos de secção (ecrã ≥ 768px).
+ * Só decide sozinha nos payloads sem h; com h, a altura escolhe.
+ * No tempo dos payloads sem h (jun–set, até ao #37) havia a barra lateral de
+ * 236px ao lado do Ensaio nos ecrãs largos e o painel tinha 20px de padding
+ * de cada lado: iPad em retrato (810–834px) → bloco de 533–557px, paisagem
+ * → 800px ou mais; telemóvel em retrato (≤ 430px, padding 16) → até 398px.
+ * Com 714 (o ecrã menos o padding, sem a barra) o iPad em retrato contava
+ * como telemóvel e os traços desciam ~4–8px por rótulo.
+ * Ambíguo e por isso mal classificado: iPad mini em retrato (744px, sem a
+ * barra antes do #35: bloco de 704px com medidas de telemóvel) e telemóvel
+ * deitado sem a barra — sem h não há como os distinguir.
  */
-export const LEGACY_TABLET_MIN_W = 714
+export const LEGACY_TABLET_MIN_W = 470
 
 export function clampRehearsalFont(v: number): number {
   return Math.min(REHEARSAL_FONT_MAX, Math.max(REHEARSAL_FONT_MIN, v))

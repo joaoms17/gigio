@@ -31,7 +31,7 @@ const {
   encodeAnchored, decodeAnchored, buildPayload, readPayload, payloadHasStrokes, toLegacyStrokes,
   smoothPath, pathFromSubpaths, hitSubpaths, strokesAt, mergeRowRects, pickCharRect, isLayoutEmpty,
   MODE_TEXT, MODE_MARGIN, MODE_MARGIN_ROW, MODE_GAP, MODE_FREE, P_STRIDE, MIN_WIDTH_PX, Y_IN, Y_BELOW, Y_ABOVE,
-  anchorFree, marginGutter, decodeAnchoredParts, unionById, unionExtra,
+  anchorFree, marginGutter, decodeAnchoredParts, unionById, unionExtra, payloadHasVisible,
 } = A
 const MODE_NAMES = { [MODE_TEXT]: 'texto', [MODE_MARGIN]: 'margem', [MODE_GAP]: 'intervalo', [MODE_FREE]: 'livre' }
 
@@ -1202,6 +1202,22 @@ test('formato: entradas de uma versão futura e "por juntar" sobrevivem a ler/gr
   const v = anchorStroke(underline(S, 3, 3, 12), YELLOW, 4, S, 'v')
   eq(unionById([u], [u, v]).map(s => s.id), ['u', 'v'], 'unionById: sem repetidos, a base primeiro')
   eq(unionExtra([future], [future, futureCode]).map(e => e[0]), ['f1', 'f2'], 'unionExtra: sem repetidos')
+})
+
+test('payloadHasVisible: os órfãos não contam (tecla do concerto)', () => {
+  const S = makeLayout(LYRICS, ENSAIO)
+  const u = anchorStroke(underline(S, 2, ...visible(S, 2)), YELLOW, 3, S, 'u')
+  const save = lyrics => readPayload(JSON.parse(JSON.stringify(buildPayload({ w: 780, h: 900, strokes: [], em: 32, anchored: [u], lyrics }))))
+  const p = save(LYRICS)
+  ok(payloadHasVisible(p, LYRICS), 'visível com a letra onde se desenhou')
+  const edited = LYRICS.split('\n').map((l, i) => (i === 2 ? 'Linha inventada que substitui a outra' : l)).join('\n')
+  ok(payloadHasStrokes(p) && !payloadHasVisible(p, edited), 'a linha do único traço mudou: órfão → nada visível (payloadHasStrokes continua a contá-lo)')
+  // Depois de o Ensaio gravar o órfão (com o texto das suas linhas), continua invisível; e volta com a letra
+  const r = rebaseStrokes(p.anchored, p.lines, edited)
+  const p2 = readPayload(JSON.parse(JSON.stringify(buildPayload({ w: 780, h: 900, strokes: [], em: 32, anchored: r.strokes, lyrics: edited }))))
+  ok(!payloadHasVisible(p2, edited) && payloadHasVisible(p2, LYRICS), 'órfão gravado: invisível com a letra editada, visível se a linha voltar')
+  ok(payloadHasVisible({ w: 1, strokes: [{ id: 'x', pts: [1, 2, 3, 4], color: YELLOW, width: 3 }], anchored: null, lines: null, extra: [], pend: false }, ''), 'antigo (px): conta os traços')
+  ok(!payloadHasVisible(null, LYRICS), 'sem payload: nada')
 })
 
 /* ── resultado ── */
