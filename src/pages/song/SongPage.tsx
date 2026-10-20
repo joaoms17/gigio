@@ -12,6 +12,10 @@ import {
   clampRehearsalFont, loadRehearsalFont, saveRehearsalFont,
 } from '../../lib/rehearsalFont'
 import { useAuth } from '../../hooks/useAuth'
+import { useOnline } from '../../hooks/useNetworkStatus'
+import { runQuery } from '../../lib/offline/net'
+import { patchSongInCopies } from '../../lib/offline/store'
+import { markCopiesStale } from '../../lib/offline/sync'
 import type { Song } from '../../types'
 import styles from './SongPage.module.css'
 
@@ -250,6 +254,9 @@ export default function SongPage() {
   const [projectName, setProjectName] = useState<string | null>(null)
   const [setlistName, setSetlistName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // Sem rede ao abrir: "Sem ligação" (nunca "Música não encontrada") e volta a tentar quando a rede voltar
+  const [loadOffline, setLoadOffline] = useState(false)
+  const online = useOnline()
   const [tab, setTab] = useState<Tab>('lyrics')
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
@@ -332,10 +339,21 @@ export default function SongPage() {
       .then(({ data }) => setSetlistName(data?.name ?? null))
   }, [setlistId])
 
+  // A rede voltou depois de a página abrir sem ela
+  useEffect(() => {
+    if (online && loadOffline && id && user) load()
+  }, [online])
+
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('songs').select('*').eq('id', id).single()
-    if (!data) { setLoading(false); return }
+    // Sem rede responde logo (sem as retentativas do postgrest: antes eram ~7 s de esqueleto)
+    const { data, network } = await runQuery(supabase.from('songs').select('*').eq('id', id).maybeSingle(), 10000)
+    if (!data) {
+      setLoadOffline(network)
+      setLoading(false)
+      return
+    }
+    setLoadOffline(false)
     const s = data as unknown as Song
     setSong(s)
     baseUpdatedAtRef.current = (s as any).updated_at ?? null
@@ -404,7 +422,7 @@ export default function SongPage() {
     setSaving(true)
     const hasEdited = lyrics !== (song.original_lyrics ?? song.lyrics ?? '')
     const newUpdatedAt = new Date().toISOString()
-    const { error } = await supabase.from('songs').update({
+    const patch = {
       title: title.trim(),
       artist: artist.trim(),
       lyrics: lyrics,
@@ -421,13 +439,19 @@ export default function SongPage() {
       notes: notes.trim() || null,
       updated_by: user.id,
       updated_at: newUpdatedAt,
-    }).eq('id', song.id)
+    }
+    const { error } = await supabase.from('songs').update(patch).eq('id', song.id)
     setSaving(false)
     if (error) {
       isDirtyRef.current = true
       toast('Erro ao guardar: ' + error.message, { type: 'error' })
       return
     }
+    // Os concertos guardados neste aparelho com esta música ficam com a letra
+    // nova (o palco sem rede nunca mostra a de antes); o próximo guardar em
+    // segundo plano corre já (os outros aparelhos e as outras colunas)
+    patchSongInCopies(user.id, song.id, { song: patch as Partial<Song> }).catch(() => {})
+    markCopiesStale(user.id)
     baseUpdatedAtRef.current = newUpdatedAt
     setSavedAt(new Date())
   }
@@ -480,10 +504,14 @@ export default function SongPage() {
   if (!song) {
     return (
       <div className={styles.page}>
-        <div className={styles.notFound}>
+        <div className={styles.notFound} data-song-unavailable={loadOffline ? 'offline' : 'missing'}>
           <span className={styles.notFoundIcon}><IconFileMissing /></span>
-          <h2 className={styles.notFoundTitle}>Música não encontrada</h2>
-          <p className={styles.notFoundText}>Pode ter sido apagada ou já não tens acesso a ela.</p>
+          <h2 className={styles.notFoundTitle}>{loadOffline ? 'Sem ligação' : 'Música não encontrada'}</h2>
+          <p className={styles.notFoundText}>
+            {loadOffline
+              ? 'Editar a música precisa de rede. A letra está no modo concerto, se o concerto estiver guardado neste aparelho.'
+              : 'Pode ter sido apagada ou já não tens acesso a ela.'}
+          </p>
           <button type="button" className={styles.primaryBtn} onClick={() => navigate(backPath())}>
             <IconArrowLeft /> Voltar
           </button>

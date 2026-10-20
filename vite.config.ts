@@ -36,11 +36,15 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         skipWaiting: true,
         clientsClaim: true,
+        // Arranque a frio sem rede em QUALQUER rota da SPA (/setlist/x/concert,
+        // /setlists, …): a navegação recebe o index.html do precache.
+        navigateFallback: 'index.html',
         // Prevent the SPA navigation fallback from returning HTML for asset
         // requests that are missing from the precache (e.g. stale worker URLs
         // after a deploy). Assets that miss the cache should 404, not return
         // index.html with text/html — which breaks Worker / importScripts.
-        navigateFallbackDenylist: [/^\/assets\//],
+        // /api/ são funções da Vercel, nunca a app.
+        navigateFallbackDenylist: [/^\/assets\//, /^\/api\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/lrclib\.net\/.*/i,

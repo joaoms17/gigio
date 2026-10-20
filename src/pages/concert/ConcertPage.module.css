@@ -148,6 +148,17 @@
   flex-shrink: 0;
   animation: livePulse 1.6s infinite;
 }
+/* Sem rede: "OFFLINE" no lugar de "AO VIVO", com o LED apagado (só
+   contorno, sem pulsar) — é um estado, não um alarme: o concerto está todo
+   neste aparelho */
+.offlineTag { color: var(--stage-ink); }
+.offlineLed {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--stage-ink-2);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
 
 .headerInfo {
   grid-area: info;
@@ -638,6 +649,28 @@
   text-transform: uppercase;
   color: var(--stage-ink-3);
 }
+/* Palco vazio (não guardado / indisponível): caminho direto para os
+   concertos que funcionam — tecla de contorno, como as de música */
+.emptyAction {
+  margin-top: 10px;
+  min-height: 52px;
+  padding: 0 22px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: var(--stage-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) {
+  .emptyAction:hover { background: rgba(255, 255, 255, 0.06); }
+}
+.emptyAction:active { background: rgba(255, 255, 255, 0.12); }
 
 /* Re-sync — tecla acesa em acento */
 .resyncWrap {
@@ -777,6 +810,44 @@
 @keyframes sheetFade {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+/* Ordem mudada sem rede, ainda por enviar: linha mono por baixo do
+   cabeçalho do alinhamento (sai quando o servidor a aceitar) e um ponto no ≡ */
+.orderPending {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px 12px 8px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--stage-ink-3);
+}
+.orderPendingLed {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--stage-accent);
+}
+.orderPendingMain { color: var(--stage-accent); }
+.orderPendingHint { font-weight: 600; }
+.keyDot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--stage-accent);
+  pointer-events: none;
 }
 
 /* Cabeçalho: ALINHAMENTO · 12 · 45 MIN ……… [EDITAR ORDEM] */
@@ -1205,18 +1276,18 @@ button.rowMain:active { background: rgba(255, 255, 255, 0.08); }
 .deckNoteWarn .deckMain { color: var(--stage-accent); }
 .deckNoteWarn .deckHint { color: var(--stage-ink-2); }
 
-/* Film strip: próximas 1-2 músicas, toque para saltar — ranhuras de
-   largura igual, encostadas ao › */
+/* Film strip: só a música seguinte ("A seguir"), toque para saltar —
+   encostada ao ›. Ocupa a ranhura larga que antes partilhava com um 2.º
+   cartão ("Depois", retirado: confundia ao vivo); o visor fica com o resto */
 .filmStrip {
   display: flex;
   align-items: stretch;
-  gap: 8px;
   flex: 0 1 auto;
   min-width: 0;
 }
 .stripCard {
   flex: 0 1 auto;
-  width: 240px;       /* ranhura fixa; encolhe (reticências) se faltar espaço */
+  width: 360px;       /* ranhura fixa; encolhe (reticências) se faltar espaço */
   min-width: 0;
   height: 68px;
   display: flex;
@@ -1260,7 +1331,6 @@ button.rowMain:active { background: rgba(255, 255, 255, 0.08); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.stripCardLater .stripTitle { color: var(--stage-ink-2); }
 
 /* Micro-linha "A SEGUIR · 08 · TÍTULO" — só no telemóvel (sem film strip) */
 .nextLine {
@@ -1381,6 +1451,7 @@ button.rowMain:active { background: rgba(255, 255, 255, 0.08); }
 
   .panelHead { padding: 8px 16px 8px 24px; }
   .panelTitle { font-size: 11px; }
+  .orderPending { padding: 8px 16px 8px 24px; font-size: 11px; }
   .rowMain { gap: 18px; padding-left: 24px; }
   .rowNum { font-size: 15px; }
   .rowTitle { font-size: 17px; }
@@ -1389,14 +1460,15 @@ button.rowMain:active { background: rgba(255, 255, 255, 0.08); }
   /* Coluna (320px): margens mais curtas para o título respirar */
   .sidebar .panelHead { padding-left: 16px; padding-right: 10px; }
   .sidebar .panelTitle { font-size: 10px; }
+  .sidebar .orderPending { padding-left: 16px; padding-right: 10px; font-size: 10px; }
   .sidebar .rowMain { gap: 14px; padding-left: 16px; padding-right: 10px; }
   .sidebar .reorderBtns { padding-right: 10px; }
 
   .footer { padding: 8px 24px 14px; }
   .progressTime { font-size: 13px; min-width: 44px; }
   .controlsRow { gap: 12px; }
-  /* O visor não encolhe (o estado lê-se sempre inteiro) — encolhem os
-     cartões da film strip, cujos títulos levam reticências */
+  /* O visor não encolhe (o estado lê-se sempre inteiro) — encolhe o
+     cartão "A seguir", cujo título leva reticências */
   .deck { flex-shrink: 0; }
   .deckNote { font-size: 12px; padding: 0 8px; }
   .stripLabel { font-size: 11px; }
@@ -1410,16 +1482,10 @@ button.rowMain:active { background: rgba(255, 255, 255, 0.08); }
   .segBtn { padding: 0 12px; }
 }
 
-/* Tablet estreito (641–759px): só o cartão "A seguir" — dois cartões
-   ficavam com ~100px e o título ilegível */
+/* Tablet estreito (641–759px): 12 (gap) + 1 + 8 = 21px entre ‹ e |‹ —
+   mais espaço para o cartão "A seguir" */
 @media (min-width: 641px) and (max-width: 759.98px) {
-  .stripCardLater { display: none; }
-  /* 12 (gap) + 1 + 8 = 21px entre ‹ e |‹ — mais espaço para "A seguir" */
   .hasTransport .deck { padding: 0 8px; }
-}
-/* Com as teclas de linha no deck, abaixo de 1024px só cabe "A seguir" */
-@media (max-width: 1023.98px) {
-  .hasTransport .stripCardLater { display: none; }
 }
 
 /* Tablet paisagem / desktop */
@@ -1428,7 +1494,12 @@ button.rowMain:active { background: rgba(255, 255, 255, 0.08); }
   .headerTitle { font-size: 26px; }
   .headerActions { gap: 10px; }
 
-  .stripCard { width: 280px; }
+  /* O "A seguir" fica com o espaço que era do "Depois": cresce (2:1 com o
+     visor) a partir de 420px, até 720px — o transporte nunca fica a
+     flutuar num visor largo, e o cartão nunca encolhe abaixo de 420 */
+  .filmStrip { flex: 2 1 420px; max-width: 720px; }
+  .stripCard { flex: 1 1 auto; width: auto; }
+  .stripTitle { font-size: 21px; }
 
   /* Visor numa só linha — há espaço de sobra até à film strip */
   .deckNote { flex-direction: row; gap: 12px; padding: 0 12px; }

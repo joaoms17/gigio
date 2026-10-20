@@ -1,7 +1,9 @@
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
+import { useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ConfirmProvider } from './components/ConfirmDialog'
 import { ToastProvider } from './components/Toast'
+import OfflineSync from './components/OfflineSync'
 import { useAuth } from './hooks/useAuth'
 import Layout from './components/Layout'
 import AuthPage from './pages/auth/AuthPage'
@@ -20,10 +22,23 @@ import SettingsPage from './pages/settings/SettingsPage'
 import SyncEditorPage from './pages/sync/SyncEditorPage'
 import './index.css'
 
-function AuthGuard({ children }: { children: React.ReactNode }) {
+/**
+ * Sem sessão → /auth (e volta-se aqui depois de entrar). Com uma sessão
+ * guardada neste aparelho entra-se mesmo sem rede (ver AuthContext).
+ * `stage`: uma sessão terminada a meio do concerto (ex.: recusada pelo
+ * servidor) não desmonta o palco — está tudo em memória; ao sair pede login.
+ */
+function AuthGuard({ children, stage = false }: { children: React.ReactNode; stage?: boolean }) {
   const { user, loading } = useAuth()
+  const { pathname, search } = useLocation()
+  const [hadUser, setHadUser] = useState(!!user)
+  if (user && !hadUser) setHadUser(true)
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh', color: 'var(--text3)', fontSize: 13 }}>A carregar...</div>
-  if (!user) return <Navigate to="/auth" replace />
+  if (!user) {
+    if (stage && hadUser) return <>{children}</>
+    const back = pathname + search
+    return <Navigate to={back && back !== '/' ? `/auth?redirect=${encodeURIComponent(back)}` : '/auth'} replace />
+  }
   return <>{children}</>
 }
 
@@ -58,7 +73,7 @@ function AppRoutes() {
       </Route>
 
       {/* Páginas sem Layout (fullscreen) */}
-      <Route path="/setlist/:id/concert" element={<AuthGuard><ConcertPage /></AuthGuard>} />
+      <Route path="/setlist/:id/concert" element={<AuthGuard stage><ConcertPage /></AuthGuard>} />
       <Route path="/songs/:id/sync" element={<AuthGuard><SyncEditorPage /></AuthGuard>} />
 
       {/* Convites */}
@@ -86,6 +101,7 @@ export default function App() {
       <AuthProvider>
         <ConfirmProvider>
           <ToastProvider>
+            <OfflineSync />
             <AppRoutes />
           </ToastProvider>
         </ConfirmProvider>

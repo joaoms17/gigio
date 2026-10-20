@@ -77,7 +77,7 @@ const LN_LONG = 13
 
 const SONG_ID = 'sgE'
 const SETLIST_ID = 'sE'
-const ANN_KEY = `gigio_ann_v1_${SONG_ID}`
+const ANN_KEY = `gigio_ann_u_u1_${SONG_ID}`
 const FONT_KEY = 'gigio-rehearsal-font-size'
 
 // Cores da paleta do Ensaio (SongPage: ANN_COLORS) — identificam cada traço
@@ -688,7 +688,7 @@ const anchoredLns = enc => {
 }
 
 // ── Marcador (cenário H): payload, medição e asserções ─────────────────────
-const HL_KEY = `gigio_ann_v1_${HL_ID}`
+const HL_KEY = `gigio_ann_u_u1_${HL_ID}`
 // Cores do marcador (SongPage: HL_COLORS) — gravadas opacas em cada destaque
 const HC = { amarelo: '#FFE01A', verde: '#5CE65C', rosa: '#FF5FAF', azul: '#3DB8FF', laranja: '#FF9A1F' }
 // Largura do traço livre de marcador (em)
@@ -1545,7 +1545,7 @@ try {
   await D3.ctx.close()
 
   // ══ Cenário E: música sem letra (instrumental) ═══════════════════════════
-  const FREE_KEY = `gigio_ann_v1_${FREE_ID}`
+  const FREE_KEY = `gigio_ann_u_u1_${FREE_ID}`
   /** Caixa (viewport) do bloco da letra, da SVG e dos caminhos, sem [data-ln] */
   const freeSnap = (page, root) => page.evaluate(root => {
     const host = document.querySelector(root)
@@ -1597,7 +1597,7 @@ try {
 
   // ══ Cenário F: nota escrita abaixo da última linha ("FIM") ═══════════════
   console.log('— F. Nota "FIM" abaixo da última linha: inteira no concerto e no Ensaio depois de A+')
-  const FIM_KEY = `gigio_ann_v1_${FIM_ID}`
+  const FIM_KEY = `gigio_ann_u_u1_${FIM_ID}`
   const F = await newDevice(browser, { viewport: TABLET_PORT, seed: { [FONT_KEY]: null, [FIM_KEY]: null }, concertTheme: { font_size: 32, line_height: 1.6 } })
   await openEnsaio(F.page, { song: FIM_ID })
   const SF = await snapshot(F.page, ENSAIO)
@@ -2018,7 +2018,7 @@ try {
   await HX.ctx.close()
 
   console.log('— H4. Concerto com sync: a linha ativa (fundo tintado) não esconde os destaques')
-  const HS = await newDevice(browser, { viewport: TABLET_PORT, concertTheme: { ...HL_STAGE, font_size: 24, line_height: 1.6 }, seed: { [`gigio_ann_v1_${HLS_ID}`]: JSON.stringify(P_H) } })
+  const HS = await newDevice(browser, { viewport: TABLET_PORT, concertTheme: { ...HL_STAGE, font_size: 24, line_height: 1.6 }, seed: { [`gigio_ann_u_u1_${HLS_ID}`]: JSON.stringify(P_H) } })
   if (await openConcert(HS.page, 1, { setlist: 'sHs' })) {
     // Da espera, "Linha ›" entra na 1.ª linha de letra (a dos destaques amarelo e azul)
     await HS.page.tap('button[aria-label="Linha seguinte"]')
@@ -2096,9 +2096,11 @@ try {
   }
 
   if (oldDist) {
+    // A versão publicada guarda as anotações deste aparelho só por música (a atual adota-as para o utilizador que entra)
+    const HL_KEY_OLD = `gigio_ann_v1_${HL_ID}`
     console.log(`— H8. A versão publicada (${OLD_COMMIT}, build próprio no browser) abre o Ensaio com destaques, apaga, desenha e grava`)
     const O = await newDevice(browser, {
-      viewport: TABLET_PORT, seed: { [FONT_KEY]: null, [HL_KEY]: JSON.stringify(P_H) },
+      viewport: TABLET_PORT, seed: { [FONT_KEY]: null, [HL_KEY_OLD]: JSON.stringify(P_H) },
       cloud: { song_id: HL_ID, user_id: 'u1', strokes: P_H, updated_at: new Date().toISOString() },
     })
     await openEnsaio(O.page, { song: HL_ID, base: OLD_BASE })
@@ -2112,15 +2114,15 @@ try {
     a = await wordBox(O.page, ENSAIO, 2, 'afinar')
     await penStroke(O.page, stroke(at(a, 0.2), at(a, 0.8), 8))
     await O.page.waitForTimeout(500)
-    ok(JSON.stringify(await payloadOf(O.page, HL_KEY)) === JSON.stringify(P_H), `H8 ${OLD_COMMIT}: a borracha passa por cima de um destaque sem o apagar`)
+    ok(JSON.stringify(await payloadOf(O.page, HL_KEY_OLD)) === JSON.stringify(P_H), `H8 ${OLD_COMMIT}: a borracha passa por cima de um destaque sem o apagar`)
     // Um traço novo da caneta: grava (local e cloud) com o que não conhece reescrito tal como veio
     await O.page.click('button[aria-label="Cor vermelho"]')
     const So = await snapshot(O.page, ENSAIO)
     const r12 = So.rows[12][0]
     await penStroke(O.page, Array.from({ length: 21 }, (_, i) => [r12.l + (r12.r - r12.l) * i / 20, r12.b + 0.16 * So.em + 0.6 * Math.sin(i * 1.7)]))
-    ok(await waitN(O.page, HL_KEY, itemsOf(P_H).length + 1), `H8 ${OLD_COMMIT}: traço novo da caneta gravado`)
+    ok(await waitN(O.page, HL_KEY_OLD, itemsOf(P_H).length + 1), `H8 ${OLD_COMMIT}: traço novo da caneta gravado`)
     for (let t = 0; t < 40 && O.writes < 1; t++) await O.page.waitForTimeout(100)
-    const PO = await payloadOf(O.page, HL_KEY)
+    const PO = await payloadOf(O.page, HL_KEY_OLD)
     ok(jsonSet(PO.anchored.filter(e => e[3] >= 5)) === jsonSet(markerE) && penEntries(PO).length === penEntries(P_H).length + 1,
       `H8 ${OLD_COMMIT}: grava com os destaques e o marcador livre iguais (neste aparelho)`)
     ok(O.writes >= 1 && jsonSet((O.cloud?.strokes?.anchored ?? []).filter(e => e[3] >= 5)) === jsonSet(markerE), `H8 ${OLD_COMMIT}: e na cloud`, { escritas: O.writes })
@@ -2141,7 +2143,7 @@ try {
 
   // ── H9: letra editada depois de destacar ────────────────────────────────
   console.log('— H9. Letra editada (linha inserida acima; palavra nova dentro de uma linha destacada): os destaques ficam nas mesmas palavras')
-  const HL9_KEY = `gigio_ann_v1_${HL9_ID}`
+  const HL9_KEY = `gigio_ann_u_u1_${HL9_ID}`
   const L9 = { afinar: 3, pen: 4, ink: [7, 8, 9], pink: 8, long: 12 }
   const H9 = await newDevice(browser, { viewport: TABLET_PORT, appTheme: 'light', seed: { [FONT_KEY]: null, [HL9_KEY]: JSON.stringify(P_H) } })
   await openEnsaio(H9.page, { song: HL9_ID })

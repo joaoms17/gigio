@@ -2,6 +2,11 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
 import { supabase } from '../../lib/supabase'
+import { signOut as endSession } from '../../lib/auth'
+import { loadTheme, saveTheme } from '../../lib/offline/store'
+import { unsentOrdersBeforeSignOut } from '../../lib/offline/sync'
+import { unsentOrdersText } from '../../lib/offline/logic'
+import { isLikelyOffline } from '../../lib/offline/net'
 import { useAuth } from '../../hooks/useAuth'
 import { getThemePref, applyThemePref, type ThemePref } from '../../lib/theme'
 import type { ConcertTheme } from '../../types'
@@ -253,9 +258,16 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!user) return
+    let fromNet = false
+    // Sem rede: o tema guardado neste aparelho (o mesmo que o palco usa)
+    loadTheme(user.id).then(t => { if (t && !fromNet) setTheme(normalizeConcertTheme(t as Partial<ConcertTheme>)) })
     supabase.from('profiles').select('concert_theme, display_name').eq('id', user.id).single()
       .then(({ data }) => {
-        if (data?.concert_theme) setTheme(normalizeConcertTheme(data.concert_theme as Partial<ConcertTheme>))
+        if (data?.concert_theme) {
+          fromNet = true
+          setTheme(normalizeConcertTheme(data.concert_theme as Partial<ConcertTheme>))
+          saveTheme(user.id, data.concert_theme)
+        }
         if (data?.display_name) setDisplayName(data.display_name)
       })
   }, [user])
@@ -273,12 +285,19 @@ export default function SettingsPage() {
   async function persistTheme(next: ConcertTheme) {
     if (!user) return
     pendingTheme.current = null
+    if (isLikelyOffline()) {
+      setThemeSaveState('idle')
+      toast('Sem ligação — as preferências do palco não foram guardadas', { type: 'error' })
+      return
+    }
     const { error } = await supabase.from('profiles').update({ concert_theme: next }).eq('id', user.id)
     if (error) {
       setThemeSaveState('idle')
       toast('Erro ao guardar as preferências: ' + error.message, { type: 'error' })
       return
     }
+    // O palco sem rede usa esta cópia
+    saveTheme(user.id, next)
     setThemeSaveState('saved')
     setTimeout(() => setThemeSaveState(s => (s === 'saved' ? 'idle' : s)), 2000)
   }
@@ -288,8 +307,12 @@ export default function SettingsPage() {
     return () => {
       if (themeSaveTimer.current) clearTimeout(themeSaveTimer.current)
       if (pendingTheme.current && user) {
-        supabase.from('profiles').update({ concert_theme: pendingTheme.current }).eq('id', user.id)
-          .then(() => { pendingTheme.current = null })
+        const t = pendingTheme.current
+        supabase.from('profiles').update({ concert_theme: t }).eq('id', user.id)
+          .then(({ error }) => {
+            pendingTheme.current = null
+            if (!error) saveTheme(user.id, t)
+          })
       }
     }
   }, [user])
@@ -305,13 +328,16 @@ export default function SettingsPage() {
   }
 
   async function signOut() {
+    // Uma ordem mudada sem rede ainda por enviar: tenta-se agora; se não for, o diálogo diz que se perde
+    const unsent = user ? await unsentOrdersBeforeSignOut(user.id) : []
     if (!await confirmDialog({
       title: 'Terminar sessão',
-      message: 'Terminar a sessão neste dispositivo? Vais precisar de ligação à internet para voltar a entrar.',
+      message: `Terminar a sessão neste dispositivo? Os concertos guardados para usar sem rede são apagados, e vais precisar de ligação à internet para voltar a entrar.${unsentOrdersText(unsent)}`,
       confirmLabel: 'Terminar sessão',
       danger: true,
     })) return
-    await supabase.auth.signOut()
+    // Também apaga os concertos guardados para usar sem rede
+    await endSession(user?.id)
     window.location.href = '/auth'
   }
 

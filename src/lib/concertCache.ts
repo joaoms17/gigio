@@ -1,74 +1,41 @@
-// Offline cache — navigation path (projects → dashboard → setlist) and concert
-// mode data are stored in localStorage when loaded online, read back offline.
+// Cache do caminho de navegação (Projetos → projeto) em localStorage, gravada
+// quando se carrega com rede e lida sem ela. Os concertos (músicas, letras,
+// sincronizações, anotações, tema) vivem no IndexedDB: src/lib/offline/.
 
-const SONGS_KEY     = (setlistId: string)  => `gigio_concert_songs_v1_${setlistId}`
-const SYNC_KEY      = (songId: string)     => `gigio_concert_sync_v1_${songId}`
-const THEME_KEY     = 'gigio_concert_theme_v1'
-const PROJECTS_KEY  = (userId: string)     => `gigio_projects_v1_${userId}`
-const DASHBOARD_KEY = (projectId: string)  => `gigio_dashboard_v1_${projectId}`
-const SETLIST_KEY   = (setlistId: string)  => `gigio_setlist_meta_v1_${setlistId}`
+const PROJECTS_KEY  = (userId: string)                    => `gigio_projects_v1_${userId}`
+const DASHBOARD_KEY = (userId: string, projectId: string) => `gigio_dashboard_v2_${userId}_${projectId}`
 
-export function cacheSetlistSongs(setlistId: string, rows: unknown[]) {
-  try { localStorage.setItem(SONGS_KEY(setlistId), JSON.stringify(rows)) } catch {}
+function write(key: string, data: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(data)) } catch { /* cheio / bloqueado */ }
 }
-
-export function getCachedSetlistSongs<T>(setlistId: string): T[] | null {
+function read<T>(key: string): T | null {
   try {
-    const raw = localStorage.getItem(SONGS_KEY(setlistId))
+    const raw = localStorage.getItem(key)
     return raw ? JSON.parse(raw) : null
   } catch { return null }
 }
 
-export function cacheSyncLines(songId: string, lines: unknown) {
-  try { localStorage.setItem(SYNC_KEY(songId), JSON.stringify(lines)) } catch {}
+export function cacheProjects(userId: string, data: unknown) { write(PROJECTS_KEY(userId), data) }
+export function getCachedProjects<T>(userId: string): T | null { return read<T>(PROJECTS_KEY(userId)) }
+
+export function cacheProjectDashboard(userId: string, projectId: string, data: unknown) {
+  write(DASHBOARD_KEY(userId, projectId), data)
+}
+export function getCachedProjectDashboard<T>(userId: string, projectId: string): T | null {
+  return read<T>(DASHBOARD_KEY(userId, projectId))
 }
 
-export function getCachedSyncLines<T>(songId: string): T | null {
+/**
+ * Terminar sessão: apaga a cache de navegação, a cache antiga dos concertos
+ * (antes do IndexedDB) e as marcas do modo concerto deste aparelho
+ */
+export function clearNavigationCache() {
   try {
-    const raw = localStorage.getItem(SYNC_KEY(songId))
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
-}
-
-export function cacheTheme(theme: unknown) {
-  try { localStorage.setItem(THEME_KEY, JSON.stringify(theme)) } catch {}
-}
-
-export function getCachedTheme<T>(): T | null {
-  try {
-    const raw = localStorage.getItem(THEME_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
-}
-
-// ── Navigation path ────────────────────────────────────────────────────────
-
-export function cacheProjects(userId: string, data: unknown) {
-  try { localStorage.setItem(PROJECTS_KEY(userId), JSON.stringify(data)) } catch {}
-}
-export function getCachedProjects<T>(userId: string): T | null {
-  try {
-    const raw = localStorage.getItem(PROJECTS_KEY(userId))
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
-}
-
-export function cacheProjectDashboard(projectId: string, data: unknown) {
-  try { localStorage.setItem(DASHBOARD_KEY(projectId), JSON.stringify(data)) } catch {}
-}
-export function getCachedProjectDashboard<T>(projectId: string): T | null {
-  try {
-    const raw = localStorage.getItem(DASHBOARD_KEY(projectId))
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
-}
-
-export function cacheSetlistMeta(setlistId: string, data: unknown) {
-  try { localStorage.setItem(SETLIST_KEY(setlistId), JSON.stringify(data)) } catch {}
-}
-export function getCachedSetlistMeta<T>(setlistId: string): T | null {
-  try {
-    const raw = localStorage.getItem(SETLIST_KEY(setlistId))
-    return raw ? JSON.parse(raw) : null
-  } catch { return null }
+    const dead: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && /^(gigio_(projects_v1_|dashboard_v\d_|concert_|setlist_meta_v1_)|gigio-offline-prefetch-|gigio-concert-pos-)/.test(k)) dead.push(k)
+    }
+    dead.forEach(k => localStorage.removeItem(k))
+  } catch { /* */ }
 }

@@ -1,4 +1,7 @@
-import { supabase } from './supabase'
+import { AUTH_STORAGE_KEY, supabase } from './supabase'
+import { clearOfflineData } from './offline/store'
+import { clearUserAnnotations } from './annotations/storage'
+import { clearNavigationCache } from './concertCache'
 
 export async function signUp(email: string, password: string, displayName: string) {
   return supabase.auth.signUp({
@@ -12,6 +15,29 @@ export async function signIn(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password })
 }
 
-export async function signOut() {
-  return supabase.auth.signOut()
+/**
+ * Terminar sessão NESTE aparelho (scope 'local': o iPad em palco não perde a
+ * sessão porque se saiu no telemóvel) e apagar tudo o que ficou guardado
+ * para usar sem rede, incluindo as anotações do Ensaio deste utilizador que
+ * já estão na cloud (as por enviar ficam, só dele). Sem rede o supabase-js
+ * não apaga a sessão (o pedido de logout falha e ele guarda-a para tentar de
+ * novo) — apaga-se aqui à mão. Quem chama avisa antes das ordens por enviar
+ * (unsentOrdersBeforeSignOut) e recarrega a app em /auth (window.location),
+ * para o cliente do Supabase arrancar sem sessão em memória.
+ */
+export async function signOut(userId?: string) {
+  try {
+    await Promise.race([
+      supabase.auth.signOut({ scope: 'local' }),
+      new Promise(resolve => setTimeout(resolve, 4000)),
+    ])
+  } catch { /* sem rede: segue */ }
+  try {
+    for (const k of [AUTH_STORAGE_KEY, `${AUTH_STORAGE_KEY}-code-verifier`, `${AUTH_STORAGE_KEY}-user`]) {
+      localStorage.removeItem(k)
+    }
+  } catch { /* armazenamento bloqueado */ }
+  clearNavigationCache()
+  if (userId) clearUserAnnotations(userId)
+  try { await clearOfflineData(userId) } catch { /* */ }
 }

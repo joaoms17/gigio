@@ -6,6 +6,8 @@ import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
 import type { LyricLine } from '../../types'
 import { restoreSyncTimes, stageLyricsText } from '../../lib/lyricsTiming'
+import { patchSongInCopies } from '../../lib/offline/store'
+import { markCopiesStale } from '../../lib/offline/sync'
 import styles from './SyncEditorPage.module.css'
 
 function msToStr(ms: number): string {
@@ -334,6 +336,9 @@ export default function SyncEditorPage() {
       toast('Erro ao guardar a sincronização: ' + songError.message, { type: 'error' })
       return
     }
+    // Os concertos guardados neste aparelho com esta música ficam com a sincronização nova
+    patchSongInCopies(user.id, id, { song: { has_sync: syncLines.length > 0 }, syncLines: syncLines.length ? syncLines : null }).catch(() => {})
+    markCopiesStale(user.id)
     setDirty(false)
     setSavedOk(true)
     setTimeout(() => setSavedOk(false), 2000)

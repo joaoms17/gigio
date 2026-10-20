@@ -20,6 +20,9 @@ import {
   ROLE_LABELS,
 } from '../../types'
 import { cacheProjectDashboard, getCachedProjectDashboard } from '../../lib/concertCache'
+import { runQuery } from '../../lib/offline/net'
+import OfflineConcerts from '../../components/OfflineConcerts'
+import { useOnline } from '../../hooks/useNetworkStatus'
 import styles from './ProjectDashboardPage.module.css'
 import { mapLegacyProjectColor } from '../../lib/projectColor'
 import {
@@ -379,6 +382,9 @@ export default function ProjectDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isOffline, setIsOffline] = useState(false)
+  const online = useOnline()
+  // Sem rede e sem cópia deste projeto: mostra os concertos dele guardados neste aparelho
+  const [offlineNoCopy, setOfflineNoCopy] = useState(false)
   const [songSearch, setSongSearch] = useState('')
   const [deletingSong, setDeletingSong] = useState<string | null>(null)
   const [songPlayCounts, setSongPlayCounts] = useState<Record<string, number>>({})
@@ -426,18 +432,24 @@ export default function ProjectDashboardPage() {
     if (!silent) setLoading(true)
     setError(null)
 
-    const { data: membership, error: membershipError } = await supabase
-      .from('band_members')
-      .select('role, bands(*)')
-      .eq('band_id', projectId)
-      .eq('user_id', user.id)
-      .single()
+    // Sem rede responde logo (com rede lenta desiste aos 8 s) — a cópia aparece sem esperar
+    const { data: membershipRow, error: membershipError, network } = await runQuery(
+      supabase
+        .from('band_members')
+        .select('role, bands(*)')
+        .eq('band_id', projectId)
+        .eq('user_id', user.id)
+        .maybeSingle(),
+      8000,
+    )
+    const membership = membershipRow as { role: string; bands: unknown } | null
 
     if (!membership || membershipError) {
-      const cached = getCachedProjectDashboard<{
+      // A cópia só sem resposta do servidor: se ele diz que já não és membro, não se mostra
+      const cached = network || membershipError ? getCachedProjectDashboard<{
         project: Project; role: ProjectRole
         setlists: SetlistCard[]; songs: SongCard[]
-      }>(projectId)
+      }>(user.id, projectId) : null
       if (cached) {
         setProject(cached.project)
         setMyRole(cached.role)
@@ -446,11 +458,15 @@ export default function ProjectDashboardPage() {
         setIsOffline(true)
         setLoading(false)
       } else {
-        setError('Não tens acesso a este projeto ou ele não existe.')
+        setOfflineNoCopy(network)
+        setError(network
+          ? 'Sem ligação — este projeto ainda não foi aberto neste aparelho.'
+          : 'Não tens acesso a este projeto ou ele não existe.')
         setLoading(false)
       }
       return
     }
+    setOfflineNoCopy(false)
 
     setIsOffline(false)
     const proj = membership.bands as unknown as Project
@@ -512,7 +528,7 @@ export default function ProjectDashboardPage() {
     setInvitesLoadError(!!(invitesRes as { error?: unknown }).error)
     setInvites((invitesRes.data ?? []) as unknown as ProjectInvite[])
     codeCheckedAt.current = Date.now()
-    cacheProjectDashboard(projectId, {
+    cacheProjectDashboard(user.id, projectId, {
       project: proj,
       role: membership.role as ProjectRole,
       setlists: fetchedSetlists,
@@ -522,6 +538,11 @@ export default function ProjectDashboardPage() {
   }, [user, projectId, canManage])
 
   useEffect(() => { load() }, [load])
+
+  // A rede voltou com a última cópia no ecrã: troca-a pelos dados verdadeiros
+  useEffect(() => {
+    if (online && (isOffline || offlineNoCopy)) load(true)
+  }, [online])
 
   // Silent refresh when switching tabs so counts/lists stay current
   const firstTabRender = useRef(true)
@@ -948,6 +969,7 @@ export default function ProjectDashboardPage() {
             <IconArrowLeft /> Voltar
           </button>
         </div>
+        {offlineNoCopy && user && projectId && <OfflineConcerts userId={user.id} projectId={projectId} limit={20} />}
       </div>
     )
   }
@@ -1058,10 +1080,12 @@ export default function ProjectDashboardPage() {
   return (
     <>
       <div className={styles.page}>
-        {isOffline && (
+        {/* Sem rede, o aviso global "Sem ligação" (Layout) já o diz; este fica
+            para quando há rede mas o servidor não respondeu */}
+        {isOffline && online && (
           <div className={styles.offlineBanner} role="status">
             <span className={styles.offlineLed} aria-hidden="true" />
-            Sem ligação — a mostrar dados em cache
+            Não foi possível atualizar — a mostrar a última cópia
           </div>
         )}
 

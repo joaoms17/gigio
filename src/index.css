@@ -75,8 +75,11 @@
 
   /* ── Camadas ── */
   --z-nav: 100;
+  /* Aviso "Sem ligação": por cima das páginas e da navegação, mas POR BAIXO
+     dos modais — um modal aberto tem o seu próprio aviso (no telemóvel a
+     folha encosta ao fundo e o aviso global tapava-o) */
+  --z-banner: 250;
   --z-modal: 300;
-  --z-banner: 650;
   --z-toast: 700;
 
   font-family: var(--font-body);

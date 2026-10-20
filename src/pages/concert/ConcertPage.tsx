@@ -2,16 +2,17 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
+import { useOnline } from '../../hooks/useNetworkStatus'
 import { transposeChordsText } from '../../lib/transpose'
-import {
-  cacheSetlistSongs, getCachedSetlistSongs,
-  cacheSyncLines, getCachedSyncLines,
-  cacheTheme, getCachedTheme,
-  getCachedSetlistMeta,
-} from '../../lib/concertCache'
 import AnnotatedLyrics from '../../components/AnnotatedLyrics'
-import { loadAnnotations, pullAnnotations } from '../../lib/annotations/storage'
-import { payloadHasVisible } from '../../lib/annotations/anchor'
+import { fetchAnnotations, loadAnnotations } from '../../lib/annotations/storage'
+import { payloadHasVisible, readPayload } from '../../lib/annotations/anchor'
+import { isLikelyOffline, runQuery } from '../../lib/offline/net'
+import { applyPendingOrder, savedAtLabel, type OfflineAnnotation, type OfflineConcert } from '../../lib/offline/logic'
+import {
+  getPendingOrder, loadTheme, onOfflineChange, patchConcert, peekConcert, readConcert, setPendingOrder, touchConcert,
+} from '../../lib/offline/store'
+import { fetchConcert, fetchTheme, sendOrder } from '../../lib/offline/sync'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
 import { parseRgb, withAlpha } from '../../components/LyricsView'
@@ -58,6 +59,29 @@ const ANCHOR_HOLD_MS = 1500
 const ARM_MS = 2000
 /** Janela do 2.º toque numa linha da coluna com a música a tocar */
 const ARM_ROW_MS = 2500
+/**
+ * Posição no concerto também em localStorage (com hora): se o iOS fechar a
+ * app em segundo plano, o sessionStorage pode perder-se e o concerto voltava
+ * à 1.ª música. Vale durante isto.
+ */
+const POS_KEY = (setlistId: string) => `gigio-concert-pos-${setlistId}`
+const POS_TTL_MS = 12 * 60 * 60 * 1000
+
+interface SavedPos { rowId: string | null; idx: number; played: string[]; at: number }
+
+function readSavedPos(setlistId: string | undefined): SavedPos | null {
+  if (!setlistId) return null
+  try {
+    const raw = JSON.parse(localStorage.getItem(POS_KEY(setlistId)) ?? 'null')
+    if (!raw || typeof raw.at !== 'number' || Date.now() - raw.at > POS_TTL_MS) return null
+    return {
+      rowId: typeof raw.rowId === 'string' ? raw.rowId : null,
+      idx: Number.isInteger(raw.idx) && raw.idx >= 0 ? raw.idx : 0,
+      played: Array.isArray(raw.played) ? raw.played.filter((x: unknown): x is string => typeof x === 'string') : [],
+      at: raw.at,
+    }
+  } catch { return null }
+}
 
 function fmtTime(secs: number) {
   const s = Math.max(0, Math.floor(secs))
@@ -204,27 +228,53 @@ export default function ConcertPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   // String estável: o objeto `user` muda a cada renovação do token (e ao
-  // voltar ao primeiro plano) — depender dele parava o relógio a meio
-  const userId = user?.id
+  // voltar ao primeiro plano) — depender dele parava o relógio a meio. E
+  // fixa: uma sessão terminada a meio do concerto (recusada pelo servidor —
+  // o AuthGuard mantém o palco) não pode desmontar nada nem largar a cópia;
+  // só outro utilizador a entrar a muda
+  const [stageUserId, setStageUserId] = useState(user?.id)
+  if (user?.id && user.id !== stageUserId) setStageUserId(user.id)
+  const userId = stageUserId
+  const sessionGone = !user && !!userId
   const navigate = useNavigate()
   const confirmDialog = useConfirm()
   const toast = useToast()
 
-  const [songs, setSongs] = useState<Row[]>([])
+  // Cópia guardada neste aparelho já lida nesta sessão (ex.: vindo da página
+  // do concerto): o 1.º render já tem as músicas — sem "a carregar"
+  const [peeked] = useState<OfflineConcert | null>(() => (id && userId ? peekConcert(userId, id) : null))
+  const [songs, setSongs] = useState<Row[]>(() => (peeked?.rows ?? []) as Row[])
+  // De onde vêm os dados: a cópia local aparece logo, a rede substitui-a;
+  // 'missing' = sem rede e sem cópia (nunca um spinner infinito); 'gone' =
+  // o servidor diz que não existe / sem acesso, e não há cópia
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing' | 'gone' | 'error'>(peeked ? 'ready' : 'loading')
+  // Hora da cópia que está no ecrã (null = veio da rede agora ou ainda não há)
+  const [copySavedAt, setCopySavedAt] = useState<number | null>(peeked?.savedAt ?? null)
+  // Anotações do utilizador na cloud, guardadas com o concerto (sem rede são estas)
+  const [cloudAnn, setCloudAnn] = useState<Record<string, OfflineAnnotation>>(() => peeked?.annotations ?? {})
+  // A ordem mudada aqui sem rede ainda não chegou ao servidor (etiqueta no alinhamento)
+  const [orderPending, setOrderPending] = useState(false)
+  // Volta a ler o concerto (a rede voltou com o palco vazio)
+  const [reloadKey, setReloadKey] = useState(0)
   // Restore the position in this setlist (kept per concert in sessionStorage,
-  // so exiting to fix a lyric mid-show doesn't send us back to song 1)
-  const [songIdx, setSongIdx] = useState(() => {
+  // so exiting to fix a lyric mid-show doesn't send us back to song 1; and in
+  // localStorage for 12 h, in case iOS closes the app in the background)
+  const [sessionPos] = useState(() => {
     try {
-      const saved = Number(sessionStorage.getItem(`concert-pos-${id}`))
-      return Number.isInteger(saved) && saved > 0 ? saved : 0
-    } catch { return 0 }
+      const raw = sessionStorage.getItem(`concert-pos-${id}`)
+      const saved = Number(raw)
+      return raw !== null && Number.isInteger(saved) && saved >= 0 ? saved : null
+    } catch { return null }
   })
+  // Só quando esta sessão do browser não tem posição (a app foi fechada)
+  const [savedPos] = useState(() => (sessionPos === null ? readSavedPos(id) : null))
+  const [songIdx, setSongIdx] = useState(() => sessionPos ?? savedPos?.idx ?? 0)
   const [lineIdx, setLineIdx] = useState(0)
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_CONCERT_THEME)
-  const [concertName, setConcertName] = useState<string | null>(null)
-  // Linhas sincronizadas vindas da rede, por música (pré-carregadas para todo
-  // o alinhamento no arranque; uma resposta atrasada nunca cai noutra música)
-  const [syncById, setSyncById] = useState<Record<string, LyricLine[]>>({})
+  const [concertName, setConcertName] = useState<string | null>(peeked?.setlist.name ?? null)
+  // Linhas sincronizadas por música (da cópia local e depois da rede, para
+  // todo o alinhamento; uma resposta atrasada nunca cai noutra música)
+  const [syncById, setSyncById] = useState<Record<string, LyricLine[]>>(() => peeked?.syncs ?? {})
   // Músicas com has_sync cuja sincronização não se conseguiu obter
   const [syncMissing, setSyncMissing] = useState<Record<string, true>>({})
   const [viewMode, setViewMode] = useState<'semi' | 'manual'>('semi')
@@ -235,7 +285,8 @@ export default function ConcertPage() {
   const [scrollFollowing, setScrollFollowing] = useState(true)
   const [contentView, setContentView] = useState<ContentView>('lyrics')
   const [metronomeOn, setMetronomeOn] = useState(false)
-  const [annAvailable, setAnnAvailable] = useState(false)
+  // Há anotações visíveis na cloud para esta música? (por música; só quando a cloud respondeu)
+  const [annNet, setAnnNet] = useState<Record<string, boolean>>({})
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     try { return localStorage.getItem(SIDEBAR_KEY) !== '0' } catch { return true }
   })
@@ -252,10 +303,15 @@ export default function ConcertPage() {
   const [played, setPlayed] = useState<Set<string>>(() => {
     try {
       const raw = sessionStorage.getItem(`concert-played-${id}`)
-      const arr: unknown = raw ? JSON.parse(raw) : []
-      return new Set(Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [])
-    } catch { return new Set<string>() }
+      if (raw) {
+        const arr: unknown = JSON.parse(raw)
+        return new Set(Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [])
+      }
+    } catch { /* */ }
+    return new Set(savedPos?.played ?? [])
   })
+  // Rede (o browser diz que há E nenhum pedido falhou há pouco)
+  const online = useOnline()
 
   // Viewport — escala da letra (≥768) e coluna de alinhamento (≥1024)
   const isTablet = useMediaQuery(TABLET_QUERY)
@@ -293,6 +349,7 @@ export default function ConcertPage() {
   const progressTrackRef      = useRef<HTMLDivElement>(null)
   const scrubRef              = useRef<{ x: number; active: boolean; seeked: boolean } | null>(null)
   const setlistListRef        = useRef<HTMLOListElement>(null)
+  const footerRef             = useRef<HTMLElement>(null)
   const keyHandlerRef         = useRef<(e: KeyboardEvent) => void>(() => {})
   // Última modalidade de input: um botão focado por TOQUE nunca rouba o
   // Espaço/Enter do pedal (só um foco dado por Tab ativa o botão)
@@ -310,7 +367,14 @@ export default function ConcertPage() {
   // Reordenar: gravações em série, só a ordem mais recente
   const orderSaveTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingOrderRef       = useRef<{ setlistId: string; order: Row[] } | null>(null)
-  const orderChainRef         = useRef<Promise<void>>(Promise.resolve())
+  const orderChainRef         = useRef<Promise<unknown>>(Promise.resolve())
+  // Aviso "a ordem fica neste aparelho" só uma vez por concerto
+  const orderOfflineToldRef   = useRef(false)
+  // A posição guardada (por linha do alinhamento) já foi aplicada às músicas
+  const posRestoredRef        = useRef(false)
+  // Última ordem mudada aqui (▲▼): fica por cima de uma resposta da rede que
+  // tenha partido antes dela
+  const localOrderRef         = useRef<string[] | null>(null)
   // Funções do render mais recente (para listeners registados uma só vez)
   const latestRef = useRef<{
     recenter: (behavior: ScrollBehavior) => void
@@ -323,14 +387,9 @@ export default function ConcertPage() {
   const currentSong  = currentRow?.song
   const currentRowId = currentRow?.id
   currentRowIdRef.current = currentRowId
-  // Cache local primeiro (instantâneo e offline); a rede substitui quando chega
-  const cachedSync = useMemo(() => {
-    if (!currentSong?.has_sync) return null
-    const c = getCachedSyncLines<LyricLine[]>(currentSong.id)
-    return Array.isArray(c) && c.length > 0 ? c : null
-  }, [currentSong?.id, currentSong?.has_sync])
+  // Da cópia local (instantâneo e offline); a rede substitui quando chega
   const syncLines: LyricLine[] | null =
-    (currentSong?.has_sync ? syncById[currentSong.id] : undefined) ?? cachedSync
+    (currentSong?.has_sync ? syncById[currentSong.id] : undefined) ?? null
   // O palco desenha SEMPRE a letra, tal como foi escrita (vazias, [Secções],
   // indentação). A sincronização só lhe dá tempos: cada entrada é
   // emparelhada com a sua linha pelo texto — nunca se desenham as linhas do
@@ -369,6 +428,16 @@ export default function ConcertPage() {
     try { sessionStorage.setItem(`concert-played-${id}`, JSON.stringify(Array.from(played))) } catch {}
   }, [id, played])
 
+  // Também com hora e pela linha do alinhamento (sobrevive a o iOS fechar a
+  // app; a ordem pode ter mudado entretanto). Só depois de haver músicas
+  useEffect(() => {
+    if (!id || !currentRowId) return
+    try {
+      const pos: SavedPos = { rowId: currentRowId, idx: songIdx, played: Array.from(played), at: Date.now() }
+      localStorage.setItem(POS_KEY(id), JSON.stringify(pos))
+    } catch {}
+  }, [id, currentRowId, songIdx, played])
+
   // Bounds-check a restored index once the songs arrive
   useEffect(() => {
     if (songs.length > 0 && songIdx >= songs.length) setSongIdx(songs.length - 1)
@@ -400,86 +469,200 @@ export default function ConcertPage() {
     }
   }, [])
 
-  // ── Load (with offline cache fallback) ──────────────────────────────────
+  // ── Wake lock: o ecrã nunca apaga em palco ──────────────────────────────
+  // Efeito próprio, só da montagem: nada do que muda a meio do concerto
+  // (sessão terminada, rede, outra cópia) o larga
   useEffect(() => {
-    if (!id || !userId) return
-    let wakeLock: any = null
-    const acquireWakeLock = () => {
-      navigator.wakeLock?.request('screen').then(wl => { wakeLock = wl }).catch(() => {})
+    let alive = true
+    let wakeLock: WakeLockSentinel | null = null
+    const acquire = () => {
+      navigator.wakeLock?.request('screen').then(wl => {
+        if (alive) wakeLock = wl
+        else wl.release().catch(() => {})
+      }).catch(() => {})
     }
-    acquireWakeLock()
+    acquire()
+    // O browser larga-o quando a app vai para segundo plano: volta a pedir
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') acquireWakeLock()
+      if (document.visibilityState === 'visible') acquire()
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
-    supabase.from('setlist_songs').select('*, song:songs(*)').eq('setlist_id', id).order('position')
-      .then(({ data, error }) => {
-        if (data && data.length > 0 && !error) {
-          setSongs(data as any)
-          cacheSetlistSongs(id, data)
-          preloadSyncs(data as Row[])
-        } else {
-          const cached = getCachedSetlistSongs<Row>(id)
-          if (cached) setSongs(cached)
-          else if (data) setSongs(data as any)
-        }
-      })
-      .then(undefined, () => {
-        const cached = getCachedSetlistSongs<Row>(id)
-        if (cached) setSongs(cached)
-      })
-    // Concert name for the header subtitle (cached meta as offline fallback —
-    // written by the setlist page, so don't overwrite it with a partial row)
-    const cachedName = () => {
-      const meta = getCachedSetlistMeta<{ name?: string }>(id)
-      if (meta?.name) setConcertName(meta.name)
+    return () => {
+      alive = false
+      wakeLock?.release().catch(() => {})
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-    supabase.from('setlists').select('name').eq('id', id).single()
-      .then(({ data }) => {
-        if (data?.name) setConcertName(data.name)
-        else cachedName()
-      }, cachedName)
-    supabase.from('profiles').select('concert_theme').eq('id', userId).single()
-      .then(({ data }) => {
-        if (data?.concert_theme) {
-          setTheme(normalizeConcertTheme(data.concert_theme as Partial<ConcertTheme>))
-          cacheTheme(data.concert_theme)
-        } else {
-          const cached = getCachedTheme<Partial<ConcertTheme>>()
-          if (cached) setTheme(normalizeConcertTheme(cached))
-        }
-      })
+  }, [])
+
+  // Toasts em palco: logo ACIMA da barra de baixo e sem apanhar toques (ver
+  // Toast.module.css) — nunca tapam o visor, o "A seguir", as teclas de
+  // música nem o aviso de pausa no topo da letra. A altura da barra muda
+  // (com/sem progresso, rodar o iPad): mede-se
+  useEffect(() => {
+    const body = document.body
+    body.setAttribute('data-stage', '')
+    const el = footerRef.current
+    const place = () => {
+      const top = el?.getBoundingClientRect().top
+      if (top != null) body.style.setProperty('--stage-footer-h', `${Math.max(0, Math.round(window.innerHeight - top))}px`)
+    }
+    place()
+    const ro = typeof ResizeObserver !== 'undefined' && el ? new ResizeObserver(place) : null
+    if (ro && el) ro.observe(el)
+    window.addEventListener('resize', place)
+    return () => {
+      ro?.disconnect()
+      window.removeEventListener('resize', place)
+      body.removeAttribute('data-stage')
+      body.style.removeProperty('--stage-footer-h')
+    }
+  }, [])
+
+  // ── Load: cópia local primeiro, rede depois ─────────────────────────────
+  // A cópia guardada neste aparelho (IndexedDB) desenha o palco logo, sem
+  // esperar pela rede; a rede, quando responde, substitui-a e grava a cópia
+  // nova. Sem rede (ou com erro) fica a cópia — nunca um palco vazio ou um
+  // "a carregar" sem fim: sem cópia nenhuma diz que o concerto não está
+  // guardado neste aparelho. Com o IndexedDB ainda a abrir (arranque a frio
+  // lento no iPad), "não guardado" só depois de ele abrir sem a cópia (ou de
+  // desistir de esperar) — e uma cópia que apareça depois entra na mesma.
+  useEffect(() => {
+    if (!id || !userId) return
+    let alive = true
+    touchConcert(userId, id)
+
+    let copy: 'pending' | 'none' | 'shown' = peekConcert(userId, id) ? 'shown' : 'pending'
+    let net: 'pending' | 'ok' | 'failed' | 'gone' | 'error' = 'pending'
+    let themeFromNet = false
+    let shownCopy: OfflineConcert | null = peekConcert(userId, id)
+    let unknownTimer: ReturnType<typeof setTimeout> | null = null
+    let unsubReady: (() => void) | null = null
+    // Sem rede e sem cópia: não está guardado neste aparelho
+    const settle = () => {
+      if (net === 'pending' || net === 'ok' || copy === 'pending') return
+      const final = net === 'failed' ? 'missing' : net
+      if (copy === 'none') setLoadState(l => (l === 'ready' ? l : final))
+      // As sincronizações que a cópia não tem já não vão chegar
+      if (shownCopy) markSyncsMissing(shownCopy)
+    }
+    const giveUpCopy = () => {
+      if (copy !== 'pending') return
+      copy = 'none'
+      settle()
+    }
+
+    const readCopy = () => Promise.all([readConcert(userId, id), getPendingOrder(userId, id)]).then(([r, pending]) => {
+      if (!alive || net === 'ok') return
+      if (r.concert) {
+        shownCopy = r.concert
+        copy = 'shown'
+        showConcert(r.concert, pending?.ids ?? null, 'copy')
+        settle()
+        return
+      }
+      if (copy !== 'pending') return
+      if (r.checked) { giveUpCopy(); return }
+      // O IndexedDB ainda não abriu: lê-se de novo quando abrir; "não guardado" só ao fim de 6 s
+      if (!unsubReady) unsubReady = onOfflineChange(sid => { if (sid === null) readCopy() })
+      if (!unknownTimer) unknownTimer = setTimeout(giveUpCopy, 6000)
+    }, () => { if (alive) giveUpCopy() })
+    readCopy()
+
+    loadTheme(userId).then(t => {
+      if (alive && t && !themeFromNet) setTheme(normalizeConcertTheme(t as Partial<ConcertTheme>))
+    }, () => {})
+    fetchConcert(userId, id, { used: true }).then(r => {
+      if (!alive) return
+      if (r.status === 'ok') {
+        net = 'ok'
+        showConcert(r.concert, null, 'network')
+        markSyncsMissing(r.concert)
+      } else {
+        net = r.status === 'offline' ? 'failed' : r.status
+        settle()
+      }
+    })
+    fetchTheme(userId).then(t => {
+      if (!alive || !t) return
+      themeFromNet = true
+      setTheme(normalizeConcertTheme(t as Partial<ConcertTheme>))
+    })
     // Sem stopTimer() aqui: esta limpeza não é só de desmontagem
-    return () => { wakeLock?.release(); document.removeEventListener('visibilitychange', onVisibilityChange) }
+    return () => {
+      alive = false
+      if (unknownTimer) clearTimeout(unknownTimer)
+      unsubReady?.()
+    }
+  }, [id, userId, reloadKey])
+
+  // Palco vazio ("não guardado" / indisponível): não fica assim até se sair.
+  // Uma cópia que entretanto ficou guardada (o guardar em segundo plano, o
+  // IndexedDB que abriu tarde) entra logo; a rede de volta lê tudo de novo
+  const emptyStage = songs.length === 0 && (loadState === 'missing' || loadState === 'error' || loadState === 'gone')
+  useEffect(() => {
+    if (!id || !userId || !emptyStage) return
+    let alive = true
+    const unsub = onOfflineChange(sid => {
+      if (sid !== null && sid !== id) return
+      Promise.all([readConcert(userId, id), getPendingOrder(userId, id)]).then(([r, pending]) => {
+        if (alive && r.concert) showConcert(r.concert, pending?.ids ?? null, 'copy')
+      }, () => {})
+    })
+    return () => { alive = false; unsub() }
+  }, [id, userId, emptyStage])
+  const wasOnlineRef = useRef(online)
+  useEffect(() => {
+    const back = online && !wasOnlineRef.current
+    wasOnlineRef.current = online
+    if (back && emptyStage && loadState !== 'gone') setReloadKey(k => k + 1)
+  }, [online])
+
+  // Ordem por enviar (mudada aqui sem rede): a etiqueta sai quando o servidor a aceitar
+  useEffect(() => {
+    if (!id || !userId) return
+    let alive = true
+    const check = () => { getPendingOrder(userId, id).then(p => { if (alive) setOrderPending(!!p) }, () => {}) }
+    check()
+    const unsub = onOfflineChange(sid => { if (sid === null || sid === id) check() })
+    return () => { alive = false; unsub() }
   }, [id, userId])
 
   /**
-   * Sincronizações de TODO o alinhamento de uma vez (e para a cache offline):
-   * nenhuma música troca de letra simples para sincronizada a meio.
+   * Põe no palco uma cópia do concerto (local ou acabada de vir da rede),
+   * com a ordem por enviar por cima. A música no ecrã continua a mesma,
+   * mesmo que a rede traga outra ordem (alguém reordenou noutro aparelho).
    */
-  function preloadSyncs(rows: Row[]) {
-    const ids = Array.from(new Set(rows.filter(r => r.song?.has_sync).map(r => r.song.id)))
-    if (ids.length === 0) return
-    supabase.from('lyric_syncs').select('song_id, lines').in('song_id', ids)
-      .then(({ data, error }) => {
-        if (error || !data) return
-        const got: Record<string, LyricLine[]> = {}
-        for (const r of data as { song_id: string; lines: unknown }[]) {
-          if (Array.isArray(r.lines) && r.lines.length > 0) {
-            got[r.song_id] = r.lines as LyricLine[]
-            cacheSyncLines(r.song_id, r.lines)
-          }
-        }
-        setSyncById(m => ({ ...m, ...got }))
-        const missing = ids.filter(sid => !got[sid])
-        if (missing.length > 0) {
-          setSyncMissing(m => {
-            const next = { ...m }
-            for (const sid of missing) next[sid] = true
-            return next
-          })
-        }
-      }, () => {})
+  function showConcert(c: OfflineConcert, pendingIds: string[] | null, source: 'copy' | 'network') {
+    const rows = applyPendingOrder(c.rows as Row[], localOrderRef.current ?? pendingIds)
+    let keepId = currentRowIdRef.current
+    if (!posRestoredRef.current) {
+      // 1.ª vez: a posição guardada aponta para uma linha do alinhamento
+      posRestoredRef.current = true
+      if (!keepId && savedPos?.rowId) keepId = savedPos.rowId
+    }
+    setSongs(rows)
+    if (keepId) {
+      const i = rows.findIndex(r => r.id === keepId)
+      if (i >= 0) setSongIdx(i)
+    }
+    setConcertName(c.setlist.name || null)
+    // Todo o alinhamento de uma vez: nenhuma música troca de letra simples
+    // para sincronizada a meio
+    setSyncById(m => ({ ...m, ...c.syncs }))
+    setCloudAnn(c.annotations)
+    setCopySavedAt(source === 'copy' ? c.savedAt : null)
+    setLoadState('ready')
+  }
+
+  /** Músicas com sync que esta cópia não tem — a rede já respondeu ou não há rede */
+  function markSyncsMissing(c: OfflineConcert) {
+    const missing = c.rows.filter(r => r.song?.has_sync && !c.syncs[r.song.id]).map(r => r.song.id)
+    if (missing.length === 0) return
+    setSyncMissing(m => {
+      const next = { ...m }
+      for (const sid of missing) next[sid] = true
+      return next
+    })
   }
 
   // Pending timers die with the page (the running clock too — only here,
@@ -569,34 +752,36 @@ export default function ConcertPage() {
     }
   }, [currentRowId])
 
-  // Song data: annotations + this song's sync (the preload may not have it)
+  // Song data: annotations (cloud) + this song's sync (the copy may not have it)
   useEffect(() => {
     const song = songs[songIdx]?.song
     if (!song) return
-    // Annotation availability: local first, remote as fallback (conta os
-    // traços ancorados quando existem, senão os px antigos; os órfãos de uma
-    // letra editada não contam — estão escondidos)
+    let alive = true
+    // Anotações: as deste aparelho e a cópia da cloud decidem logo (ver
+    // hasAnnotations); com rede pergunta-se à cloud, que manda quando responde
+    const songId = song.id
     const songLyrics = song.edited_lyrics ?? song.lyrics ?? ''
-    const local = loadAnnotations(song.id)
-    if (payloadHasVisible(local, songLyrics)) setAnnAvailable(true)
-    else {
-      setAnnAvailable(false)
-      if (userId) pullAnnotations(song.id, userId).then(r => {
-        if (payloadHasVisible(r, songLyrics)) setAnnAvailable(true)
+    if (userId && !payloadHasVisible(loadAnnotations(songId, userId), songLyrics) && !isLikelyOffline()) {
+      fetchAnnotations(songId, userId).then(r => {
+        if (alive && r.ok) setAnnNet(m => ({ ...m, [songId]: payloadHasVisible(r.payload, songLyrics) }))
       })
     }
-    if (!song.has_sync || syncById[song.id]) return
-    const songId = song.id
+    if (!song.has_sync || syncById[songId]) return () => { alive = false }
     const markMissing = () => setSyncMissing(m => (m[songId] ? m : { ...m, [songId]: true }))
-    supabase.from('lyric_syncs').select('lines').eq('song_id', songId).single()
+    // Sem rede: a cópia não a tem e não vai chegar
+    if (isLikelyOffline()) {
+      markMissing()
+      return () => { alive = false }
+    }
+    runQuery(supabase.from('lyric_syncs').select('lines').eq('song_id', songId).maybeSingle(), 10000)
       .then(({ data }) => {
-        const lines = (data?.lines as LyricLine[] | undefined) ?? null
+        const lines = ((data as { lines?: unknown } | null)?.lines as LyricLine[] | undefined) ?? null
         if (Array.isArray(lines) && lines.length > 0) {
           // Guardado por música: uma resposta atrasada nunca aparece noutra
           setSyncById(m => ({ ...m, [songId]: lines }))
-          cacheSyncLines(songId, lines)
-        } else markMissing() // fica a cache (cachedSync), se existir
-      }, markMissing)
+        } else markMissing()
+      })
+    return () => { alive = false }
   }, [currentRowId])
 
   // A sincronização chegou (ou mudou) com o relógio já a meio: a linha ativa
@@ -1106,6 +1291,11 @@ export default function ConcertPage() {
 
   // ── Exit (with confirmation — a stray tap must never end the show) ──────
   async function exitConcert() {
+    // Palco vazio (não guardado, indisponível): não há concerto a interromper
+    if (songs.length === 0 && loadState !== 'loading') {
+      navigate(`/setlist/${id}`)
+      return
+    }
     const ok = await confirmDialog({
       title: 'Sair do concerto',
       message: 'Queres sair do modo concerto? A posição na setlist fica guardada.',
@@ -1225,6 +1415,9 @@ export default function ConcertPage() {
   }
 
   // ── Reorder inside concert (Editar ordem ▲▼) ────────────────────────────
+  // A ordem nova fica JÁ neste aparelho (cópia + "por enviar", sobrevive a
+  // fechar a app) e é enviada depois de uma pausa. Sem rede fica pendente e
+  // segue quando a rede voltar (OfflineSync) — nunca se perde em silêncio.
   function moveSong(from: number, to: number) {
     if (to < 0 || to >= songs.length) return
     const next = [...songs]
@@ -1237,15 +1430,22 @@ export default function ConcertPage() {
     else if (from > songIdx && to <= songIdx) newIdx = songIdx + 1
     setSongs(next)
     setSongIdx(newIdx)
-    if (!id) return
-    cacheSetlistSongs(id, next)
-    // ▲▼ rápidos: grava só a ordem mais recente, depois de uma pausa
+    if (!id || !userId) return
+    const ids = next.map(r => r.id)
+    localOrderRef.current = ids
+    const setlistId = id
+    const uid = userId
+    orderChainRef.current = orderChainRef.current
+      .then(() => setPendingOrder(uid, setlistId, ids))
+      .then(() => patchConcert(uid, setlistId, c => ({ ...c, rows: applyPendingOrder(c.rows, ids) })))
+      .catch(() => {})
+    // ▲▼ rápidos: envia só a ordem mais recente, depois de uma pausa
     pendingOrderRef.current = { setlistId: id, order: next }
     if (orderSaveTimerRef.current) clearTimeout(orderSaveTimerRef.current)
     orderSaveTimerRef.current = setTimeout(flushOrder, 400)
   }
 
-  /** Grava já a ordem pendente — em série, nunca duas gravações em paralelo */
+  /** Envia já a ordem pendente — em série, nunca dois envios em paralelo */
   function flushOrder() {
     if (orderSaveTimerRef.current) {
       clearTimeout(orderSaveTimerRef.current)
@@ -1253,43 +1453,35 @@ export default function ConcertPage() {
     }
     const pending = pendingOrderRef.current
     pendingOrderRef.current = null
-    if (!pending) return
+    if (!pending || !userId) return
+    const uid = userId
+    const ids = pending.order.map(r => r.id)
     orderChainRef.current = orderChainRef.current
-      .then(() => persistOrder(pending.setlistId, pending.order))
+      .then(() => sendOrder(uid, pending.setlistId, ids))
+      .then(result => afterSend(uid, pending.setlistId, result))
       .catch(() => {})
   }
 
-  async function persistOrder(setlistId: string, order: Row[]) {
-    // Two batched upserts — the unique(setlist_id, position) constraint
-    // forces the two phases (park at 10000+, then land at final).
-    // setlist_id/song_id incluídos porque o tuplo do INSERT é validado
-    // (NOT NULL) antes de o conflito virar UPDATE.
-    const rows = (offset: number) => order.map((ss, i) => ({
-      id: ss.id, setlist_id: ss.setlist_id, song_id: ss.song_id, position: offset + i,
-    }))
-    let failed: boolean
-    try {
-      let { error } = await supabase.from('setlist_songs').upsert(rows(10000), { onConflict: 'id' })
-      if (!error) ({ error } = await supabase.from('setlist_songs').upsert(rows(0), { onConflict: 'id' }))
-      failed = !!error
-    } catch { failed = true }
-    if (!failed) return
+  async function afterSend(uid: string, setlistId: string, result: string) {
+    if (result === 'offline') {
+      // Fica neste aparelho; o OfflineSync envia-a quando a rede voltar. A
+      // etiqueta "Ordem por enviar" fica no alinhamento até lá; o aviso (em
+      // cima, sem apanhar toques) só uma vez por concerto
+      setOrderPending(true)
+      if (!orderOfflineToldRef.current) {
+        orderOfflineToldRef.current = true
+        toast('Sem rede — a nova ordem fica neste aparelho e é enviada quando houver ligação')
+      }
+      return
+    }
+    if (result !== 'failed') return
     // Já há uma ordem mais recente na fila — essa grava por cima
     if (pendingOrderRef.current) return
     toast('Não foi possível guardar a nova ordem', { type: 'error' })
     // Nada de reverter para um instantâneo antigo: a verdade é a do servidor
-    try {
-      const { data, error } = await supabase
-        .from('setlist_songs').select('*, song:songs(*)').eq('setlist_id', setlistId).order('position')
-      if (error || !data || data.length === 0 || pendingOrderRef.current) return
-      const fresh = data as Row[]
-      setSongs(fresh)
-      const idx = fresh.findIndex(r => r.id === currentRowIdRef.current)
-      if (idx >= 0) setSongIdx(idx)
-      cacheSetlistSongs(setlistId, fresh)
-    } catch {
-      // Sem rede: fica a ordem local (e a da cache) até haver ligação
-    }
+    localOrderRef.current = null
+    const r = await fetchConcert(uid, setlistId)
+    if (r.status === 'ok' && !pendingOrderRef.current) showConcert(r.concert, null, 'network')
   }
 
   function finishEditOrder() {
@@ -1300,7 +1492,6 @@ export default function ConcertPage() {
   // ── Derived ───────────────────────────────────────────────────────────────
   const prevSong    = songs[songIdx - 1]?.song
   const nextSong    = songs[songIdx + 1]?.song
-  const afterSong   = songs[songIdx + 2]?.song
   const displayKey  = currentRow?.performance_key ?? currentSong?.performance_key ?? currentSong?.original_key
 
   // Chords (transposed to the display key when both keys are known)
@@ -1310,7 +1501,20 @@ export default function ConcertPage() {
     : rawChords
   const chordsTransposed = chordsText !== rawChords
 
-  const hasAnnotations = annAvailable
+  // Anotações desta música: as deste aparelho; senão o que a cloud disse
+  // agora; sem resposta dela (sem rede), a cópia da cloud guardada com o
+  // concerto. Os órfãos de uma letra editada não contam — estão escondidos
+  const annLyrics = currentSong?.edited_lyrics ?? currentSong?.lyrics ?? ''
+  const annLocal = useMemo(
+    () => !!currentSong && payloadHasVisible(loadAnnotations(currentSong.id, userId), annLyrics),
+    [currentSong?.id, annLyrics, userId],
+  )
+  const annCopyRaw = currentSong ? cloudAnn[currentSong.id]?.strokes : undefined
+  const annCopy = useMemo(
+    () => (annCopyRaw != null ? payloadHasVisible(readPayload(annCopyRaw), annLyrics) : false),
+    [annCopyRaw, annLyrics],
+  )
+  const hasAnnotations = annLocal || (currentSong && currentSong.id in annNet ? annNet[currentSong.id] : annCopy)
   const bpm = currentSong?.bpm ?? null
 
   // Progress bar: song duration, falling back to the last timed line
@@ -1327,7 +1531,12 @@ export default function ConcertPage() {
   // Visor do transporte quando não há play: diz em que estado o palco está
   // (e nunca "sem sincronização" numa música que a tem e ainda está a chegar).
   // Uma sync feita para outra versão da letra não serve: scroll manual e aviso
-  const deckStatus = playbackContext
+  const noSongs = songs.length === 0
+  const deckStatus = noSongs
+    ? (loadState === 'loading' ? 'A carregar'
+      : loadState === 'missing' ? 'Não guardado'
+        : loadState === 'gone' || loadState === 'error' ? 'Indisponível' : 'Sem músicas')
+    : playbackContext
     ? (noLyrics
         ? 'Sem letra'
         : syncStale
@@ -1336,7 +1545,9 @@ export default function ConcertPage() {
             ? (syncMissing[currentSong.id] ? 'Sync indisponível' : 'Sync a carregar')
             : 'Sem sincronização')
     : contentView === 'chords' ? 'Acordes' : 'Modo manual'
-  const deckHint = playbackContext && noLyrics
+  const deckHint = noSongs
+    ? (loadState === 'loading' ? 'Um momento' : loadState === 'missing' ? 'Sem ligação' : 'Sai do concerto')
+    : playbackContext && noLyrics
     ? 'Acrescenta a letra'
     : playbackContext && syncStale ? 'Volta a sincronizar' : 'Usa o scroll'
 
@@ -1438,6 +1649,12 @@ export default function ConcertPage() {
   const totalLabel = totalMin <= 0 ? null
     : totalMin >= 60 ? `${Math.floor(totalMin / 60)}h${pad2(totalMin % 60)}` : `${totalMin} min`
 
+  // Etiqueta OFFLINE: de quando é a cópia no ecrã (a que veio da rede antes
+  // de a ligação cair está em memória e está completa)
+  const offlineTitle = copySavedAt
+    ? `Sem ligação — cópia guardada ${savedAtLabel(copySavedAt, new Date())}`
+    : 'Sem ligação — o concerto está todo neste aparelho'
+
   const countNow   = songs.length > 0 ? pad2(songIdx + 1) : '--'
   const countTotal = songs.length > 0 ? pad2(songs.length) : '--'
 
@@ -1483,6 +1700,14 @@ export default function ConcertPage() {
             >{editOrder ? 'Concluir' : 'Editar ordem'}</button>
           )}
         </div>
+        {/* Ordem mudada sem rede: fica aqui até o servidor a aceitar */}
+        {orderPending && (
+          <div className={styles.orderPending} role="status" data-order-pending="">
+            <span className={styles.orderPendingLed} aria-hidden="true" />
+            <span className={styles.orderPendingMain}>Ordem por enviar</span>
+            <span className={styles.orderPendingHint}>Segue quando houver rede</span>
+          </div>
+        )}
         <ol ref={setlistListRef} className={styles.setlist} aria-label="Alinhamento">
           {songs.map((ss, i) => {
             const isCurrent = i === songIdx
@@ -1553,8 +1778,27 @@ export default function ConcertPage() {
   }
 
   // Sem letra escrita e a sync ainda a chegar: o texto pode vir dela — nada
-  // de "Sem letra" a piscar até lá (o deck diz "Sync a carregar")
-  const emptyLyrics = syncPending ? null : (
+  // de "Sem letra" a piscar até lá (o deck diz "Sync a carregar").
+  // Sem músicas: a carregar (a cópia local chega em milissegundos), não
+  // guardado neste aparelho (sem rede), indisponível ou mesmo vazio
+  const emptyCopy: [string, string] | null = songs.length > 0 ? null
+    : loadState === 'loading' ? ['A carregar o concerto…', '']
+      : loadState === 'missing' ? ['Concerto não guardado neste aparelho', 'Sem ligação — abre-o uma vez com rede para o teres offline']
+        : loadState === 'gone' ? ['Concerto indisponível', 'Não existe ou já não tens acesso']
+          : loadState === 'error' ? ['Concerto indisponível', 'Não foi possível abrir — tenta de novo daqui a pouco']
+          : ['Concerto sem músicas', 'Acrescenta músicas na página do concerto']
+  const emptyLyrics = emptyCopy ? (
+    <div className={styles.emptyLyrics} data-stage-empty={loadState}>
+      <span className={styles.emptyTitle}>{emptyCopy[0]}</span>
+      {emptyCopy[1] && <span className={styles.emptyHint}>{emptyCopy[1]}</span>}
+      {/* Caminho direto para os que funcionam (sem rede, a lista é a dos guardados) */}
+      {(loadState === 'missing' || loadState === 'gone' || loadState === 'error') && (
+        <button type="button" className={styles.emptyAction} onClick={() => navigate('/setlists')}>
+          {loadState === 'missing' ? 'Ver concertos guardados' : 'Ver concertos'}
+        </button>
+      )}
+    </div>
+  ) : syncPending ? null : (
     <div className={styles.emptyLyrics}>
       <span className={styles.emptyTitle}>Sem letra disponível</span>
       <span className={styles.emptyHint}>Desliza ou usa as setas para mudar de música</span>
@@ -1578,10 +1822,30 @@ export default function ConcertPage() {
             <span className={styles.counterNow}>{countNow}</span>
             <span className={styles.counterTotal}> / {countTotal}</span>
           </div>
-          <div className={styles.liveTag}>
-            <span className={styles.liveLed} aria-hidden="true" />
-            Ao vivo
-          </div>
+          {/* Sem rede: OFFLINE (LED apagado) — o concerto está todo neste aparelho.
+              Sessão terminada a meio (recusada pelo servidor): o palco fica, com aviso */}
+          {sessionGone ? (
+            <div
+              className={`${styles.liveTag} ${styles.offlineTag}`}
+              title="Sessão terminada — entra de novo depois do concerto"
+              data-session-gone=""
+            >
+              <span className={styles.offlineLed} aria-hidden="true" />
+              Sem sessão
+              <span className={styles.srOnly}> — sessão terminada: entra de novo depois do concerto</span>
+            </div>
+          ) : online ? (
+            <div className={styles.liveTag}>
+              <span className={styles.liveLed} aria-hidden="true" />
+              Ao vivo
+            </div>
+          ) : (
+            <div className={`${styles.liveTag} ${styles.offlineTag}`} title={offlineTitle} data-offline-tag="">
+              <span className={styles.offlineLed} aria-hidden="true" />
+              Offline
+              <span className={styles.srOnly}> — {offlineTitle}</span>
+            </div>
+          )}
         </div>
 
         <div className={styles.headerInfo}>
@@ -1636,22 +1900,28 @@ export default function ConcertPage() {
               ) : ICONS.metronome}
             </button>
           )}
+          {/* Editar a letra precisa de rede (a página da música não funciona sem ela) */}
           <button
             className={styles.key}
             onClick={() => currentSong && navigate(`/songs/${currentSong.id}?setlist=${id}`)}
-            disabled={!currentSong}
-            title="Editar letra"
-            aria-label="Editar letra"
+            disabled={!currentSong || !online}
+            title={online ? 'Editar letra' : 'Editar letra — precisa de rede'}
+            aria-label={online ? 'Editar letra' : 'Editar letra (precisa de rede)'}
           >{ICONS.edit}</button>
           {/* ≥1024: recolhe/expande a coluna; abaixo: abre a folha */}
           <button
             className={`${styles.key} ${listVisible ? styles.keyLatched : ''}`}
             onClick={toggleSetlist}
-            title={isWide ? (sidebarOpen ? 'Recolher alinhamento' : 'Mostrar alinhamento') : 'Alinhamento'}
+            title={(isWide ? (sidebarOpen ? 'Recolher alinhamento' : 'Mostrar alinhamento') : 'Alinhamento')
+              + (orderPending ? ' — ordem por enviar' : '')}
             aria-label="Alinhamento"
             aria-expanded={listVisible}
             aria-controls="concert-setlist"
-          >{ICONS.list}</button>
+          >
+            {ICONS.list}
+            {/* Ordem por enviar: um ponto no ≡ (com a folha fechada também se vê) */}
+            {orderPending && <span className={styles.keyDot} aria-hidden="true" data-order-dot="" />}
+          </button>
           {/* Segmented control: both modes visible, active one lit */}
           <div className={styles.seg} role="group" aria-label="Modo de avanço">
             <button
@@ -1739,7 +2009,8 @@ export default function ConcertPage() {
                     <AnnotatedLyrics
                       key={currentSong.id}
                       songId={currentSong.id}
-                      userId={user?.id}
+                      userId={userId}
+                      cloudCopy={cloudAnn[currentSong.id]?.strokes ?? null}
                       lyrics={currentSong.edited_lyrics ?? currentSong.lyrics ?? ''}
                       bgColor={theme.bg}
                       textColor={theme.active_color}
@@ -1916,7 +2187,7 @@ export default function ConcertPage() {
           {/* ── Transport: fader progress (with sync) + keys + film strip ──
               Dentro da coluna do palco: com o alinhamento aberto (≥1024) a coluna
               desce até ao fundo e o deck fica centrado no eixo da letra */}
-          <footer className={styles.footer}>
+          <footer ref={footerRef} className={styles.footer}>
             {showProgress && (
               <div className={styles.progressRow}>
                 <span className={styles.progressTime}>
@@ -1946,10 +2217,11 @@ export default function ConcertPage() {
               </div>
             )}
 
-            {/* ‹ · │ deck (‹ LINHA ▶ LINHA › ou estado) │ · A SEGUIR · DEPOIS · ›
+            {/* ‹ · │ deck (‹ LINHA ▶ LINHA › ou estado) │ · A SEGUIR · ›
                 As teclas de música ficam SEMPRE nos cantos, sem corpo (só
                 contorno) e com o nº de destino — não se confundem com as de
-                linha, que ficam agrupadas entre hairlines. */}
+                linha, que ficam agrupadas entre hairlines. Só a música
+                seguinte: uma 2.ª ("Depois") confundia ao vivo. */}
             <div className={`${styles.controlsRow} ${hasTransport ? styles.hasTransport : ''}`}>
               <button
                 className={`${styles.key} ${styles.navKey}`}
@@ -2012,8 +2284,9 @@ export default function ConcertPage() {
                 )}
               </div>
 
-              {/* Film strip: the next 1-2 songs — tap to jump (hidden on phones
-                  and when the alinhamento column is open) */}
+              {/* Film strip: só a música seguinte — toque para saltar (escondida
+                  no telemóvel, que tem a micro-linha, e com a coluna do
+                  alinhamento aberta, que já diz "A seguir") */}
               {showFilmStrip && nextSong && (
                 <div className={styles.filmStrip}>
                   <button
@@ -2025,15 +2298,6 @@ export default function ConcertPage() {
                     </span>
                     <span className={styles.stripTitle}>{nextSong.title}</span>
                   </button>
-                  {afterSong && (
-                    <button
-                      className={`${styles.stripCard} ${styles.stripCardLater}`}
-                      onClick={() => setSongIdx(songIdx + 2)}
-                    >
-                      <span className={styles.stripLabel}>Depois · {pad2(songIdx + 3)}</span>
-                      <span className={styles.stripTitle}>{afterSong.title}</span>
-                    </button>
-                  )}
                 </div>
               )}
 
