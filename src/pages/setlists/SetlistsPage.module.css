@@ -755,30 +755,15 @@
   .skelRow { min-height: 80px; padding: 12px 18px 12px 24px; }
 }
 
-/* ── Sem rede: a lista é a dos concertos guardados neste aparelho ── */
-.offlineNote {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  margin: -8px 0 20px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+/* Sem rede: "Novo concerto" apagado em neutro (o acento a meia opacidade
+   ficava castanho no escuro); aria-disabled — o toque diz porquê */
+.primaryBtn.isOff {
+  background: var(--surface-2);
   color: var(--text3);
+  cursor: default;
 }
-.offlineNoteLed {
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  background: var(--warn-fg);
-}
-.offlineNoteMain { color: var(--text2); font-weight: 700; }
-.primaryBtn:disabled { opacity: 0.55; cursor: default; }
+.primaryBtn.isOff:hover,
+.primaryBtn.isOff:active { background: var(--surface-2); }
 
 .srOnly {
   position: absolute;

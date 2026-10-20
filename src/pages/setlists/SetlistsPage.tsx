@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useOnline } from '../../hooks/useNetworkStatus'
+import { useToast } from '../../components/Toast'
 import { runQuery } from '../../lib/offline/net'
 import { sortIndex, type OfflineIndexEntry } from '../../lib/offline/logic'
 import { listConcerts, onOfflineChange } from '../../lib/offline/store'
@@ -188,6 +189,7 @@ function WhenChip({ when }: { when: ConcertWhen }) {
 export default function SetlistsPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
   const [setlists, setSetlists] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -195,7 +197,7 @@ export default function SetlistsPage() {
   const online = useOnline()
   // Sem rede: a lista é a dos concertos guardados neste aparelho
   const [offlineList, setOfflineList] = useState(false)
-  // Guardados neste aparelho (marca "Disponível offline" em cada linha)
+  // Guardados neste aparelho (com rede, chip "Guardado" em cada um)
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -240,8 +242,10 @@ export default function SetlistsPage() {
     if (online && offlineList) setReloadKey(k => k + 1)
   }, [online, offlineList])
 
-  /* Assistente de criação (escolhe o projeto em "PARA:" e a origem da lista) */
+  /* Assistente de criação (escolhe o projeto em "PARA:" e a origem da lista).
+     Sem rede: apagado (aria-disabled — o toque diz porquê) */
   function createConcert() {
+    if (!online) { toast('Criar um concerto precisa de rede'); return }
     navigate('/concertos/novo')
   }
 
@@ -301,8 +305,9 @@ export default function SetlistsPage() {
     const personal = isPersonal(s)
     const isToday = when.kind === 'today'
     const isPast = when.kind === 'past'
-    // Guardado neste aparelho: abre (e entra em palco) sem rede
-    const saved = offlineList || savedIds.has(s.id)
+    // Guardado neste aparelho: abre (e entra em palco) sem rede. Sem rede a
+    // lista é só dos guardados — o chip não acrescentava nada em cada linha
+    const saved = !offlineList && savedIds.has(s.id)
     const hasChips = !!when.label || personal || saved
     /* Campos curtos antes do local: a elipse corta o local, nunca a contagem */
     const rest = [`${songCount} mús`, s.venue].filter(Boolean).join(' · ')
@@ -362,9 +367,10 @@ export default function SetlistsPage() {
           <div className={styles.chips}>
             <WhenChip when={when} />
             {personal && <span className={styles.chip}>Pessoal</span>}
+            {/* "GUARDADO" (e não "OFFLINE", que se lia como um estado: "está offline") */}
             {saved && (
-              <span className={styles.chip} data-offline="" title="Disponível offline">
-                Offline<span className={styles.srOnly}> — disponível sem rede</span>
+              <span className={styles.chip} data-offline="" title="Guardado neste aparelho — abre sem rede">
+                Guardado<span className={styles.srOnly}> neste aparelho — disponível sem rede</span>
               </span>
             )}
           </div>
@@ -404,7 +410,8 @@ export default function SetlistsPage() {
         <header className={`${styles.header} ${isEmpty ? styles.headerEmpty : ''}`}>
           <div className={styles.headText}>
             <h1 className={styles.pageTitle}>Concertos</h1>
-            <span className={styles.count} aria-live="polite">{countLabel}</span>
+            {/* Sem rede, o subtítulo diz que a lista é a dos guardados (o aviso global diz "Sem ligação") */}
+            <span className={styles.count} aria-live="polite" data-offline-list={offlineList && !loading ? '' : undefined}>{countLabel}</span>
           </div>
           <div className={styles.headActions}>
             {/* Vista de calendário — filha de Concertos (breadcrumb CONCERTOS / CALENDÁRIO) */}
@@ -413,22 +420,18 @@ export default function SetlistsPage() {
               Calendário
             </button>
             {!isEmpty && (
-              <button className={styles.primaryBtn} onClick={createConcert} disabled={!online} title={online ? undefined : 'Criar um concerto precisa de rede'}>
+              <button
+                className={`${styles.primaryBtn} ${online ? '' : styles.isOff}`}
+                onClick={createConcert}
+                aria-disabled={!online || undefined}
+                title={online ? undefined : 'Criar um concerto precisa de rede'}
+              >
                 <IconPlus />
                 Novo concerto
               </button>
             )}
           </div>
         </header>
-
-        {/* Sem rede: a lista é a dos concertos guardados neste aparelho */}
-        {offlineList && !loading && (
-          <div className={styles.offlineNote} role="status" data-offline-list="">
-            <span className={styles.offlineNoteLed} aria-hidden="true" />
-            <span className={styles.offlineNoteMain}>Sem ligação</span>
-            <span>Concertos disponíveis offline neste aparelho</span>
-          </div>
-        )}
 
         {setlists.length > 3 && (
           <div className={styles.searchWrap}>

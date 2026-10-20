@@ -31,17 +31,15 @@
   }
 }
 
-/* Modo concerto (o palco marca o body com data-stage): os avisos aparecem em
-   cima, por baixo do cabeçalho, e NÃO apanham toques — em baixo tapavam o
-   visor, o "A seguir" e as teclas de música, e o 1.º toque só fechava o aviso */
+/* Modo concerto (o palco marca o body com data-stage e mede a barra de
+   baixo em --stage-footer-h): os avisos aparecem logo ACIMA da barra, por
+   cima do fim da letra (a linha ativa fica ao centro), e NÃO apanham toques.
+   Antes tapavam o visor, o "A seguir" e as teclas de música, e o 1.º toque
+   só fechava o aviso; em cima tapavam o aviso de pausa da letra */
 :global(body[data-stage]) .stack {
-  top: calc(124px + env(safe-area-inset-top, 0px));
-  bottom: auto;
+  bottom: calc(var(--stage-footer-h, 160px) + 12px);
 }
 :global(body[data-stage]) .toast { pointer-events: none; }
-@media (min-width: 641px) {
-  :global(body[data-stage]) .stack { top: calc(84px + env(safe-area-inset-top, 0px)); }
-}
 
 .toast {
   display: flex;

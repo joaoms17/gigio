@@ -6,6 +6,8 @@ import { supabase } from '../../lib/supabase'
 import ExportPdfSheet from '../../components/ExportPdfSheet'
 import type { PdfData, PdfKind } from '../../lib/pdfExport'
 import { useAuth } from '../../hooks/useAuth'
+import { useOnline } from '../../hooks/useNetworkStatus'
+import { runQuery } from '../../lib/offline/net'
 import type { Song } from '../../types'
 import styles from './LibraryPage.module.css'
 
@@ -73,18 +75,33 @@ export default function LibraryPage() {
   const [bulkBusy, setBulkBusy] = useState(false)
   const [pdfKind, setPdfKind] = useState<PdfKind | null>(null)
 
+  // Sem rede: "Sem ligação" (nunca "Repertório vazio" — as músicas estão no servidor)
+  const [offline, setOffline] = useState(false)
+  const online = useOnline()
+  const [reloadKey, setReloadKey] = useState(0)
+
   useEffect(() => {
     if (!user) return
-    supabase
+    let alive = true
+    // Sem rede responde logo (e com rede lenta desiste aos 10 s)
+    runQuery(supabase
       .from('songs')
       .select('*')
       .eq('owner_id', user.id)
-      .order('title')
-      .then(({ data }) => {
-        setSongs(data ?? [])
+      .order('title'), 10000)
+      .then(({ data, network }) => {
+        if (!alive) return
+        setOffline(network)
+        setSongs((data as Song[] | null) ?? [])
         setLoading(false)
       })
-  }, [user])
+    return () => { alive = false }
+  }, [user, reloadKey])
+
+  // A rede voltou: carrega o repertório
+  useEffect(() => {
+    if (online && offline) setReloadKey(k => k + 1)
+  }, [online])
 
   /** Which setlists use this song — shown before deleting */
   async function setlistsUsing(songIds: string[]): Promise<string[]> {
@@ -196,6 +213,7 @@ export default function LibraryPage() {
   const plural = (n: number) => `música${n !== 1 ? 's' : ''}`
   const countLabel = loading
     ? 'A carregar…'
+    : offline ? 'Sem ligação'
     : filtered.length !== songs.length
       ? `${filtered.length} de ${songs.length} ${plural(songs.length)}`
       : `${songs.length} ${plural(songs.length)}`
@@ -335,13 +353,21 @@ export default function LibraryPage() {
         ) : filtered.length === 0 ? (
           <div className={styles.empty}>
             <span className={styles.emptyIcon}>{hasFilters ? <IconSearch /> : <IconMusic />}</span>
-            <p className={styles.emptyTitle}>{hasFilters ? 'Sem resultados' : 'Repertório vazio'}</p>
-            <p className={styles.emptyText}>
-              {hasFilters
-                ? 'Nenhuma música corresponde a estes filtros.'
-                : 'Procura a letra de uma música para começar o teu repertório.'}
+            <p className={styles.emptyTitle} data-library-empty={offline ? 'offline' : hasFilters ? 'filters' : 'empty'}>
+              {offline ? 'Sem ligação' : hasFilters ? 'Sem resultados' : 'Repertório vazio'}
             </p>
-            {hasFilters ? (
+            <p className={styles.emptyText}>
+              {offline
+                ? 'O repertório aparece quando houver rede. Os concertos guardados neste aparelho funcionam sem ela.'
+                : hasFilters
+                  ? 'Nenhuma música corresponde a estes filtros.'
+                  : 'Procura a letra de uma música para começar o teu repertório.'}
+            </p>
+            {offline ? (
+              <button type="button" className={styles.secondaryBtn} onClick={() => navigate('/setlists')}>
+                <span>Ver concertos guardados</span>
+              </button>
+            ) : hasFilters ? (
               <button type="button" className={styles.secondaryBtn} onClick={clearFilters}>
                 <IconX />
                 <span>Limpar filtros</span>

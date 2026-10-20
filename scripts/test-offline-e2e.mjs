@@ -29,13 +29,27 @@
  *      deitado; o "A seguir" com a música certa e alinhado.
  *   O8 Guardar em segundo plano interrompido a meio (a app fecha; a rede cai)
  *      e a app volta a abrir / a rede volta → os concertos que faltavam ficam
- *      guardados (perfil próprio, não precisa do O1).
+ *      guardados (perfil próprio, não precisa do O1). O8c: só um pedido falha
+ *      (rede fraca) → a volta seguinte (sonda) guarda tudo.
+ *   O9 Concerto com data passada há mais de 30 dias aberto com rede: fica
+ *      guardado (e diz "Disponível offline" só porque ficou); com o IndexedDB
+ *      bloqueado a página diz que este browser não deixa guardar.
+ *   O10 IndexedDB lento a abrir (> 2,5 s): sem rede o palco chega à cópia
+ *      (nunca fica "não guardado"); com rede, o que se guardou entretanto vai
+ *      para o IndexedDB quando ele abre.
+ *   O11 Sessão recusada pelo servidor a meio do concerto: o palco fica, o
+ *      ecrã não apaga (wake lock) e aparece "Sem sessão".
+ *   O12 Letra corrigida na página da música (com rede) → o palco sem rede
+ *      mostra a letra nova (a cópia é atualizada e o guardar volta a correr).
+ *   O13 Palco aberto sem rede num concerto não guardado: "Não guardado", com
+ *      caminho para os guardados e ✕ sem confirmação; a rede volta → o
+ *      concerto aparece sem sair do palco.
  *
  * Uso:
  *   node scripts/test-offline-e2e.mjs [pasta-das-capturas]
  *   (faz o build de mock antes, como scripts/shots.sh; E2E_NO_BUILD=1 usa o
  *    dist que existe; ONLY=O1,O7 corre só esses — O2…O6 precisam do O1,
- *    O7 e O8 não; E2E_VERBOSE=1 mostra também as que passam, com os tempos)
+ *    O7 a O13 não; E2E_VERBOSE=1 mostra também as que passam, com os tempos)
  * Saída: "N passaram, 0 falharam"; exit ≠ 0 se alguma asserção falhar.
  * Letras, títulos e nomes INVENTADOS.
  */
@@ -170,6 +184,29 @@ TABLES.setlist_songs.push(...OFF_ROWS)
 const SYNC_LINES = LYR.sgO3.split('\n').filter(l => l.trim() && !/^\[.+\]$/.test(l.trim()))
 TABLES.lyric_syncs.push({ song_id: 'sgO3', lines: SYNC_LINES.map((text, i) => ({ text, time_ms: 600 + i * 1500 })) })
 
+// Um alinhamento antigo (data há 45 dias) que se vai repetir, e um concerto
+// longe (+40 dias): nenhum dos dois entra no guardar em segundo plano
+const PAST_ID = 'sPast'
+const PAST_NAME = 'Alinhamento de Verão'
+const FAR_ID = 'sFar'
+const FAR_NAME = 'Romaria de Setembro'
+const EXTRA_SONGS = [
+  ['sgP1', 'Carrinha Azul', ['[Verso]', 'Pela estrada fora vai a carrinha azul', 'Leva a bateria e o cheiro a café'].join('\n')],
+  ['sgP2', 'Palco no Adro', ['[Verso]', 'No adro da igreja montaram o palco', 'Três lâmpadas tortas e um fio a dançar'].join('\n')],
+  ['sgP3', 'Bate o Pé', ['[Refrão]', 'Bate o pé, bate a palma', 'Que a noite ainda agora começou'].join('\n')],
+].map(([id, title, lyrics]) => ({
+  ...TABLES.songs[0], id, title, artist: 'Banda do Largo', original_key: 'C', performance_key: null,
+  lyrics, edited_lyrics: null, original_lyrics: null, chords: null, bpm: null, has_sync: false, duration_sec: 180,
+}))
+TABLES.songs.push(...EXTRA_SONGS)
+for (const [sid, name, date] of [[PAST_ID, PAST_NAME, d(-45)], [FAR_ID, FAR_NAME, d(40)]]) {
+  TABLES.setlists.push({ ...TABLES.setlists[0], id: sid, name, date, venue: 'Largo', status: 'final', setlist_songs: [{ count: 3 }] })
+  TABLES.setlist_songs.push(...EXTRA_SONGS.map((song, i) => ({
+    id: `ss${sid}${i}`, setlist_id: sid, song_id: song.id, position: i,
+    performance_key: null, notes: null, custom_intro: null, custom_ending: null, song,
+  })))
+}
+
 // Anotações da CLOUD (desenhadas no Ensaio de outro aparelho): destaque + sublinhado
 const P_CLOUD = A.buildPayload({
   w: 600, h: 400, strokes: [], em: 32, lyrics: LYR.sgO1, anchored: [
@@ -177,7 +214,9 @@ const P_CLOUD = A.buildPayload({
     { id: 'pc1', color: '#dc2626', w: 0.12, mode: A.MODE_TEXT, p: [2, 0, 0, A.Y_BELOW, 0.15, 0, 2, 11, 0, A.Y_BELOW, 0.15, 1] },
   ],
 })
-// Anotações DESTE aparelho (Ensaio no próprio iPad, gigio_ann_v1_*): nunca foram para a cloud
+// Anotações DESTE aparelho (Ensaio no próprio iPad): nunca foram para a cloud. Gravadas
+// pela versão anterior da app (só por música, 'gigio_ann_v1_*'): passam para o u1
+// quando ele entra (gigio_ann_u_u1_*)
 const P_LOCAL = A.buildPayload({
   w: 600, h: 400, strokes: [], em: 32, lyrics: LYR.sgO4, anchored: [
     { id: 'hl1', color: '#22c55e', mode: A.MODE_HL_TEXT, ln: 2, c0: 7, c1: 15, t: 'estrelas' },
@@ -223,7 +262,7 @@ const precacheCount = () => new Set([...readFileSync(path.join(DIST, 'sw.js'), '
  * ser resolvida: 'net' = falha por falta de rede; outra coisa = pedido cortado
  * (a app fechou entretanto)
  */
-const NET = { down: false, log: [], writes: [], auth: [], gate: null }
+const NET = { down: false, log: [], writes: [], auth: [], gate: null, tokenReject: false }
 
 function whoOf(req) {
   const a = req.headers()['authorization'] ?? ''
@@ -274,6 +313,12 @@ async function restRoute(route) {
   if (method === 'POST' || method === 'PATCH' || method === 'DELETE') {
     const body = req.postData() ? JSON.parse(req.postData()) : null
     NET.writes.push({ table, method, body, query: decodeURIComponent(url.search), who })
+    // A música gravada na página da música (PATCH songs?id=eq.X) fica no servidor
+    if (table === 'songs' && method === 'PATCH' && body && !Array.isArray(body)) {
+      const id = /^eq\.(.*)$/.exec(url.searchParams.get('id') ?? '')?.[1]
+      const row = TABLES.songs.find(x => x.id === id)
+      if (row) Object.assign(row, body)
+    }
     // O servidor guarda a ordem (upsert de setlist_songs): um GET a seguir já a devolve
     if (table === 'setlist_songs' && method === 'POST' && Array.isArray(body)) {
       for (const r of body) {
@@ -308,6 +353,10 @@ async function authRoute(route) {
   if (url.pathname.endsWith('/logout')) return route.fulfill({ status: 204, body: '' })
   if (url.pathname.endsWith('/user')) return json(200, whoOf(req) === 'u2' ? USER2 : USER)
   if (url.pathname.endsWith('/token')) {
+    // O servidor recusa o refresh token (já usado depois de o iOS suspender a app a meio de um refresh)
+    if (NET.tokenReject && url.searchParams.get('grant_type') === 'refresh_token') {
+      return json(400, { code: 400, error_code: 'refresh_token_already_used', msg: 'Invalid Refresh Token: Already Used' })
+    }
     const body = req.postData() ? JSON.parse(req.postData()) : {}
     const grant = url.searchParams.get('grant_type')
     const u2 = grant === 'password' ? body.email === USER2.email : body.refresh_token === SESSION2.refresh_token
@@ -390,6 +439,20 @@ const idbGet = (page, key) => page.evaluate(key => new Promise(res => {
     q.onerror = () => { db.close(); res(null) }
   }
 }), key)
+
+/** Escreve uma chave no IndexedDB da app (a base já existe: a app abriu-a) */
+const idbPut = (page, key, value) => page.evaluate(([key, value]) => new Promise(res => {
+  const r = indexedDB.open('gigio-offline')
+  r.onerror = () => res(false)
+  r.onsuccess = () => {
+    const db = r.result
+    if (!db.objectStoreNames.contains('kv')) { db.close(); res(false); return }
+    const tx = db.transaction('kv', 'readwrite')
+    tx.objectStore('kv').put(value, key)
+    tx.oncomplete = () => { db.close(); res(true) }
+    tx.onerror = () => { db.close(); res(false) }
+  }
+}), [key, value])
 
 // ── Página: atalhos ─────────────────────────────────────────────────────────
 const S = {
@@ -573,6 +636,7 @@ async function scenario(name, title, fn) {
     for (const c of opened) await c.close().catch(() => {})
     NET.down = false
     NET.gate = null
+    NET.tokenReject = false
     SRV.down = false
   }
 }
@@ -618,7 +682,9 @@ try {
     const concerts = keys.filter(k => k.includes(':concert:')).sort()
     ok(concerts.includes(`u:u1:concert:${SID}`), 'O1: o concerto nunca aberto ficou guardado no IndexedDB', concerts)
     ok(['s1', 's2', 's4'].every(s => concerts.includes(`u:u1:concert:${s}`)), 'O1: os de hoje e dos próximos dias também (s4 hoje, s1 amanhã, s2 +7)', concerts)
-    ok(!['s5', 's6', 's7'].some(s => concerts.includes(`u:u1:concert:${s}`)), 'O1: os passados e os de +30 dias não', concerts)
+    ok(![
+      's5', 's6', 's7', PAST_ID, FAR_ID,
+    ].some(s => concerts.includes(`u:u1:concert:${s}`)), 'O1: os passados e os de +30 dias não', concerts)
     ok(keys.every(k => k.startsWith('u:u1:')), 'O1: tudo com o prefixo do utilizador', keys)
 
     const b = await idbGet(page, `u:u1:concert:${SID}`)
@@ -634,7 +700,8 @@ try {
     ok(b?.rows?.every(r => !('original_lyrics' in (r.song ?? {}))), 'O1: sem colunas que o palco não usa (original_lyrics)')
     const idx = await idbGet(page, 'u:u1:index')
     const e = Array.isArray(idx) ? idx.find(x => x.setlistId === SID) : null
-    ok(!!e && e.songCount === 5 && e.name === OFF_NAME && e.usedAt === e.savedAt, 'O1: no índice, nunca aberto (usedAt = savedAt)', e)
+    ok(!!e && e.songCount === 5 && e.name === OFF_NAME && e.usedAt === e.savedAt && !('openedAt' in e), 'O1: no índice, nunca aberto (usedAt = savedAt, sem openedAt)', e)
+    ok(JSON.stringify(e?.songIds) === JSON.stringify(OFF_SONGS.map(x => x.id)), 'O1: no índice, as músicas da cópia (para a atualizar quando uma música muda)', e?.songIds)
     const theme = await idbGet(page, 'u:u1:theme')
     ok(theme?.theme?.bg === THEME.bg && theme?.userId === 'u1', 'O1: tema do palco guardado', theme)
     const opened1 = NET.log.filter(l => l.table === 'setlist_songs' && l.query.includes(`setlist_id=eq.${SID}`)).length
@@ -642,18 +709,23 @@ try {
     const annLocal = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('gigio_ann')))
     ok(annLocal.length === 0, 'O1: as anotações da cloud não vão para o localStorage deste aparelho', annLocal)
 
-    // Lista com rede: os guardados levam o chip "Offline"
+    // Lista com rede: os guardados levam o chip "Guardado" (não "Offline", que se lia como um estado)
     await page.waitForSelector('[data-offline]', { timeout: 5000 }).catch(() => {})
     const chipRow = page.locator('[role="button"]', { hasText: OFF_NAME }).first()
-    ok(await chipRow.locator('[data-offline]').count() === 1, 'O1: "Offline" no concerto guardado, na lista Concertos com rede')
+    ok(await chipRow.locator('[data-offline]').count() === 1, 'O1: chip no concerto guardado, na lista Concertos com rede')
+    const chipText = (await chipRow.locator('[data-offline]').first().textContent().catch(() => '')).trim()
+    ok(/^Guardado/.test(chipText), 'O1: o chip diz "Guardado"', chipText)
     ok(await countOf(page, '[data-offline-banner]') === 0, 'O1: sem aviso "Sem ligação" com rede')
     await shot(page, 'O1-concertos-online', { fullPage: true })
 
-    // Ensaio NESTE aparelho (anotações locais da sgO4) — o que o cantor desenhou no iPad
+    // Ensaio NESTE aparelho (anotações locais da sgO4) — o que o cantor desenhou no
+    // iPad com a versão anterior da app (chave só por música)
     await page.evaluate(([k, v]) => localStorage.setItem(k, v), ['gigio_ann_v1_sgO4', JSON.stringify(P_LOCAL)])
 
     // "Disponível offline · Guardado às…" na página de um concerto (o s1; o sOff fica por abrir)
     await page.goto(`${BASE}/setlist/s1`, { waitUntil: 'domcontentloaded' })
+    const annKeys = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('gigio_ann')))
+    ok(JSON.stringify(annKeys) === JSON.stringify(['gigio_ann_u_u1_sgO4']), 'O1: as anotações antigas deste aparelho passam a ser do utilizador que entrou (gigio_ann_u_u1_*)', annKeys)
     await page.waitForSelector('[data-offline-status="saved"]', { timeout: 6000 }).catch(() => {})
     const st = await textOf(page, '[data-offline-status]')
     ok(/Disponível offline/i.test(st) && /Guardado às \d\d:\d\d/i.test(st), 'O1: "Disponível offline · Guardado às HH:MM" na página do concerto', st)
@@ -677,6 +749,7 @@ try {
     ok(/Disponíveis offline/.test(home) && home.includes(OFF_NAME), `O2: Projetos mostra "Disponíveis offline" com o concerto (${Date.now() - t0} ms)`, home.slice(0, 200))
     const banner = await textOf(page, '[data-offline-banner]')
     ok(/\d+ concertos guardados funcionam sem rede/.test(banner), 'O2: aviso "N concertos guardados funcionam sem rede"', banner)
+    ok(await countOf(page, 'main [class*="_offlineBanner_"]') === 0, 'O2: Projetos sem um 2.º "Sem ligação" na página (o aviso global chega)')
     await shot(page, 'O2-projetos-offline', { fullPage: true })
 
     // Concertos (pelo menu, sem recarregar)
@@ -684,8 +757,35 @@ try {
     await page.waitForSelector('[data-offline-list]', { timeout: 6000 }).catch(() => {})
     const list = await page.locator('main').first().textContent().catch(() => '')
     ok(list.includes(OFF_NAME) && !/Ainda sem concertos/.test(list), 'O2: Concertos sem rede mostra os guardados (nunca "Ainda sem concertos")', list.slice(0, 160))
-    ok(await page.locator('[role="button"]', { hasText: OFF_NAME }).first().locator('[data-offline]').count() === 1, 'O2: o concerto com o chip "Offline"')
+    // Sem rede a lista é só dos guardados: o subtítulo di-lo uma vez (sem um chip em cada linha, sem 3.º aviso)
+    const sub = await textOf(page, '[data-offline-list]')
+    ok(/\d+ guardados? neste aparelho/.test(sub), 'O2: o subtítulo diz "N guardados neste aparelho"', sub)
+    ok(await countOf(page, '[data-offline]') === 0, 'O2: sem chip "Guardado" em cada linha (sem rede são todos)')
+    ok(!/Concertos disponíveis offline neste aparelho/.test(list), 'O2: sem a nota repetida "Sem ligação · concertos disponíveis offline"')
+    const newBtn = page.locator('button', { hasText: 'Novo concerto' }).first()
+    ok(await newBtn.getAttribute('aria-disabled') === 'true', 'O2: "Novo concerto" apagado (aria-disabled) sem rede')
+    await trackToasts(page)
+    // aria-disabled: o Playwright não clica num "desativado" sem force (o dedo, no iPad, toca)
+    await newBtn.click({ force: true })
+    ok(!!(await toastSeen(page, 'Criar um concerto precisa de rede')) && pathOf(page) === '/setlists', 'O2: o toque em "Novo concerto" diz porquê (e não sai da lista)', await page.evaluate(() => window.__toasts))
     await shot(page, 'O2-concertos-offline', { fullPage: true })
+
+    // Calendário (a partir de Concertos): os guardados nos seus dias, nunca "0 concertos"
+    await page.locator('button', { hasText: 'Calendário' }).first().click()
+    await page.waitForSelector('[data-offline-calendar]', { timeout: 6000 }).catch(() => {})
+    const cal = (await page.locator('main').first().textContent().catch(() => '')) ?? ''
+    ok(await countOf(page, '[data-offline-calendar]') === 1 && /Só os guardados neste aparelho/i.test(cal), 'O2: Calendário sem rede — "Sem ligação · só os guardados neste aparelho"', cal.slice(0, 200))
+    ok(cal.includes('Ensaio geral') && !/Sem concertos neste dia/.test(cal), 'O2: Calendário sem rede — hoje tem o concerto guardado (Ensaio geral)', cal.slice(0, 300))
+    const createDay = page.locator('button', { hasText: /^Criar concerto a/ }).first()
+    ok(await createDay.getAttribute('aria-disabled') === 'true', 'O2: Calendário sem rede — "Criar concerto" apagado')
+    await shot(page, 'O2-calendario-offline', { fullPage: true })
+    // Repertório: "Sem ligação" (nunca "Repertório vazio")
+    await page.locator('a[href="/library"]:visible').first().click()
+    await page.waitForSelector('[data-library-empty]', { timeout: 6000 }).catch(() => {})
+    ok(await page.locator('[data-library-empty]').first().getAttribute('data-library-empty').catch(() => null) === 'offline', 'O2: Repertório sem rede diz "Sem ligação" (nunca "Repertório vazio")', await textOf(page, 'main'))
+    await shot(page, 'O2-repertorio-offline')
+    await page.locator('a[href="/setlists"]:visible').first().click()
+    await page.waitForSelector('[data-offline-list]', { timeout: 6000 }).catch(() => {})
 
     // O concerto (página): só leitura, músicas da cópia
     await page.getByText(OFF_NAME, { exact: true }).first().click()
@@ -826,14 +926,34 @@ try {
 
     // ── O3b: sem rede, tocar em "Editar música" ──
     console.log('— O3b. Sem rede: tocar em "Editar música" (iPad ao alto, telemóvel, iPad deitado)')
-    const BLOCK = 'Sem ligação — não é possível alterar o concerto agora'
+    const BLOCK = 'Editar a música precisa de rede'
     const here = `/setlist/${SID}`
+    // Um só padrão: TODAS as ações de edição apagadas da mesma forma (aria-disabled — o toque explica)
+    const offState = await page.evaluate(() => {
+      const q = sel => [...document.querySelectorAll(sel)]
+      const st = el => ({ aria: el.getAttribute('aria-disabled'), op: Number(getComputedStyle(el).opacity) })
+      return {
+        editar: q('button[aria-label="Editar música"]').map(st)[0],
+        remover: q('button[aria-label="Remover da setlist"]').map(st)[0],
+        pega: q('button[aria-label="Arrastar para reordenar"]').map(st)[0],
+        adicionar: q('button').filter(b => b.textContent.trim() === 'Adicionar').map(st)[0],
+        duplicar: q('button').filter(b => b.textContent.trim() === 'Duplicar').map(st)[0],
+        lapisTitulo: !!document.querySelector('h1 [class*="_editHint_"]'),
+        tomNotas: q('button[aria-label="Definir tom e notas neste concerto"]').length,
+      }
+    })
+    ok(['editar', 'remover', 'pega', 'adicionar', 'duplicar'].every(k => offState[k]?.aria === 'true' && offState[k].op <= 0.45),
+      'O3b: ✎, ✕, pega, Adicionar e Duplicar apagados da mesma forma (aria-disabled, opacidade 0,4)', offState)
+    ok(!offState.lapisTitulo && offState.tomNotas === 0, 'O3b: sem o ✎ do título nem "+ Tom · notas" em só leitura', offState)
     // iPad ao alto: o ✎ de cada linha
     await trackToasts(page)
-    await page.locator('button[aria-label="Editar música"]').first().click()
+    await page.locator('button[aria-label="Editar música"]').first().click({ force: true })
     ok(!!(await toastSeen(page, BLOCK)), `O3b iPad ao alto: ✎ "Editar música" → aviso "${BLOCK}"`, await page.evaluate(() => window.__toasts))
+    ok(!(await page.evaluate(() => window.__toasts.some(t => /^Erro/i.test(t)))), 'O3b: o aviso é neutro (sem "ERRO": é o estado esperado sem rede)', await page.evaluate(() => window.__toasts))
     await page.waitForTimeout(500)
     ok(pathOf(page) === here, 'O3b iPad ao alto: fica na página do concerto (nada se abre sem dados)', page.url())
+    await page.locator('button[aria-label="Remover da setlist"]').first().click({ force: true })
+    ok(!!(await toastSeen(page, 'Tirar músicas do concerto precisa de rede')), 'O3b iPad ao alto: ✕ → "Tirar músicas do concerto precisa de rede"', await page.evaluate(() => window.__toasts))
 
     // O tom/notas sem rede: o aviso do próprio modal e os botões não podem ficar
     // por baixo do aviso global "Sem ligação" (fixo, por cima dos modais)
@@ -892,12 +1012,41 @@ try {
     ok(await dlg.locator('button', { hasText: /^Guardar$/ }).isDisabled().catch(() => false), 'O3b telemóvel: "Guardar" desativado')
     await checkDialogCover('O3b telemóvel', 'O3b-tom-notas-telemovel')
     await trackToasts(page)
-    await dlg.locator('button', { hasText: 'Editar letra e música' }).click()
-    ok(!!(await toastSeen(page, BLOCK)), 'O3b telemóvel: "Editar letra e música" → aviso "Sem ligação"', await page.evaluate(() => window.__toasts))
+    await dlg.locator('button', { hasText: 'Editar letra e música' }).click({ force: true })
+    ok(!!(await toastSeen(page, BLOCK)), `O3b telemóvel: "Editar letra e música" → aviso "${BLOCK}"`, await page.evaluate(() => window.__toasts))
     await page.waitForTimeout(500)
     ok(pathOf(page) === here && await dlg.count() === 1, 'O3b telemóvel: fica no tom/notas (nada se perde)', page.url())
     await shot(page, 'O3b-editar-musica-telemovel')
     await dlg.locator('button[aria-label="Fechar"]').click().catch(() => {})
+
+    // Telemóvel: a linha de estado parte sem "·" pendurado; o fim da página fica acima do aviso global
+    const stLine = await page.evaluate(() => {
+      const el = document.querySelector('[data-offline-status]')
+      if (!el) return null
+      const items = [...el.children].filter(c => c.getBoundingClientRect().width > 0)
+      return items.map(c => ({ t: c.textContent.trim(), h: Math.round(c.getBoundingClientRect().height), top: Math.round(c.getBoundingClientRect().top) }))
+    })
+    const dot = stLine?.find(x => /^· Cópia guardada/.test(x.t))
+    ok(!!dot && dot.h <= 20, 'O3b telemóvel: "· Cópia guardada às…" inteiro numa linha (o "·" vai com o texto)', stLine)
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+    await page.waitForTimeout(300)
+    const bottom = await page.evaluate(() => {
+      const banner = document.querySelector('[data-offline-banner]')?.getBoundingClientRect()
+      const root = document.querySelector('main > :first-child')
+      const kids = root ? [...root.querySelectorAll('button, [class*="_songRow_"]')].filter(e => e.getBoundingClientRect().height > 0) : []
+      const last = kids.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom)[0]?.getBoundingClientRect()
+      return banner && last ? { banner: { top: Math.round(banner.top), bottom: Math.round(banner.bottom) }, ultimo: { top: Math.round(last.top), bottom: Math.round(last.bottom) } } : null
+    })
+    ok(!!bottom && bottom.ultimo.bottom <= bottom.banner.top, 'O3b telemóvel: no fim do scroll, nada da página fica por baixo do aviso global', bottom)
+    const bannerH = await page.evaluate(() => Math.round(document.querySelector('[data-offline-banner]')?.getBoundingClientRect().height ?? 0))
+    ok(bannerH > 0 && bannerH <= 46, 'O3b telemóvel: o aviso global numa só linha (texto curto)', bannerH)
+    await shot(page, 'O3b-concerto-fim-telemovel')
+    // A lista Concertos sem rede no telemóvel (capturas)
+    await page.goto(`${BASE}/setlists`, { waitUntil: 'domcontentloaded' })
+    await page.waitForSelector('[data-offline-list]', { timeout: 6000 }).catch(() => {})
+    await shot(page, 'O3b-concertos-telemovel')
+    await page.goto(`${BASE}${here}`, { waitUntil: 'domcontentloaded' })
+    await page.waitForSelector('[data-offline-status="readonly"]', { timeout: 6000 }).catch(() => {})
 
     // iPad deitado (≥1024px): a linha seleciona; o painel tem "Editar letra"
     await page.setViewportSize(TABLET_LAND)
@@ -908,9 +1057,10 @@ try {
     await dlg.locator('button[aria-label="Fechar"]').click().catch(() => {})
     const edit = page.locator('aside button', { hasText: 'Editar letra' }).first()
     await edit.waitFor({ timeout: 3000 }).catch(() => {})
+    ok(await edit.getAttribute('aria-disabled').catch(() => null) === 'true', 'O3b iPad deitado: "Editar letra" do painel apagado como o ✎')
     await trackToasts(page)
     const t1 = Date.now()
-    await edit.click().catch(() => {})
+    await edit.click({ force: true, timeout: 4000 }).catch(() => {})
     await page.waitForTimeout(600)
     const where = pathOf(page)
     let seen = null
@@ -927,6 +1077,13 @@ try {
     ok(where === here || seen === 'letra',
       'O3b iPad deitado: "Editar letra" do painel sem rede é bloqueado como o ✎ (ou abre a letra guardada) — nunca "Música não encontrada"',
       { url: page.url(), mostra: seen, aoFimDe: `${Math.round((Date.now() - t1) / 100) / 10} s`, avisos: await page.evaluate(() => window.__toasts).catch(() => null) })
+    ok(!!(await toastSeen(page, 'Editar a letra precisa de rede')), 'O3b iPad deitado: o toque diz "Editar a letra precisa de rede"', await page.evaluate(() => window.__toasts).catch(() => null))
+    // Link direto para a música sem rede: "Sem ligação" logo (nunca "Música não encontrada" ao fim de ~7 s)
+    const t2 = Date.now()
+    await page.goto(`${BASE}/songs/sgO3?setlist=${SID}`, { waitUntil: 'domcontentloaded' })
+    const unav = await until(() => page.locator('[data-song-unavailable]').first().getAttribute('data-song-unavailable').catch(() => null), 8000, 200)
+    ok(unav === 'offline' && Date.now() - t2 < 4000, 'O3b: a página da música sem rede diz "Sem ligação" (não "Música não encontrada")', { unav, ms: Date.now() - t2 })
+    await shot(page, 'O3b-musica-sem-rede-ipad-paisagem')
     await page.setViewportSize(TABLET_PORT)
     ok(errors.length === 0, 'O3b: sem erros na página', errors)
   })
@@ -1037,6 +1194,30 @@ try {
     const told = await until(() => countOf(page, 'text=a nova ordem fica neste aparelho'), 3000)
     ok(!!told, 'O5: aviso "Sem rede — a nova ordem fica neste aparelho…"')
     ok(await countOf(page, 'text=Não foi possível guardar a nova ordem') === 0, 'O5: sem aviso de erro')
+    // O aviso em palco aparece logo acima da barra e não apanha toques: nunca tapa o visor, o "A seguir"
+    // nem as teclas, nem o aviso de pausa no topo da letra
+    const toastPos = await page.evaluate(() => {
+      const t = document.querySelector('[class*="_toast_"]')
+      if (!t) return null
+      const tb = t.getBoundingClientRect()
+      const footer = document.querySelector('footer')?.getBoundingClientRect()
+      const prev = document.querySelector('button[aria-label^="Música anterior"]')
+      const pb = prev?.getBoundingClientRect()
+      const hit = pb ? document.elementFromPoint(pb.left + pb.width / 2, pb.top + pb.height / 2) : null
+      const chip = document.querySelector('[class*="_chipSlot_"] > *')?.getBoundingClientRect()
+      return {
+        toastTop: Math.round(tb.top), toastBottom: Math.round(tb.bottom), footerTop: footer ? Math.round(footer.top) : null,
+        chipBottom: chip ? Math.round(chip.bottom) : null,
+        pointer: getComputedStyle(t).pointerEvents, prevHit: !!hit && !!prev && prev.contains(hit),
+      }
+    })
+    ok(!!toastPos && toastPos.footerTop !== null && toastPos.toastBottom < toastPos.footerTop && toastPos.footerTop - toastPos.toastBottom <= 40
+      && (toastPos.chipBottom === null || toastPos.toastTop > toastPos.chipBottom) && toastPos.pointer === 'none' && toastPos.prevHit,
+      'O5: o aviso fica logo acima da barra (sem tapar as teclas nem o aviso de pausa) e não apanha toques', toastPos)
+    // Etiqueta "Ordem por enviar" no alinhamento e o ponto no ≡ (ficam até o servidor a aceitar)
+    ok(await countOf(page, '[data-order-pending]') === 1 && /Ordem por enviar/.test(await textOf(page, '[data-order-pending]')), 'O5: "Ordem por enviar" no alinhamento')
+    ok(await countOf(page, '[data-order-dot]') === 1, 'O5: ponto no ≡ (ordem por enviar)')
+    await shot(page, 'O5-ordem-por-enviar-paisagem')
     await page.click('button:has-text("Concluir")')
     const newOrder = ['ssO1', 'ssO2', 'ssO3', 'ssO5', 'ssO4']
     const newTitles = ['Luzes da Feira', 'Carrossel de Agosto', 'Barraca das Farturas', 'Última Volta', 'Fogo de Vista']
@@ -1057,6 +1238,7 @@ try {
     s = await stage(page)
     ok(/^03 \/ 05$/.test(s.counter) && s.title === 'Barraca das Farturas' && s.offline, 'O5: recarregado sem rede, na mesma música e OFFLINE', { counter: s.counter, title: s.title })
     ok(JSON.stringify(await setlistTitles(page)) === JSON.stringify(newTitles), 'O5: recarregado sem rede, a ordem nova mantém-se', await setlistTitles(page))
+    ok(!!(await until(() => countOf(page, '[data-order-pending]'), 3000)), 'O5: recarregado sem rede, "Ordem por enviar" continua')
     await shot(page, 'O5-palco-rede-caiu-paisagem')
 
     // A rede volta
@@ -1067,6 +1249,7 @@ try {
       'O5: a rede volta → a ordem é enviada (2 upserts)', ups.map(u => u?.map(r => `${r.id}:${r.position}`)))
     ok(!!(await until(() => countOf(page, 'text=Nova ordem de "Arraial da Ribeira" enviada'), 4000)), 'O5: aviso "Nova ordem de … enviada"')
     ok(!!(await until(async () => !(await idbGet(page, `u:u1:order:${SID}`)), 4000)), 'O5: a ordem deixa de estar pendente')
+    ok(!!(await until(async () => (await countOf(page, '[data-order-pending]')) === 0 && (await countOf(page, '[data-order-dot]')) === 0, 4000)), 'O5: "Ordem por enviar" e o ponto no ≡ saem')
     const server = TABLES.setlist_songs.filter(r => r.setlist_id === SID).sort((a, b) => a.position - b.position).map(r => r.id)
     ok(JSON.stringify(server) === JSON.stringify(newOrder), 'O5: o servidor ficou com a ordem nova', server)
     await page.waitForSelector(S.offTag, { state: 'detached', timeout: 5000 }).catch(() => {})
@@ -1184,12 +1367,12 @@ try {
           title: li.querySelector('[class*="_rowTitle_"]')?.textContent?.trim(),
         })).filter(r => r.tag))
         ok(tag.length === 1 && tag[0].tag === 'A seguir' && tag[0].title === 'Sozinho', `${v}: coluna com "A seguir" na 11.ª`, tag)
-        // Coluna recolhida: o cartão aparece (sozinho, 420px)
+        // Coluna recolhida: o cartão aparece (sozinho) e fica com o espaço que era do "Depois"
         await page.click('button[aria-label="Alinhamento"]')
         await page.waitForTimeout(300)
         bar = await barInfo(page)
         checkBar(`${v} coluna recolhida`, bar, '11', 'Sozinho', { strip: true })
-        ok(Math.abs((bar?.cards?.[0]?.w ?? 0) - 420) <= 1, `${v} coluna recolhida: cartão com 420px`, bar?.cards?.[0]?.w)
+        ok((bar?.cards?.[0]?.w ?? 0) >= 420 && (bar?.cards?.[0]?.w ?? 0) <= 721, `${v} coluna recolhida: cartão entre 420 e 720px (cresce com o ecrã)`, bar?.cards?.[0]?.w)
         await shot(page, `O7-barra-${vname}-coluna-recolhida`)
         if (bar?.footerBox) await shot(page, `O7-barra-${vname}-coluna-recolhida-recorte`, { clip: { x: 0, y: bar.footerBox.t - 4, width: viewport.width, height: bar.footerBox.h + 8 } })
         await page.click('button[aria-label="Alinhamento"]')
@@ -1201,6 +1384,23 @@ try {
       checkBar(`${v} com sync (2.ª)`, bar, '03', "Isn't She Lovely", { strip: !phone && !wide, sync: true })
       ok(bar?.kids?.includes('deck') && (await countOf(page, '[aria-label="Sincronização da letra"]')) === 1, `${v} com sync: transporte no visor`)
       await shot(page, `O7-barra-${vname}-sync`)
+      if (wide) {
+        // Coluna recolhida com o transporte: o cartão cresce e o transporte não fica a flutuar num visor largo
+        await page.click('button[aria-label="Alinhamento"]')
+        await page.waitForTimeout(300)
+        bar = await barInfo(page)
+        checkBar(`${v} com sync, coluna recolhida`, bar, '03', "Isn't She Lovely", { strip: true, sync: true })
+        const tr = await page.evaluate(() => {
+          const t = document.querySelector('[aria-label="Sincronização da letra"]')?.getBoundingClientRect()
+          const dk = document.querySelector('[class*="_controlsRow_"] > [class*="_deck_"]')?.getBoundingClientRect()
+          return t && dk ? { esquerda: Math.round(t.left - dk.left), direita: Math.round(dk.right - t.right) } : null
+        })
+        ok(!!tr && tr.esquerda <= 100 && tr.direita <= 100, `${v} com sync, coluna recolhida: sem vazios grandes à volta do transporte (≤ 100px)`, tr)
+        ok((bar?.cards?.[0]?.w ?? 0) > 420, `${v} com sync, coluna recolhida: o cartão "A seguir" cresce (> 420px)`, bar?.cards?.[0]?.w)
+        await shot(page, `O7-barra-${vname}-sync-coluna-recolhida`)
+        if (bar?.footerBox) await shot(page, `O7-barra-${vname}-sync-coluna-recolhida-recorte`, { clip: { x: 0, y: bar.footerBox.t - 4, width: viewport.width, height: bar.footerBox.h + 8 } })
+        await page.click('button[aria-label="Alinhamento"]')
+      }
       // Concerto offline-first (5 músicas): 1.ª e a última (sem seguinte)
       bar = await at(SID, 1)
       checkBar(`${v} ${OFF_NAME} 1.ª`, bar, '02', 'Carrossel de Agosto', { strip: !phone && !wide })
@@ -1219,7 +1419,16 @@ try {
     opened.push(ctx)
     await page.goto(`${BASE}/settings`, { waitUntil: 'domcontentloaded' })
     ok((await idbKeys(page)).some(k => k.startsWith('u:u1:concert:')), 'O6: antes, há concertos do u1 guardados')
+    // Uma ordem mudada sem rede ainda por enviar, e anotações do Ensaio: uma já na cloud, outra por juntar (pend)
+    await idbPut(page, `u:u1:order:${SID}`, { userId: 'u1', setlistId: SID, ids: ['ssO2', 'ssO1', 'ssO3', 'ssO4', 'ssO5'], at: Date.now() })
+    await page.evaluate(([a, b]) => {
+      localStorage.setItem('gigio_ann_u_u1_sgO4', a)
+      localStorage.setItem('gigio_ann_u_u1_sgPend', b)
+    }, [JSON.stringify(P_LOCAL), JSON.stringify({ ...P_LOCAL, pend: 1 })])
     await page.click('button:has-text("Terminar sessão")')
+    // Sem rede a ordem não segue: o diálogo diz que se perde (nunca em silêncio)
+    const dlgText = await page.locator(':is([role="dialog"], [role="alertdialog"])').first().textContent({ timeout: 4000 }).catch(() => '')
+    ok(dlgText.includes(`Há uma ordem por enviar de "${OFF_NAME}" que se perde`), 'O6: terminar sessão com uma ordem por enviar → o diálogo avisa', dlgText)
     await page.click(confirmBtn('Terminar sessão'))
     await page.waitForURL(u => new URL(u).pathname === '/auth', { timeout: 10000 }).catch(() => {})
     ok(pathOf(page) === '/auth', 'O6: terminar sessão SEM REDE → /auth', page.url())
@@ -1227,8 +1436,8 @@ try {
     ok(keys.length === 0, 'O6: IndexedDB vazio depois de terminar sessão', keys)
     const ls = await page.evaluate(() => Object.keys(localStorage).filter(k => /^sb-|gigio_projects|gigio-concert-pos|gigio-offline|gigio_dashboard|gigio_concert/.test(k)))
     ok(ls.length === 0, 'O6: sessão e caches do localStorage apagadas', ls)
-    const annLeft = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('gigio_ann_v1_')))
-    if (annLeft.length) console.log(`  (nota) anotações deste aparelho ficam no localStorage depois de terminar sessão (decisão documentada): ${annLeft.join(', ')}`)
+    const annLeft = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('gigio_ann')).sort())
+    ok(JSON.stringify(annLeft) === JSON.stringify(['gigio_ann_u_u1_sgPend']), 'O6: terminar sessão apaga as anotações do u1 já na cloud; as por juntar (pend) ficam, só dele', annLeft)
     await page.goto(`${BASE}/setlist/${SID}/concert`, { waitUntil: 'domcontentloaded' })
     await page.waitForURL(u => new URL(u).pathname === '/auth', { timeout: 6000 }).catch(() => {})
     ok(pathOf(page) === '/auth' && await countOf(page, S.counterNow) === 0, 'O6: o palco do u1 já não abre (pede login)', page.url())
@@ -1252,7 +1461,7 @@ try {
     async function u2SeesNothing(label) {
       await page.waitForTimeout(2500)  // o guardar em segundo plano do u2 (1,5 s depois do arranque)
       const k = await idbKeys(page)
-      ok(!k.some(x => x.startsWith('u:u1:')), `${label}: nada do u1 no IndexedDB`, k)
+      ok(!k.some(x => x.startsWith('u:u1:') && !x.includes(':order:')), `${label}: nenhuma cópia do u1 no IndexedDB`, k)
       await netOff(ctx)
       await page.goto(`${BASE}/setlists`, { waitUntil: 'domcontentloaded' })
       await page.waitForSelector('text=Nenhum concerto guardado', { timeout: 6000 }).catch(() => {})
@@ -1275,11 +1484,15 @@ try {
     await login(USER.email)
     const back = await until(async () => (await idbKeys(page)).includes(`u:u1:concert:${SID}`), 15000, 300)
     ok(!!back, 'O6: o u1 volta a entrar e a cópia volta a ser guardada')
+    // Uma ordem do u1 por enviar quando a sessão dele cai: fica (só ids), para seguir quando ele voltar
+    await idbPut(page, `u:u1:order:${SID}`, { userId: 'u1', setlistId: SID, ids: ['ssO2', 'ssO1', 'ssO3', 'ssO4', 'ssO5'], at: Date.now() })
     await page.evaluate(k => localStorage.removeItem(k), AUTH_KEY)
     await login(USER2.email)
     ok(pathOf(page) === '/', 'O6: o u2 entra no lugar do u1', page.url())
-    const gone = await until(async () => !(await idbKeys(page)).some(x => x.startsWith('u:u1:')), 6000, 300)
+    const gone = await until(async () => !(await idbKeys(page)).some(x => x.startsWith('u:u1:') && !x.includes(':order:')), 6000, 300)
     ok(!!gone, 'O6: as cópias do u1 saem quando entra outro utilizador', await idbKeys(page))
+    ok((await idbKeys(page)).includes(`u:u1:order:${SID}`), 'O6: a ordem por enviar do u1 fica (não se perde em silêncio)', await idbKeys(page))
+    ok(!(await page.evaluate(() => Object.keys(localStorage).some(k => k.startsWith('gigio_ann_u_u2_')))), 'O6: o u2 não fica com anotações do u1')
     await u2SeesNothing('O6 u2 depois de a sessão do u1 cair')
     ok(errors.length === 0, 'O6: sem erros na página', errors)
   })
@@ -1380,6 +1593,276 @@ try {
     ok(missing(keys).length === 0, 'O8b: a rede volta → o guardar retoma e guarda os que faltavam',
       { faltam: missing(keys), esperei: `${Math.round((Date.now() - tBack) / 1000)} s`, limiteDoGuardar: await throttleOf(page) })
     ok(errors.length === 0, 'O8b: sem erros na página', errors)
+    await ctx.close()
+    opened.length = 0
+
+    // c) Rede fraca: só o 1.º pedido das músicas falha (o browser continua "online"); a sonda
+    //    vê que há internet e a volta seguinte guarda tudo — sem esperar 10 min
+    const profC = mkdtempSync(path.join(os.tmpdir(), 'gigio-off-e2e-o8c-'))
+    tmpDirs.push(profC)
+    let failed = 0
+    NET.gate = ({ table, method }) => {
+      if (table !== 'setlist_songs' || method !== 'GET') return null
+      NET.gate = null
+      failed++
+      return Promise.resolve('net')
+    }
+    ;({ ctx, page, errors } = await launchDevice(profC))
+    opened.push(ctx)
+    const tC = Date.now()
+    await page.goto(`${BASE}/setlists`, { waitUntil: 'domcontentloaded' })
+    keys = await until(async () => { const k = await concertKeys(page); return missing(k).length === 0 ? k : null }, 25000, 500) ?? await concertKeys(page)
+    ok(failed === 1 && missing(keys).length === 0, 'O8c: um pedido falhado não deixa o guardar parado 10 min — a volta seguinte guarda tudo',
+      { falhou: failed, faltam: missing(keys), aoFimDe: `${Math.round((Date.now() - tC) / 1000)} s`, limiteDoGuardar: await throttleOf(page) })
+    ok(errors.length === 0, 'O8c: sem erros na página', errors)
+  })
+
+  // ── Aparelhos sem SW para os cenários que não precisam dele ──
+  /**
+   * Um "aparelho" (contexto novo, sem SW) já com sessão. `quiet`: o guardar em
+   * segundo plano não corre (o limite marcado agora) — o cenário controla o
+   * que fica guardado. `init`: script extra antes da app (instrumentação)
+   */
+  async function device(browser, { viewport = TABLET_PORT, session = fresh(SESSION), quiet = false, init = null } = {}) {
+    const ctx = await browser.newContext({ viewport, deviceScaleFactor: 2, serviceWorkers: 'block' })
+    await wire(ctx)
+    await ctx.addInitScript(([k, v, quiet]) => {
+      try {
+        if (!localStorage.getItem('__e2e_seeded')) {
+          localStorage.setItem('__e2e_seeded', '1')
+          localStorage.setItem(k, v)
+          if (quiet) localStorage.setItem('gigio-offline-prefetch-u1', String(Date.now()))
+        }
+      } catch { /* */ }
+    }, [AUTH_KEY, JSON.stringify(session), quiet])
+    if (init) await ctx.addInitScript(init)
+    const page = await ctx.newPage()
+    const errors = []
+    page.on('pageerror', e => errors.push(String(e).split('\n')[0]))
+    return { ctx, page, errors }
+  }
+  const statusOf = page => page.locator('[data-offline-status]').first().getAttribute('data-offline-status').catch(() => null)
+  const waitStatus = (page, want, timeout = 8000) => until(async () => (await statusOf(page)) === want, timeout, 200)
+
+  // ══ O9 ═════════════════════════════════════════════════════════════════════
+  if (want('O9')) await scenario('O9', 'Concerto com data passada há mais de 30 dias aberto com rede; IndexedDB bloqueado', async opened => {
+    const browser = await chromium.launch({ executablePath: EXE })
+    opened.push(browser)
+    let { ctx, page, errors } = await device(browser, { quiet: true })
+    await page.goto(`${BASE}/setlist/${PAST_ID}`, { waitUntil: 'domcontentloaded' })
+    ok(!!(await waitStatus(page, 'saved')), 'O9: alinhamento antigo (há 45 dias) aberto com rede → "Disponível offline"', await statusOf(page))
+    const st = await textOf(page, '[data-offline-status]')
+    ok(/Disponível offline/.test(st) && /Guardado às \d\d:\d\d/.test(st), 'O9: "Disponível offline · Guardado às HH:MM"', st)
+    ok((await idbKeys(page)).includes(`u:u1:concert:${PAST_ID}`), 'O9: e a cópia está MESMO no IndexedDB (não foi podada ao gravar)', await idbKeys(page))
+    const ent = (await idbGet(page, 'u:u1:index'))?.find?.(e => e.setlistId === PAST_ID)
+    ok(!!ent && typeof ent.openedAt === 'number', 'O9: no índice, aberto à mão (openedAt)', ent)
+    await shot(page, 'O9-concerto-antigo-guardado')
+    // Sem rede, num separador novo (a memória da app vazia = app reaberta)
+    NET.down = true
+    const p2 = await ctx.newPage()
+    await p2.goto(`${BASE}/setlist/${PAST_ID}/concert`, { waitUntil: 'domcontentloaded' })
+    const up = await waitStage(p2, '01', 6000)
+    const s = await stage(p2)
+    ok(up && s.empty === null && s.lines.includes('Pela estrada fora vai a carrinha azul'), 'O9: sem rede, o palco tem o concerto antigo (nunca "não guardado")', { empty: s.empty, lines: s.lines })
+    await p2.close()
+    NET.down = false
+    ok(errors.length === 0, 'O9: sem erros na página', errors)
+    await ctx.close()
+
+    // IndexedDB bloqueado (ex.: definições do browser): nunca "Disponível offline"
+    ;({ ctx, page, errors } = await device(browser, {
+      quiet: true,
+      init: () => { IDBFactory.prototype.open = function () { throw new DOMException('bloqueado', 'SecurityError') } },
+    }))
+    opened.push(ctx)
+    await page.goto(`${BASE}/setlist/${FAR_ID}`, { waitUntil: 'domcontentloaded' })
+    ok(!!(await waitStatus(page, 'blocked')), 'O9: IndexedDB bloqueado → nunca "Disponível offline"', await statusOf(page))
+    ok(/Este browser não deixa guardar para offline/.test(await textOf(page, '[data-offline-status]')), 'O9: diz "Este browser não deixa guardar para offline"', await textOf(page, '[data-offline-status]'))
+    await shot(page, 'O9-indexeddb-bloqueado')
+    ok(errors.length === 0, 'O9: sem erros na página (IndexedDB bloqueado)', errors)
+  })
+
+  // ══ O10 ════════════════════════════════════════════════════════════════════
+  if (want('O10')) await scenario('O10', 'IndexedDB lento a abrir (3 s) no arranque', async opened => {
+    const browser = await chromium.launch({ executablePath: EXE })
+    opened.push(browser)
+    // Com ?slowidb=N, a 1.ª abertura da base da app só é entregue N ms depois (WebKit a frio)
+    const slowIdb = () => {
+      const m = /slowidb=(\d+)/.exec(location.search)
+      if (!m) return
+      const delay = Number(m[1])
+      const orig = IDBFactory.prototype.open
+      let first = true
+      window.__idbOpenedAt = null
+      IDBFactory.prototype.open = function (...a) {
+        const req = orig.apply(this, a)
+        if (!first || a[0] !== 'gigio-offline') return req
+        first = false
+        let h = null
+        Object.defineProperty(req, 'onsuccess', { configurable: true, get() { return h }, set(fn) { h = fn } })
+        req.addEventListener('success', ev => { setTimeout(() => { window.__idbOpenedAt = Date.now(); h && h.call(req, ev) }, delay) })
+        return req
+      }
+    }
+    const { ctx, page, errors } = await device(browser, { quiet: true, init: slowIdb })
+    // Com rede (IndexedDB normal): guarda o sFar
+    await page.goto(`${BASE}/setlist/${FAR_ID}`, { waitUntil: 'domcontentloaded' })
+    ok(!!(await waitStatus(page, 'saved')), 'O10: com rede, o concerto fica guardado', await statusOf(page))
+    // Sem rede, IndexedDB lento: o palco chega à cópia, sem nunca dizer "não guardado"
+    NET.down = true
+    const p2 = await ctx.newPage()
+    const t0 = Date.now()
+    await p2.goto(`${BASE}/setlist/${FAR_ID}/concert?slowidb=3000`, { waitUntil: 'domcontentloaded' })
+    const seen = new Set()
+    const got = await until(async () => {
+      const st = await stage(p2)
+      if (st.empty) seen.add(st.empty)
+      return st.lines.length > 0 ? st : null
+    }, 12000, 150)
+    ok(!!got && got.lines.includes('Pela estrada fora vai a carrinha azul'), `O10: sem rede e IndexedDB lento, o palco chega à cópia (${Date.now() - t0} ms)`, { estados: [...seen] })
+    ok(!seen.has('missing'), 'O10: nunca "Concerto não guardado neste aparelho" pelo caminho', [...seen])
+    await p2.close()
+    // Com rede e IndexedDB lento: o que se guarda enquanto ele não abre vai para lá quando abrir
+    NET.down = false
+    const p3 = await ctx.newPage()
+    await p3.goto(`${BASE}/setlist/${PAST_ID}?slowidb=3000`, { waitUntil: 'domcontentloaded' })
+    // Cada estado visto e se o IndexedDB já tinha aberto nesse instante
+    const trail = []
+    const savedLate = await until(async () => {
+      // Os dois lidos no mesmo instante (statusOf esperaria pelo elemento)
+      const { st, opened } = await p3.evaluate(() => ({
+        st: document.querySelector('[data-offline-status]')?.getAttribute('data-offline-status') ?? null,
+        opened: !!window.__idbOpenedAt,
+      })).catch(() => ({ st: null, opened: false }))
+      if (st && (!trail.length || trail[trail.length - 1].st !== st)) trail.push({ st, opened })
+      return st === 'saved'
+    }, 12000, 100)
+    ok(!trail.some(x => x.st === 'saved' && !x.opened), 'O10: com o IndexedDB ainda a abrir, nunca diz "Disponível offline"', trail)
+    ok(!!savedLate, 'O10: quando o IndexedDB abre, fica guardado e diz "Disponível offline"', trail)
+    await p3.close()
+    const p4 = await ctx.newPage()
+    await p4.goto(`${BASE}/settings`, { waitUntil: 'domcontentloaded' })
+    ok((await idbKeys(p4)).includes(`u:u1:concert:${PAST_ID}`), 'O10: depois de fechar, a cópia está no IndexedDB (não ficou só na memória)', await idbKeys(p4))
+    ok(errors.length === 0, 'O10: sem erros na página', errors)
+  })
+
+  // ══ O11 ════════════════════════════════════════════════════════════════════
+  if (want('O11')) await scenario('O11', 'Sessão recusada pelo servidor a meio do concerto: o palco fica e o ecrã não apaga', async opened => {
+    const browser = await chromium.launch({ executablePath: EXE })
+    opened.push(browser)
+    const wake = () => {
+      window.__wl = { req: 0, rel: 0, active: 0 }
+      try {
+        Object.defineProperty(navigator, 'wakeLock', {
+          configurable: true,
+          value: {
+            request: async () => {
+              window.__wl.req++; window.__wl.active++
+              const s = { released: false, type: 'screen', addEventListener() {}, removeEventListener() {},
+                release: async () => { if (!s.released) { s.released = true; window.__wl.rel++; window.__wl.active-- } } }
+              return s
+            },
+          },
+        })
+      } catch { /* */ }
+    }
+    // A sessão expira daqui a 125 s: o supabase-js tenta renová-la (a cada 30 s) e o servidor recusa
+    const sess = { ...SESSION, expires_in: 125, expires_at: Math.floor(Date.now() / 1000) + 125 }
+    const { page, errors } = await device(browser, { quiet: true, session: sess, init: wake })
+    await page.goto(`${BASE}/setlist/${FAR_ID}/concert`, { waitUntil: 'domcontentloaded' })
+    await waitStage(page, '01', 8000)
+    await page.waitForTimeout(800)
+    const before = await page.evaluate(() => ({ ...window.__wl }))
+    ok(before.req >= 1 && before.active === 1, 'O11: wake lock pedido ao abrir o palco', before)
+    NET.tokenReject = true
+    const t0 = Date.now()
+    await page.waitForFunction(k => !localStorage.getItem(k), AUTH_KEY, { timeout: 75000 }).catch(() => {})
+    const gone = !(await page.evaluate(k => localStorage.getItem(k), AUTH_KEY))
+    ok(gone, `O11: o supabase-js terminou a sessão (recusada pelo servidor, ${Math.round((Date.now() - t0) / 1000)} s)`)
+    await page.waitForTimeout(1200)
+    const s = await stage(page)
+    ok(pathOf(page) === `/setlist/${FAR_ID}/concert` && s.lines.length > 0, 'O11: o palco fica montado, com a letra', { url: page.url(), lines: s.lines.length })
+    const after = await page.evaluate(() => ({ ...window.__wl }))
+    ok(after.rel === 0 && after.active === 1, 'O11: o wake lock NÃO é largado (o ecrã não apaga a meio da música)', after)
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+    await page.waitForTimeout(300)
+    ok((await page.evaluate(() => window.__wl.active)) >= 1, 'O11: e continua depois de a app voltar ao primeiro plano')
+    ok(await countOf(page, '[data-session-gone]') === 1 && /Sem sessão/.test(await textOf(page, '[data-session-gone]')), 'O11: aviso discreto "Sem sessão" no lugar de "Ao vivo"')
+    await page.click(S.next)
+    ok(await waitStage(page, '02', 3000), 'O11: continua a mudar de música')
+    await shot(page, 'O11-sessao-terminada-palco')
+    ok(errors.length === 0, 'O11: sem erros na página', errors)
+  })
+
+  // ══ O12 ════════════════════════════════════════════════════════════════════
+  if (want('O12')) await scenario('O12', 'Letra corrigida na página da música (com rede) → o palco sem rede tem a letra nova', async opened => {
+    const browser = await chromium.launch({ executablePath: EXE })
+    opened.push(browser)
+    const song = TABLES.songs.find(x => x.id === 'sgO5')
+    const keep = { lyrics: song.lyrics, edited_lyrics: song.edited_lyrics, updated_at: song.updated_at }
+    try {
+      const { ctx, page, errors } = await device(browser, { quiet: true })
+      await page.goto(`${BASE}/setlist/${SID}`, { waitUntil: 'domcontentloaded' })
+      ok(!!(await waitStatus(page, 'saved')), 'O12: concerto guardado com rede', await statusOf(page))
+      // Corrigir a letra na página da música (gravação automática)
+      await page.goto(`${BASE}/songs/sgO5?setlist=${SID}`, { waitUntil: 'domcontentloaded' })
+      const ta = page.locator('textarea[aria-label="Letra"]').first()
+      await ta.waitFor({ timeout: 6000 })
+      const NEW = `${LYR.sgO5}\nLinha corrigida antes de sair de casa`
+      await ta.fill(NEW)
+      const saved = await until(async () => {
+        const c = await idbGet(page, `u:u1:concert:${SID}`)
+        return c?.rows?.find(r => r.song?.id === 'sgO5')?.song?.edited_lyrics === NEW
+      }, 8000, 250)
+      ok(NET.writes.some(w => w.table === 'songs' && w.method === 'PATCH'), 'O12: a letra foi gravada no servidor')
+      ok(!!saved, 'O12: a cópia do concerto neste aparelho ficou com a letra nova (sem esperar pelo guardar em segundo plano)')
+      ok(await page.evaluate(() => localStorage.getItem('gigio-offline-prefetch-u1')) === '0', 'O12: o guardar em segundo plano volta a correr já (limite dos 10 min posto a zero)')
+      // Sem rede, o palco
+      NET.down = true
+      const p2 = await ctx.newPage()
+      await p2.goto(`${BASE}/setlist/${SID}/concert`, { waitUntil: 'domcontentloaded' })
+      await waitStage(p2, null, 6000)
+      for (let i = 0; i < 6 && (await stage(p2)).title !== 'Última Volta'; i++) {
+        await p2.click(S.next).catch(() => {})
+        await p2.waitForTimeout(200)
+      }
+      const st = await stage(p2)
+      ok(st.title === 'Última Volta' && st.lines.includes('Linha corrigida antes de sair de casa'), 'O12: sem rede, o palco mostra a letra corrigida', { title: st.title, lines: st.lines })
+      await shot(p2, 'O12-palco-letra-corrigida')
+      ok(errors.length === 0, 'O12: sem erros na página', errors)
+    } finally {
+      Object.assign(song, keep)
+    }
+  })
+
+  // ══ O13 ════════════════════════════════════════════════════════════════════
+  if (want('O13')) await scenario('O13', 'Palco sem rede num concerto não guardado; a rede volta', async opened => {
+    const browser = await chromium.launch({ executablePath: EXE })
+    opened.push(browser)
+    const { page, errors } = await device(browser, { quiet: true })
+    // Wi-Fi da sala sem internet (o browser diz que há rede; os pedidos falham)
+    NET.down = true
+    await page.goto(`${BASE}/setlist/${SID}/concert`, { waitUntil: 'domcontentloaded' })
+    await page.waitForSelector('[data-stage-empty="missing"]', { timeout: 10000 }).catch(() => {})
+    let s = await stage(page)
+    ok(s.empty === 'missing', 'O13: "Concerto não guardado neste aparelho"', s.empty)
+    ok(/Não guardado/i.test(s.deck) && !/Sem músicas/i.test(s.deck), 'O13: o visor diz "Não guardado" (nunca "Sem músicas")', s.deck)
+    ok(await countOf(page, 'button:has-text("Ver concertos guardados")') === 1, 'O13: botão "Ver concertos guardados"')
+    await shot(page, 'O13-palco-nao-guardado')
+    // ✕ sai logo (não há concerto a interromper)
+    await page.click('button[aria-label="Sair do concerto"]')
+    await page.waitForURL(u => new URL(u).pathname === `/setlist/${SID}`, { timeout: 4000 }).catch(() => {})
+    ok(pathOf(page) === `/setlist/${SID}` && await countOf(page, ':is([role="dialog"], [role="alertdialog"])') === 0, 'O13: ✕ sai sem pedir confirmação', page.url())
+    await page.goto(`${BASE}/setlist/${SID}/concert`, { waitUntil: 'domcontentloaded' })
+    await page.waitForSelector('[data-stage-empty="missing"]', { timeout: 10000 }).catch(() => {})
+    // A rede volta: o concerto aparece sem sair do palco
+    NET.down = false
+    const t0 = Date.now()
+    const back = await until(async () => (await stage(page)).lines.length > 0, 25000, 300)
+    s = await stage(page)
+    ok(!!back && s.empty === null && s.lines.includes('As luzes da feira acendem devagar'), `O13: a rede volta → o concerto aparece no palco (${Math.round((Date.now() - t0) / 1000)} s)`, { empty: s.empty, lines: s.lines.slice(0, 2) })
+    ok(!s.offline && s.live, 'O13: "Ao vivo"', { offline: s.offline, live: s.live })
+    ok(errors.length === 0, 'O13: sem erros na página', errors)
   })
 } catch (e) {
   ok(false, 'exceção no teste', String(e?.stack ?? e).split('\n').slice(0, 4).join(' | '))

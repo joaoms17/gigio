@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
+import { useOnline } from '../../hooks/useNetworkStatus'
+import { useToast } from '../../components/Toast'
+import { runQuery } from '../../lib/offline/net'
+import { listConcerts } from '../../lib/offline/store'
 import styles from './CalendarPage.module.css'
 import { mapLegacyProjectColor } from '../../lib/projectColor'
 import { concertWhen, type ConcertWhen } from '../../lib/concertWhen'
@@ -158,21 +162,49 @@ export default function CalendarPage() {
   const [selected, setSelected] = useState<string | null>(todayStr)
   const [events, setEvents] = useState<Setlist[]>([])
   const [loading, setLoading] = useState(true)
+  // Sem rede: o calendário mostra os concertos guardados neste aparelho (nunca "0 concertos")
+  const [offline, setOffline] = useState(false)
+  const online = useOnline()
+  const toast = useToast()
 
   useEffect(() => {
     if (!user) return
     loadEvents()
   }, [user])
 
+  // A rede voltou: troca os guardados pelos verdadeiros
+  useEffect(() => {
+    if (online && offline && user) loadEvents()
+  }, [online])
+
+  /** Sem rede: os guardados neste aparelho (com data) */
+  async function showSaved(userId: string) {
+    const saved = await listConcerts(userId).catch(() => [])
+    setEvents(saved.filter(e => !!e.date).map(e => ({
+      id: e.setlistId,
+      name: e.name,
+      date: e.date as string,
+      venue: e.venue,
+      band_id: e.bandId,
+      band: e.bandId ? { name: e.bandName ?? '', color: e.bandColor ?? '' } : null,
+      setlist_songs: [{ count: e.songCount }],
+    })))
+    setOffline(true)
+    setLoading(false)
+  }
+
   async function loadEvents() {
     if (!user) return
     setLoading(true)
-    const { data: memberships } = await supabase
+    // Sem rede responde logo (e com rede lenta desiste aos 8 s)
+    const mem = await runQuery(supabase
       .from('band_members')
       .select('band_id')
-      .eq('user_id', user.id)
+      .eq('user_id', user.id), 8000)
+    if (mem.network) { await showSaved(user.id); return }
+    const memberships = mem.data as { band_id: string }[] | null
 
-    const bandIds = (memberships ?? []).map((m: any) => m.band_id)
+    const bandIds = (memberships ?? []).map(m => m.band_id)
 
     let query = supabase
       .from('setlists')
@@ -186,8 +218,10 @@ export default function CalendarPage() {
       query = query.eq('owner_id', user.id)
     }
 
-    const { data } = await query
-    setEvents((data ?? []) as unknown as Setlist[])
+    const r = await runQuery(query, 8000)
+    if (r.network) { await showSaved(user.id); return }
+    setEvents((r.data ?? []) as unknown as Setlist[])
+    setOffline(false)
     setLoading(false)
   }
 
@@ -231,6 +265,7 @@ export default function CalendarPage() {
   /* Assistente de criação, com a data do dia selecionado pré-preenchida */
   function createOnSelectedDay() {
     if (!selected) return
+    if (offline) { toast('Criar um concerto precisa de rede'); return }
     navigate(`/concertos/novo?date=${selected}`)
   }
 
@@ -341,6 +376,14 @@ export default function CalendarPage() {
             </button>
           </div>
         </div>
+        {/* Sem rede: só os concertos guardados neste aparelho (os outros aparecem com rede) */}
+        {offline && !loading && (
+          <p className={styles.offlineNote} role="status" data-offline-calendar="">
+            <span className={styles.offlineNoteLed} aria-hidden="true" />
+            <span className={styles.offlineNoteMain}>Sem ligação</span>
+            <span>· Só os guardados neste aparelho</span>
+          </p>
+        )}
       </header>
 
       <div className={styles.body}>
@@ -446,8 +489,9 @@ export default function CalendarPage() {
 
               <div className={styles.dayFoot}>
                 <button
-                  className={styles.secondaryBtn}
+                  className={`${styles.secondaryBtn} ${offline ? styles.isOff : ''}`}
                   onClick={createOnSelectedDay}
+                  aria-disabled={offline || undefined}
                 >
                   <IconPlus />
                   {`Criar concerto a ${selectedDate.getDate()} ${monthShort(selected)}`}

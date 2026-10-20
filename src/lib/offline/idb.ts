@@ -197,8 +197,8 @@ async function withDb<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) =
 }
 
 /**
- * Lê uma chave. `reliable` = o IndexedDB foi consultado (false: ainda não
- * abriu ou falhou — "não há" pode querer dizer só "ainda não se sabe")
+ * Lê uma chave. `reliable` = false quando o IndexedDB ainda está a abrir (ou
+ * a transação falhou): "não há" pode querer dizer só "ainda não se sabe"
  */
 export async function idbRead<T>(key: string): Promise<{ value: T | null; reliable: boolean }> {
   // A memória tem o que foi escrito depois (e ainda não chegou à base)
@@ -208,7 +208,8 @@ export async function idbRead<T>(key: string): Promise<{ value: T | null; reliab
     return () => req.result as T | undefined
   })
   if (memory.has(key)) return { value: memory.get(key) as T, reliable: true }
-  if (!r.ok) return { value: null, reliable: false }
+  // Sem IndexedDB de todo (navegação privada, erro): a memória é tudo o que há — é de confiança
+  if (!r.ok) return { value: null, reliable: idbStatus() === 'unavailable' }
   return { value: r.value === undefined || isDeleted(key) ? null : r.value, reliable: true }
 }
 

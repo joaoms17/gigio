@@ -47,6 +47,9 @@
 }
 .offlineStatusLedWarn { background: var(--warn-fg); }
 .offlineStatusMain { color: var(--text2); font-weight: 700; }
+/* Cada bocado inteiro numa linha: o "·" vai com o texto que se segue
+   (no telemóvel a linha parte sem deixar um "·" pendurado no fim) */
+.offlineStatusItem { white-space: nowrap; }
 .offlineSaveBtn {
   min-height: var(--btn, 44px);
   padding: 0 14px;
@@ -64,11 +67,13 @@
   .offlineSaveBtn:hover:not(:disabled) { background: var(--surface-2); border-color: var(--text3); }
 }
 .offlineSaveBtn:disabled { opacity: 0.6; cursor: default; }
-/* Modal de tom/notas sem rede */
+/* Modal de tom/notas sem rede: 1.º bloco do corpo — a mesma margem dos
+   campos (herda o padding do .modalBody) e à vista sem scroll */
 .ovOffline {
-  margin: 0;
-  padding: 10px 20px 0;
+  margin: 0 0 16px;
+  padding: 0;
   font-size: 14px;
+  line-height: 1.4;
   color: var(--warn-fg);
 }
 
@@ -1108,11 +1113,26 @@
   transition: background-color 0.12s;
 }
 .deleteLink:hover:not(:disabled) { background: var(--danger-soft); }
-/* Sem rede (só leitura): ações de edição apagadas */
-.toolBtn:disabled,
-.deleteLink:disabled,
-.iconBtn:disabled,
-.dragHandle:disabled { opacity: 0.4; cursor: default; }
+/* Sem rede (só leitura): TODAS as ações de edição apagadas da mesma forma.
+   aria-disabled (e não disabled): o toque continua a chegar e diz porquê —
+   no iPad não há title à vista */
+.isOff { opacity: 0.4; cursor: default; }
+@media (hover: hover) {
+  .isOff:hover { background: transparent; }
+  .secondaryBtn.isOff:hover,
+  .toolBtn.isOff:hover { background: var(--surface); border-color: var(--border2); }
+}
+/* O botão principal apagado não fica "castanho" (acento a 40% sobre o escuro): fica neutro */
+.primaryBtn.isOff {
+  opacity: 1;
+  background: var(--surface-2);
+  color: var(--text3);
+}
+.primaryBtn.isOff:hover,
+.primaryBtn.isOff:active { background: var(--surface-2); }
+/* Data sem rede: o seletor nativo não abre; o toque cai no rótulo (que explica) */
+.metaLocked .dateInput { pointer-events: none; }
+.metaLocked { cursor: default; }
 .deleteLink:active:not(:disabled) { background: var(--danger-soft); }
 
 /* ──────────────────────────────────────────

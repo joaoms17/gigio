@@ -349,6 +349,7 @@ export default function ConcertPage() {
   const progressTrackRef      = useRef<HTMLDivElement>(null)
   const scrubRef              = useRef<{ x: number; active: boolean; seeked: boolean } | null>(null)
   const setlistListRef        = useRef<HTMLOListElement>(null)
+  const footerRef             = useRef<HTMLElement>(null)
   const keyHandlerRef         = useRef<(e: KeyboardEvent) => void>(() => {})
   // Última modalidade de input: um botão focado por TOQUE nunca rouba o
   // Espaço/Enter do pedal (só um foco dado por Tab ativa o botão)
@@ -493,11 +494,28 @@ export default function ConcertPage() {
     }
   }, [])
 
-  // Toasts em palco: em cima e sem apanhar toques (ver Toast.module.css) —
-  // um aviso nunca tapa o visor, o "A seguir" nem as teclas de música
+  // Toasts em palco: logo ACIMA da barra de baixo e sem apanhar toques (ver
+  // Toast.module.css) — nunca tapam o visor, o "A seguir", as teclas de
+  // música nem o aviso de pausa no topo da letra. A altura da barra muda
+  // (com/sem progresso, rodar o iPad): mede-se
   useEffect(() => {
-    document.body.setAttribute('data-stage', '')
-    return () => document.body.removeAttribute('data-stage')
+    const body = document.body
+    body.setAttribute('data-stage', '')
+    const el = footerRef.current
+    const place = () => {
+      const top = el?.getBoundingClientRect().top
+      if (top != null) body.style.setProperty('--stage-footer-h', `${Math.max(0, Math.round(window.innerHeight - top))}px`)
+    }
+    place()
+    const ro = typeof ResizeObserver !== 'undefined' && el ? new ResizeObserver(place) : null
+    if (ro && el) ro.observe(el)
+    window.addEventListener('resize', place)
+    return () => {
+      ro?.disconnect()
+      window.removeEventListener('resize', place)
+      body.removeAttribute('data-stage')
+      body.style.removeProperty('--stage-footer-h')
+    }
   }, [])
 
   // ── Load: cópia local primeiro, rede depois ─────────────────────────────
@@ -2169,7 +2187,7 @@ export default function ConcertPage() {
           {/* ── Transport: fader progress (with sync) + keys + film strip ──
               Dentro da coluna do palco: com o alinhamento aberto (≥1024) a coluna
               desce até ao fundo e o deck fica centrado no eixo da letra */}
-          <footer className={styles.footer}>
+          <footer ref={footerRef} className={styles.footer}>
             {showProgress && (
               <div className={styles.progressRow}>
                 <span className={styles.progressTime}>

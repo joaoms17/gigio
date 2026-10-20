@@ -152,7 +152,20 @@ await test('pruneIndex: próximos, últimos usados, passados', () => {
   ]
   const { keep, drop } = L.pruneIndex(list, NOW)
   eq(keep.map(e => e.setlistId).sort(), ['amanha', 'hoje', 'longe', 'passado10', 'passado30', 'semdata'], 'ficam os próximos (até muito longe), sem data e passados ≤ 30 dias')
-  eq(drop.sort(), ['passado200', 'passado31'], 'saem os passados há mais de 30 dias (mesmo usados agora)')
+  eq(drop.sort(), ['passado200', 'passado31'], 'saem os passados há mais de 30 dias nunca abertos à mão (mesmo guardados agora)')
+
+  // Um alinhamento antigo que se vai repetir (ou a data com o ano errado): aberto à mão, fica
+  const day = 86_400_000
+  const old = [
+    entry('aberto45', dayFrom(NOW, -45), t, { openedAt: t - 2 * day }),
+    entry('aberto60', dayFrom(NOW, -60), t, { openedAt: t - 31 * day }),
+    entry('velho', dayFrom(NOW, -90), 0),
+  ]
+  const r1 = L.pruneIndex(old, NOW)
+  eq(r1.keep.map(e => e.setlistId), ['aberto45'], 'passado há 45 dias aberto há 2 dias fica')
+  eq(r1.drop.sort(), ['aberto60', 'velho'], 'aberto há mais de 30 dias (ou nunca) sai')
+  eq(L.pruneIndex(old, NOW, 'velho').keep.map(e => e.setlistId).sort(), ['aberto45', 'velho'], 'keepId (o que se acabou de abrir) nunca sai')
+  ok(!L.pruneIndex(old, NOW, 'velho').drop.includes('velho'), 'keepId não vai para os apagados')
 
   const many = Array.from({ length: 26 }, (_, i) => entry(`p${i}`, dayFrom(NOW, -1 - (i % 20)), t - i * 1000))
   const r2 = L.pruneIndex([...many, entry('prox', dayFrom(NOW, 3), 0)], NOW)
@@ -204,6 +217,33 @@ await test('savedAtLabel', () => {
 await test('parseIndex: robusto', () => {
   eq(L.parseIndex('x'), [], 'não é lista → []')
   eq(L.parseIndex([{ setlistId: 's1', name: 'A', savedAt: 5 }, { nada: 1 }, null]).map(e => [e.setlistId, e.usedAt]), [['s1', 5]], 'entradas estragadas saem; usedAt por omissão = savedAt')
+  const [e] = L.parseIndex([{ setlistId: 's1', name: 'A', savedAt: 5, openedAt: 'ontem', songIds: ['a', 2] }])
+  ok(!('openedAt' in e) && !('songIds' in e), 'openedAt / songIds inválidos saem (não estragam a entrada)', e)
+  const [f] = L.parseIndex([{ setlistId: 's1', name: 'A', savedAt: 5, openedAt: 9, songIds: ['sgA'] }])
+  eq([f.openedAt, f.songIds], [9, ['sgA']], 'openedAt e songIds válidos ficam')
+})
+
+await test('indexEntryOf / applySongChange: música mudada fora do concerto', () => {
+  const c = L.buildConcert({ userId: 'uA', setlist: SETLIST, rows: ROWS, syncs: { sgA: SYNC }, savedAt: 1 })
+  const e = L.indexEntryOf(c, 7, 8)
+  eq([e.usedAt, e.openedAt, e.songIds], [7, 8, ['sgA', 'sgB']], 'índice com openedAt e as músicas da cópia')
+  ok(!('openedAt' in L.indexEntryOf(c, 7)), 'nunca aberto: sem openedAt')
+  const NEW = '[Verso]\nLinha corrigida antes de sair de casa'
+  const c2 = L.applySongChange(c, 'sgB', { song: { edited_lyrics: NEW, original_lyrics: 'não entra', bpm: 120 } })
+  eq([c2.rows[1].song.edited_lyrics, c2.rows[1].song.bpm, c2.rows[1].song.title], [NEW, 120, sgB.title], 'letra nova e bpm; o resto da música fica')
+  ok(!('original_lyrics' in c2.rows[1].song), 'só as colunas que o palco usa')
+  eq(c2.rows[0], c.rows[0], 'as outras músicas não mudam')
+  eq(c2.savedAt, c.savedAt, 'a hora da cópia não muda')
+  const NEWSYNC = [{ time_ms: 500, text: 'Linha corrigida antes de sair de casa' }]
+  eq(L.applySongChange(c, 'sgA', { syncLines: NEWSYNC }).syncs.sgA, NEWSYNC, 'sincronização nova')
+  ok(!('sgA' in L.applySongChange(c, 'sgA', { song: { has_sync: false }, syncLines: null }).syncs), 'sem sync: sai da cópia')
+  eq(L.applySongChange(c, 'sgZ', { song: { bpm: 1 } }), null, 'música que a cópia não tem → null (não grava)')
+})
+
+await test('unsentOrdersText', () => {
+  eq(L.unsentOrdersText([]), '', 'nenhuma → nada')
+  eq(L.unsentOrdersText(['Festa do Largo']), ' Há uma ordem por enviar de "Festa do Largo" que se perde.', 'uma')
+  eq(L.unsentOrdersText(['A', 'B']), ' Há ordens por enviar de "A", "B" que se perdem.', 'várias')
 })
 
 /* ── Store (memória: sem IndexedDB no Node) ── */
@@ -227,16 +267,37 @@ await test('store: cópia por utilizador', async () => {
 
 await test('store: poda ao gravar', async () => {
   for (let i = 0; i < 24; i++) await S.saveConcert(mk('uA', `old${i}`, dayFrom(today, -1 - (i % 25))))
-  await S.saveConcert(mk('uA', 'ancient', dayFrom(today, -60)))
+  const persisted = await S.saveConcert(mk('uA', 'ancient', dayFrom(today, -60)))
   const ids = (await S.listConcerts('uA')).map(e => e.setlistId)
   ok(ids.includes('s1'), 'o próximo fica')
-  ok(!ids.includes('ancient'), 'passado há 60 dias sai logo')
+  ok(!ids.includes('ancient'), 'passado há 60 dias, guardado sem ser aberto (segundo plano), sai logo')
+  eq(persisted, false, 'saveConcert diz que não ficou guardado (nunca "Disponível offline")')
+  eq(await S.storedSavedAt('uA', 's1'), null, 'sem IndexedDB (Node / navegação privada): nada está "mesmo guardado"')
   eq(ids.length, 1 + L.KEEP_RECENT, `próximo + ${L.KEEP_RECENT} recentes`)
   ok(!!S.peekConcert('uA', 'ancient'), 'o passado acabado de abrir fica só na memória desta sessão')
   const kept = ids.filter(id => id.startsWith('old'))
   const dropped = Array.from({ length: 24 }, (_, i) => `old${i}`).filter(id => !kept.includes(id))
   eq(dropped.length, 24 - L.KEEP_RECENT, 'saem os excedentes')
   eq(await S.loadConcert('uA', dropped[0]), null, 'a cópia podada é apagada (não só o índice)')
+
+  // Aberto à mão agora (página do concerto / palco): um alinhamento antigo que se vai repetir fica
+  await S.saveConcert(mk('uA', 'repete', dayFrom(today, -45)), { used: true })
+  const after = await S.listConcerts('uA')
+  const rep = after.find(e => e.setlistId === 'repete')
+  ok(!!rep && typeof rep.openedAt === 'number', 'passado há 45 dias aberto agora fica (com openedAt)', rep)
+  ok(!!(await S.loadConcert('uA', 'repete')), 'e a cópia dele também')
+  await S.saveConcert(mk('uA', 'repete', dayFrom(today, -45)))
+  ok((await S.listConcerts('uA')).some(e => e.setlistId === 'repete'), 'guardado de novo em segundo plano: continua (aberto há pouco)')
+})
+
+await test('store: música mudada fora do concerto atualiza as cópias', async () => {
+  const NEW = '[Verso]\nLinha corrigida antes de sair de casa'
+  const n = await S.patchSongInCopies('uA', 'sgB', { song: { edited_lyrics: NEW } })
+  ok(n >= 2, 'todas as cópias com a música mudam', n)
+  eq((await S.loadConcert('uA', 's1'))?.rows.find(r => r.song.id === 'sgB')?.song.edited_lyrics, NEW, 'a letra nova está na cópia (palco sem rede)')
+  eq(await S.patchSongInCopies('uB', 'sgB', { song: { edited_lyrics: 'x' } }), 0, 'outro utilizador: nenhuma cópia (as de uA não mudam)')
+  eq((await S.loadConcert('uA', 's1'))?.rows.find(r => r.song.id === 'sgB')?.song.edited_lyrics, NEW, 'a de uA ficou como estava')
+  eq(await S.patchSongInCopies('uA', 'sgNenhuma', { song: { bpm: 1 } }), 0, 'música que nenhuma cópia tem: nada muda')
 })
 
 await test('store: patch, tema e ordem pendente', async () => {
@@ -264,14 +325,18 @@ await test('store: entrou outro utilizador / terminar sessão', async () => {
   await S.setPendingOrder('uB', 's9', ['ss0'])
   await S.keepOnlyUser('uA')
   eq(await S.loadConcert('uB', 's9'), null, 'keepOnlyUser: a cópia de outro sai')
-  eq(await S.getPendingOrder('uB', 's9'), null, 'keepOnlyUser: as pendentes de outro saem')
+  eq(await S.listConcerts('uB'), [], 'keepOnlyUser: o índice de outro sai')
+  eq((await S.getPendingOrder('uB', 's9'))?.ids, ['ss0'], 'keepOnlyUser: a ordem por enviar de outro FICA (só ids; segue quando ele entrar)')
   ok(!!(await S.loadConcert('uA', 's1')), 'keepOnlyUser: as do próprio ficam')
 
+  await S.setPendingOrder('uA', 's1', ['ss1', 'ss0'])
   let notified = 0
   const unsub = S.onOfflineChange(() => { notified++ })
-  await S.clearOfflineData()
+  await S.clearOfflineData('uA')
   unsub()
-  eq([await S.loadConcert('uA', 's1'), await S.listConcerts('uA'), await S.loadTheme('uA')], [null, [], null], 'terminar sessão apaga tudo')
+  eq([await S.loadConcert('uA', 's1'), await S.listConcerts('uA'), await S.loadTheme('uA')], [null, [], null], 'terminar sessão apaga as cópias')
+  eq(await S.getPendingOrder('uA', 's1'), null, 'e a ordem por enviar de quem sai (avisado no diálogo)')
+  eq((await S.getPendingOrder('uB', 's9'))?.ids, ['ss0'], 'a ordem por enviar de outro utilizador fica')
   ok(notified > 0, 'avisa a interface')
   await S.saveConcert(mk('uA', 's2', dayFrom(today, 1)))
   eq(await S.loadConcert('uA', 's2'), null, 'depois de terminar sessão nada volta a ser gravado (um prefetch a meio)')
