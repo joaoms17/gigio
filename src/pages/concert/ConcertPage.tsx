@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import { useOnline } from '../../hooks/useNetworkStatus'
@@ -69,6 +69,15 @@ const POS_TTL_MS = 12 * 60 * 60 * 1000
 
 interface SavedPos { rowId: string | null; idx: number; played: string[]; at: number }
 
+/** Linha onde começar quando o palco se abre a partir de uma música (-1 = não está) */
+function findStartRow(rows: Row[], at: { row: string | null; song: string | null }): number {
+  if (at.row) {
+    const i = rows.findIndex(r => r.id === at.row)
+    if (i >= 0) return i
+  }
+  return at.song ? rows.findIndex(r => r.song_id === at.song) : -1
+}
+
 function readSavedPos(setlistId: string | undefined): SavedPos | null {
   if (!setlistId) return null
   try {
@@ -130,11 +139,6 @@ const ICONS = {
   close: (
     <svg width="20" height="20" viewBox="0 0 24 24" {...sp}>
       <path d="M18 6 6 18M6 6l12 12" />
-    </svg>
-  ),
-  edit: (
-    <svg width="20" height="20" viewBox="0 0 24 24" {...sp}>
-      <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
     </svg>
   ),
   pen: (
@@ -237,6 +241,7 @@ export default function ConcertPage() {
   const userId = stageUserId
   const sessionGone = !user && !!userId
   const navigate = useNavigate()
+  const location = useLocation()
   const confirmDialog = useConfirm()
   const toast = useToast()
 
@@ -268,7 +273,23 @@ export default function ConcertPage() {
   })
   // Só quando esta sessão do browser não tem posição (a app foi fechada)
   const [savedPos] = useState(() => (sessionPos === null ? readSavedPos(id) : null))
-  const [songIdx, setSongIdx] = useState(() => sessionPos ?? savedPos?.idx ?? 0)
+  // Aberto a partir de uma música (página da música, detalhes da linha):
+  // ?row=<linha do alinhamento> ou ?song=<música> começa nessa música, por
+  // cima da posição guardada. Lido uma vez; o URL fica limpo logo a seguir
+  // (recarregar ou voltar a entrar retoma onde se ia)
+  const [startAt] = useState(() => {
+    const q = new URLSearchParams(location.search)
+    const row = q.get('row')
+    const song = q.get('song')
+    return row || song ? { row, song } : null
+  })
+  const [songIdx, setSongIdx] = useState(() => {
+    const i = startAt ? findStartRow((peeked?.rows ?? []) as Row[], startAt) : -1
+    return i >= 0 ? i : sessionPos ?? savedPos?.idx ?? 0
+  })
+  useEffect(() => {
+    if (startAt) navigate(location.pathname, { replace: true })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [lineIdx, setLineIdx] = useState(0)
   const [theme, setTheme] = useState<ConcertTheme>(DEFAULT_CONCERT_THEME)
   const [concertName, setConcertName] = useState<string | null>(peeked?.setlist.name ?? null)
@@ -636,9 +657,12 @@ export default function ConcertPage() {
     const rows = applyPendingOrder(c.rows as Row[], localOrderRef.current ?? pendingIds)
     let keepId = currentRowIdRef.current
     if (!posRestoredRef.current) {
-      // 1.ª vez: a posição guardada aponta para uma linha do alinhamento
+      // 1.ª vez: aberto a partir de uma música → essa; senão a posição
+      // guardada aponta para uma linha do alinhamento
       posRestoredRef.current = true
-      if (!keepId && savedPos?.rowId) keepId = savedPos.rowId
+      const start = startAt ? findStartRow(rows, startAt) : -1
+      if (start >= 0) keepId = rows[start].id
+      else if (!keepId && savedPos?.rowId) keepId = savedPos.rowId
     }
     setSongs(rows)
     if (keepId) {
@@ -1900,14 +1924,8 @@ export default function ConcertPage() {
               ) : ICONS.metronome}
             </button>
           )}
-          {/* Editar a letra precisa de rede (a página da música não funciona sem ela) */}
-          <button
-            className={styles.key}
-            onClick={() => currentSong && navigate(`/songs/${currentSong.id}?setlist=${id}`)}
-            disabled={!currentSong || !online}
-            title={online ? 'Editar letra' : 'Editar letra — precisa de rede'}
-            aria-label={online ? 'Editar letra' : 'Editar letra (precisa de rede)'}
-          >{ICONS.edit}</button>
+          {/* Sem "Editar letra" no palco: um toque enganado tirava o cantor do
+              concerto. A letra edita-se fora dele (lista do concerto) */}
           {/* ≥1024: recolhe/expande a coluna; abaixo: abre a folha */}
           <button
             className={`${styles.key} ${listVisible ? styles.keyLatched : ''}`}
