@@ -965,6 +965,35 @@
     overflow: hidden;
   }
 }
+/* ≥1024px: só a lista faz scroll. As colunas ocupam o ecrã abaixo do
+   cabeçalho (--cols-top, medido na página); a lista rola por dentro, sob o
+   seu cabeçalho, e o painel da letra fica sempre à vista. Ecrã baixo: a
+   altura mínima deixa a página rolar como antes */
+@media (min-width: 1024px) {
+  .columns {
+    height: calc(100vh - var(--cols-top, 0px) - 20px);
+    height: calc(100dvh - var(--cols-top, 0px) - 20px);
+    min-height: 420px;
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .songList {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .listHeader { flex-shrink: 0; }
+  .songList > .rows,
+  .songList > .skeletonList,
+  .songList > .empty {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .previewPanel { position: static; max-height: none; min-height: 0; }
+}
 .previewHeader {
   flex-shrink: 0;
   padding: 18px 22px 18px;

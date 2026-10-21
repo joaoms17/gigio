@@ -242,6 +242,32 @@
 }
 .titleRow:focus-within .editHint { opacity: 0; }
 
+/* ▶ Modo concerto (só quando a música vem de um concerto): à direita do
+   título, abre o palco já nesta música. No telemóvel fica só o ícone */
+.concertBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 44px;
+  margin-left: auto;
+  padding: 0 16px;
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.concertBtn svg { color: var(--accent-text); }
+.concertBtn:hover, .concertBtn:active { background: var(--surface-3); }
+.concertBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .concertBtn { width: 44px; padding: 0; justify-content: center; }
+  .concertBtnLabel { display: none; }
+}
+
 /* Input que se mede pelo próprio texto: um ::after invisível com o mesmo
    texto (data-value) ocupa a mesma célula da grelha e dá a largura; o
    input estica para essa largura (e encolhe com ellipsis se não couber).

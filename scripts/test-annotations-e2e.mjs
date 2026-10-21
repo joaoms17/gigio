@@ -54,7 +54,7 @@ const BASE = `http://localhost:${PORT}`
 const LYRICS = [
   '[Verso 1]',                                   // 0
   'A garagem cheira a óleo',                     // 1
-  'O baixo desafinou',                           // 2  ← sublinhado (âmbar, caneta)
+  'O baixo desafinou',                           // 2  ← sublinhado (laranja, caneta)
   'Alguém trouxe bolachas',                      // 3
   'E o metrónomo parou',                         // 4
   '',                                            // 5
@@ -122,7 +122,7 @@ const HL_LINES = [
   '[Verso 1]',                                   // 0
   'A carrinha avariou na curva da serra',        // 1  H1 amarelo "avariou na curva" → H6 azul "na curva da serra" recorta-o
   'Ficámos a afinar à luz do telemóvel',         // 2  H2 toque em "afinar"
-  'O vocalista esqueceu-se do microfone',        // 3  caneta: sublinhado âmbar
+  'O vocalista esqueceu-se do microfone',        // 3  caneta: sublinhado laranja
   '',                                            // 4
   '[Refrão]',                                    // 5
   'Toca mais alto que a chuva lá fora',          // 6  ┐ H3 rosa, 3 linhas: "chuva lá fora"
@@ -1173,7 +1173,7 @@ try {
     await page.click(`button[aria-label="${width}"]`)
   }
   const waitCount = n => page.waitForFunction(([k, n]) => (JSON.parse(localStorage.getItem(k) ?? 'null')?.anchored?.length ?? 0) === n, [ANN_KEY, n], { timeout: 5000 }).then(() => true, () => false)
-  await pick('âmbar', 'Traço médio')
+  await pick('laranja', 'Traço médio')
   await penStroke(page, sh.under)
   ok(await waitCount(1), 'traço 1 (sublinhado) gravado')
   await pick('azul', 'Traço médio')
@@ -1850,7 +1850,7 @@ try {
   pr = await pressedOf(hp, ['Caneta', 'Cor vermelho', 'Traço fino'])
   ok(pr.Caneta === 'true' && pr['Cor vermelho'] === 'true' && pr['Traço fino'] === 'true', 'H: de volta à Caneta, com a cor e a espessura dela', pr)
   ok(await hp.evaluate(() => ['Traço fino', 'Traço médio', 'Traço grosso'].every(l => !document.querySelector(`button[aria-label="${l}"]`).disabled)), 'H: espessuras ativas com a Caneta')
-  await choose(hp, 'Cor âmbar')
+  await choose(hp, 'Cor laranja')
   await choose(hp, 'Traço médio')
   Sx = await snapshot(hp, ENSAIO)
   const ru = Sx.rows[LH.pen][0]
@@ -1860,8 +1860,8 @@ try {
   pr = await pressedOf(hp, ['Marcador laranja'])
   ok(pr['Marcador laranja'] === 'true', 'H: o Marcador lembra a sua cor (laranja)', pr)
   await choose(hp, 'Caneta')
-  pr = await pressedOf(hp, ['Cor âmbar', 'Traço médio'])
-  ok(pr['Cor âmbar'] === 'true' && pr['Traço médio'] === 'true', 'H: a Caneta lembra a sua (âmbar, médio)', pr)
+  pr = await pressedOf(hp, ['Cor laranja', 'Traço médio'])
+  ok(pr['Cor laranja'] === 'true' && pr['Traço médio'] === 'true', 'H: a Caneta lembra a sua (laranja, médio)', pr)
 
   const P_H = await payloadOf(hp, HL_KEY)
   const recsH = hlRecs(P_H)
@@ -1894,7 +1894,7 @@ try {
   const inkCopy = P_H.strokes.find(s => s.id === String(hlInks(P_H)[0]?.[0]))
   ok(!!inkCopy && inkCopy.color === 'rgba(255, 154, 31, 0.4)' && Math.abs(inkCopy.width - HL_INK_EM * 32) <= 0.1,
     'H: cópia antiga — o traço de marcador vai em rgba translúcido e largo', inkCopy && { cor: inkCopy.color, largura: inkCopy.width })
-  ok(P_H.strokes.find(s => s.id === String(penEntries(P_H)[0]?.[0]))?.color === '#F59E0B', 'H: cópia antiga — a caneta continua opaca')
+  ok(P_H.strokes.find(s => s.id === String(penEntries(P_H)[0]?.[0]))?.color === '#F07F00' || P_H.strokes.find(s => s.id === String(penEntries(P_H)[0]?.[0]))?.color === '#FF9A1F', 'H: cópia antiga — a caneta continua opaca')
   await toTop(hp, ENSAIO_SCROLL)
   await shots(hp, 'H1-ensaio-ipad-retrato-claro', ENSAIO_SCROLL)
   await choose(hp, 'Marcador')
