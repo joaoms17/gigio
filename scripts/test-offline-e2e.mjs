@@ -14,7 +14,7 @@
  *   O2 Arranque a frio sem rede (app fechada, modo avião, servidor em baixo)
  *      em '/' → Concertos → o concerto → modo concerto (iPad e telemóvel).
  *   O3 Arranque a frio sem rede direto em /setlist/<id>/concert (retoma a posição).
- *      O3b: sem rede, tocar em "Editar música" (✎ da linha, atalho do tom/notas
+ *      O3b: sem rede, tocar na linha (editar a música), o atalho do tom/notas
  *      no telemóvel, "Editar letra" do painel no iPad deitado).
  *   O4 Sessão: token expirado + modo avião e + Wi-Fi sem internet (35 s) →
  *      nunca /auth; sem sessão nenhuma → /auth.
@@ -823,7 +823,7 @@ try {
     ok(s.cues.some(c => /Intro/i.test(c) && c.includes('2 compassos de acordeão')), 'O2: intro do concerto', s.cues)
     ok(s.lines.includes('As luzes da feira acendem devagar') && s.lines.includes('Dança comigo que a noite está a acabar'), 'O2: letra', s.lines.slice(0, 3))
     ok(s.bg === 'rgb(26, 17, 11)' && s.accent === THEME.accent_color.toLowerCase(), 'O2: tema do palco guardado (fundo e acento)', { bg: s.bg, accent: s.accent })
-    ok(await countOf(page, 'button[aria-label="Editar letra (precisa de rede)"][disabled]') === 1, 'O2: "Editar letra" desativado sem rede')
+    ok(await countOf(page, 'button[aria-label^="Editar letra"]') === 0, 'O2: o palco não tem botão "Editar letra" (toques enganados)')
     await shot(page, 'O2-palco-offline-ipad')
 
     // Alinhamento (folha, iPad ao alto)
@@ -933,7 +933,7 @@ try {
       const q = sel => [...document.querySelectorAll(sel)]
       const st = el => ({ aria: el.getAttribute('aria-disabled'), op: Number(getComputedStyle(el).opacity) })
       return {
-        editar: q('button[aria-label="Editar música"]').map(st)[0],
+        detalhes: q('button[aria-label^="Ver detalhes"]').map(st)[0],
         remover: q('button[aria-label="Remover da setlist"]').map(st)[0],
         pega: q('button[aria-label="Arrastar para reordenar"]').map(st)[0],
         adicionar: q('button').filter(b => b.textContent.trim() === 'Adicionar').map(st)[0],
@@ -942,13 +942,14 @@ try {
         tomNotas: q('button[aria-label="Definir tom e notas neste concerto"]').length,
       }
     })
-    ok(['editar', 'remover', 'pega', 'adicionar', 'duplicar'].every(k => offState[k]?.aria === 'true' && offState[k].op <= 0.45),
-      'O3b: ✎, ✕, pega, Adicionar e Duplicar apagados da mesma forma (aria-disabled, opacidade 0,4)', offState)
+    ok(['remover', 'pega', 'adicionar', 'duplicar'].every(k => offState[k]?.aria === 'true' && offState[k].op <= 0.45),
+      'O3b: ✕, pega, Adicionar e Duplicar apagados da mesma forma (aria-disabled, opacidade 0,4)', offState)
+    ok(!!offState.detalhes && offState.detalhes.aria !== 'true' && offState.detalhes.op > 0.9, 'O3b: o ⓘ (detalhes) continua ativo sem rede', offState.detalhes)
     ok(!offState.lapisTitulo && offState.tomNotas === 0, 'O3b: sem o ✎ do título nem "+ Tom · notas" em só leitura', offState)
-    // iPad ao alto: o ✎ de cada linha
+    // iPad ao alto: tocar na linha = editar a música → sem rede, o aviso
     await trackToasts(page)
-    await page.locator('button[aria-label="Editar música"]').first().click({ force: true })
-    ok(!!(await toastSeen(page, BLOCK)), `O3b iPad ao alto: ✎ "Editar música" → aviso "${BLOCK}"`, await page.evaluate(() => window.__toasts))
+    await page.locator('[class*="_songTitle_"]').first().click({ force: true })
+    ok(!!(await toastSeen(page, BLOCK)), `O3b iPad ao alto: tocar na linha (editar) → aviso "${BLOCK}"`, await page.evaluate(() => window.__toasts))
     ok(!(await page.evaluate(() => window.__toasts.some(t => /^Erro/i.test(t)))), 'O3b: o aviso é neutro (sem "ERRO": é o estado esperado sem rede)', await page.evaluate(() => window.__toasts))
     await page.waitForTimeout(500)
     ok(pathOf(page) === here, 'O3b iPad ao alto: fica na página do concerto (nada se abre sem dados)', page.url())
@@ -1003,10 +1004,10 @@ try {
     await checkDialogCover('O3b iPad ao alto')
     await dlg.locator('button[aria-label="Fechar"]').click().catch(() => {})
 
-    // Telemóvel: o ✎ está escondido; o toque na linha abre o tom/notas, com o atalho para a música
+    // Telemóvel: o ⓘ da linha abre o tom/notas, com o atalho para a música
     await page.setViewportSize(PHONE)
     await page.waitForTimeout(300)
-    await page.locator('[class*="_songTitle_"]', { hasText: 'Carrossel de Agosto' }).first().click()
+    await page.locator('[class*="_songRow_"]', { hasText: 'Carrossel de Agosto' }).first().locator('button[aria-label^="Ver detalhes"]').click()
     await dlg.waitFor({ timeout: 3000 }).catch(() => {})
     ok(/Sem ligação — o tom e as notas não podem ser guardados agora/.test(await dlg.textContent().catch(() => '')), 'O3b telemóvel: tom/notas com o aviso "Sem ligação"')
     ok(await dlg.locator('button', { hasText: /^Guardar$/ }).isDisabled().catch(() => false), 'O3b telemóvel: "Guardar" desativado')
@@ -1048,11 +1049,10 @@ try {
     await page.goto(`${BASE}${here}`, { waitUntil: 'domcontentloaded' })
     await page.waitForSelector('[data-offline-status="readonly"]', { timeout: 6000 }).catch(() => {})
 
-    // iPad deitado (≥1024px): a linha seleciona; o painel tem "Editar letra"
+    // iPad deitado (≥1024px): o ⓘ seleciona a música para o painel e abre o tom/notas; o painel tem "Editar letra"
     await page.setViewportSize(TABLET_LAND)
     await page.waitForTimeout(300)
-    await page.locator('[class*="_songTitle_"]', { hasText: 'Barraca das Farturas' }).first().click()
-    await page.locator('aside button', { hasText: 'Tom & notas' }).first().click().catch(() => {})
+    await page.locator('[class*="_songRow_"]', { hasText: 'Barraca das Farturas' }).first().locator('button[aria-label^="Ver detalhes"]').click()
     await checkDialogCover('O3b iPad deitado', 'O3b-tom-notas-ipad-paisagem')
     await dlg.locator('button[aria-label="Fechar"]').click().catch(() => {})
     const edit = page.locator('aside button', { hasText: 'Editar letra' }).first()
@@ -1260,7 +1260,7 @@ try {
     const after = await idbGet(page, `u:u1:concert:${SID}`)
     ok(after?.rows?.length === 5 && !!after?.syncs?.sgO3 && !!after?.annotations?.sgO1 && JSON.stringify(after.rows.map(r => r.id)) === JSON.stringify(newOrder),
       'O5: a cópia continua completa e com a ordem nova', after?.rows?.map(r => r.id))
-    ok(await countOf(page, 'button[aria-label="Editar letra"]:not([disabled])') === 1, 'O5: "Editar letra" volta a funcionar')
+    ok(await countOf(page, 'button[aria-label^="Editar letra"]') === 0, 'O5: o palco continua sem botão "Editar letra"')
 
     // ── O5b: uma versão nova da app (SW) não recarrega o palco ──
     console.log('— O5b. Versão nova da app com o palco aberto')
@@ -1446,7 +1446,16 @@ try {
     // Outro utilizador entra (com rede) — não vê nada do primeiro
     await netOn(ctx)
     async function login(email) {
-      await page.goto(`${BASE}/auth`, { waitUntil: 'domcontentloaded' })
+      // A app pode já estar a ir para /auth sozinha (sessão terminada): um
+      // goto por cima é interrompido por essa navegação — basta esperar por ela
+      // Entrada limpa em /auth (sem o "voltar para" de um redirecionamento anterior);
+      // se a app interromper o goto com a sua própria ida para /auth, repete-se
+      for (let i = 0; i < 3; i++) {
+        const ok = await page.goto(`${BASE}/auth`, { waitUntil: 'domcontentloaded' }).then(() => true, () => false)
+        if (ok) break
+        await page.waitForTimeout(400)
+      }
+      await page.waitForSelector('#auth-email', { timeout: 8000 })
       await page.fill('#auth-email', email)
       await page.fill('#auth-password', 'segredo123')
       await page.click('button[type="submit"]')

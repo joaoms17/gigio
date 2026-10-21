@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -69,6 +69,7 @@ const P = {
   grip: <path d="M5 8h14M5 12h14M5 16h14" />,
   pencil: <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 7.5h.01" /></>,
+  play: <path d="M8 5.5v13l10.5-6.5z" />,
   close: <path d="M6 6l12 12M18 6L6 18" />,
   plus: <path d="M12 5v14M5 12h14" />,
   note: <><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></>,
@@ -559,6 +560,39 @@ export default function SetlistPage() {
     navigate(`/songs/${songId}?setlist=${id}`)
   }
 
+  // ≥1024px: só a lista faz scroll — as duas colunas ocupam o ecrã abaixo
+  // do cabeçalho e a letra do painel fica sempre à vista. --cols-top = onde
+  // as colunas começam (o cabeçalho e o aviso sem rede mudam de altura)
+  const columnsCleanup = useRef<(() => void) | null>(null)
+  const columnsRef = useCallback((el: HTMLDivElement | null) => {
+    columnsCleanup.current?.()
+    columnsCleanup.current = null
+    if (!el) return
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const update = () => {
+      if (!mq.matches) { el.style.removeProperty('--cols-top'); return }
+      const top = el.getBoundingClientRect().top + (document.scrollingElement?.scrollTop ?? 0)
+      el.style.setProperty('--cols-top', `${Math.round(top)}px`)
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    if (el.previousElementSibling) ro.observe(el.previousElementSibling)
+    ro.observe(document.body)
+    window.addEventListener('resize', update)
+    mq.addEventListener('change', update)
+    columnsCleanup.current = () => {
+      ro.disconnect()
+      window.removeEventListener('resize', update)
+      mq.removeEventListener('change', update)
+    }
+  }, [])
+
+  /** Abre o palco já nesta linha (funciona sem rede: o palco usa a cópia guardada) */
+  async function openConcertAt(row: Row) {
+    if (overrideRow && !readOnly && !await saveOverrides()) return
+    navigate(`/setlist/${id}/concert?row=${row.id}`)
+  }
+
   async function removeSong(ssId: string) {
     const row = songs.find(s => s.id === ssId)
     if (!row || blocked('Tirar músicas do concerto precisa de rede')) return
@@ -939,7 +973,7 @@ export default function SetlistPage() {
         </header>
 
         {/* ≥1024px: duas colunas — alinhamento à esquerda, pré-visualização à direita */}
-        <div className={styles.columns}>
+        <div ref={columnsRef} className={styles.columns}>
           <section className={styles.songList} aria-label="Alinhamento">
             <div className={styles.listHeader}>
               <span className={styles.listLabel}>
@@ -1050,6 +1084,10 @@ export default function SetlistPage() {
                       className={styles.secondaryBtn}
                       onClick={() => openOverrides(selectedRow)}
                     ><Ico size={16}>{P.sliders}</Ico>Tom &amp; notas</button>
+                    <button
+                      className={styles.secondaryBtn}
+                      onClick={() => openConcertAt(selectedRow)}
+                    ><Ico size={16}>{P.play}</Ico>Abrir no concerto</button>
                   </div>
                 </div>
                 {previewText ? (
@@ -1163,6 +1201,11 @@ export default function SetlistPage() {
               <button className={`${styles.ovSongLink} ${readOnly ? styles.isOff : ''}`} onClick={openSongFromOverrides} disabled={ovSaving} aria-disabled={readOnly || undefined}>
                 <Ico size={16}>{P.pencil}</Ico>
                 <span className={styles.ovSongLinkLabel}>Editar letra e música</span>
+                <Ico size={16}>{P.chevron}</Ico>
+              </button>
+              <button className={styles.ovSongLink} onClick={() => openConcertAt(overrideRow)} disabled={ovSaving}>
+                <Ico size={16}>{P.play}</Ico>
+                <span className={styles.ovSongLinkLabel}>Abrir o modo concerto nesta música</span>
                 <Ico size={16}>{P.chevron}</Ico>
               </button>
             </div>

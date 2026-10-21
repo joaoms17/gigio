@@ -19,20 +19,26 @@ import { markCopiesStale } from '../../lib/offline/sync'
 import type { Song } from '../../types'
 import styles from './SongPage.module.css'
 
-/* Cores de anotação — são DADOS (ficam gravadas em cada traço), não tokens
-   da interface. Legíveis sobre a folha clara (--surface) e, no tema escuro,
-   a tinta passa a giz para não desaparecer no preto. */
+/* Cores da caneta — são DADOS (ficam gravadas em cada traço), não tokens
+   da interface: as mesmas do marcador, mais o vermelho. No tema escuro
+   ficam as vivas; na folha clara do Ensaio, tons um pouco mais fundos da
+   mesma cor (o amarelo vivo quase desaparecia no branco). */
 const ANN_COLORS = [
   { id: 'red',    value: '#DC2626', label: 'Vermelho' },
-  { id: 'blue',   value: '#2563EB', label: 'Azul' },
-  { id: 'green',  value: '#16A34A', label: 'Verde' },
-  { id: 'orange', value: '#F59E0B', label: 'Âmbar' },
-  { id: 'dark',   value: '#111111', label: 'Tinta' },
+  { id: 'yellow', value: '#E0B400', label: 'Amarelo' },
+  { id: 'green',  value: '#22B02E', label: 'Verde' },
+  { id: 'pink',   value: '#EC3C93', label: 'Rosa' },
+  { id: 'blue',   value: '#1C96E0', label: 'Azul' },
+  { id: 'orange', value: '#F07F00', label: 'Laranja' },
 ]
-// No tema escuro a tinta (#111) é invisível — troca-se por giz claro
-const ANN_COLORS_DARK = ANN_COLORS.map(c =>
-  c.id === 'dark' ? { ...c, value: '#F2F1EC', label: 'Giz' } : c
-)
+const ANN_COLORS_DARK = [
+  { id: 'red',    value: '#FF4A4A', label: 'Vermelho' },
+  { id: 'yellow', value: '#FFE01A', label: 'Amarelo' },
+  { id: 'green',  value: '#5CE65C', label: 'Verde' },
+  { id: 'pink',   value: '#FF5FAF', label: 'Rosa' },
+  { id: 'blue',   value: '#3DB8FF', label: 'Azul' },
+  { id: 'orange', value: '#FF9A1F', label: 'Laranja' },
+]
 const ANN_WIDTHS = [
   { id: 'thin',   value: 2, label: 'Traço fino' },
   { id: 'mid',    value: 4, label: 'Traço médio' },
@@ -188,6 +194,14 @@ function IconReset({ size = 16 }: IconProps) {
   )
 }
 
+function IconPlay({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" />
+    </svg>
+  )
+}
+
 function IconArrowLeft({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...ICON_PROPS}>
@@ -290,7 +304,7 @@ export default function SongPage() {
   // mostra, também com a borracha ativa — tocar numa cor volta a ela
   const [annInk, setAnnInk] = useState<'pen' | 'highlighter'>('pen')
   // Cada ferramenta lembra a sua cor
-  const [annColor, setAnnColor] = useState(ANN_COLORS[0].value)
+  const [annColor, setAnnColor] = useState(annPalette[0].value)
   const [hlColor, setHlColor] = useState(HL_COLORS[0].value)
   const [annWidth, setAnnWidth] = useState(ANN_WIDTHS[0].value)
   const [annScrollMode, setAnnScrollMode] = useState(false)
@@ -624,6 +638,18 @@ export default function SongPage() {
             />
           </span>
           <span className={styles.editHint} aria-hidden="true"><IconPencil size={18} /></span>
+          {/* Vinda de um concerto: abre o palco já nesta música (grava antes) */}
+          {setlistId && song && (
+            <button
+              type="button"
+              className={styles.concertBtn}
+              onClick={async () => { await save(); navigate(`/setlist/${setlistId}/concert?song=${song.id}`) }}
+              aria-label="Abrir o modo concerto nesta música"
+              title="Modo concerto nesta música"
+            >
+              <IconPlay size={16} /><span className={styles.concertBtnLabel}>Modo concerto</span>
+            </button>
+          )}
         </div>
         <div className={styles.creditRow}>
           <span className={`${styles.sizer} ${styles.artistSizer}`} data-value={artist || 'Artista'}>
