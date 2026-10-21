@@ -257,7 +257,11 @@ export default function SongPage() {
   // Sem rede ao abrir: "Sem ligação" (nunca "Música não encontrada") e volta a tentar quando a rede voltar
   const [loadOffline, setLoadOffline] = useState(false)
   const online = useOnline()
-  const [tab, setTab] = useState<Tab>('lyrics')
+  // ?tab=details (ícone ⓘ do Repertório) abre logo os Detalhes; por omissão a letra
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = searchParams.get('tab')
+    return t === 'details' || t === 'chords' ? t : 'lyrics'
+  })
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   // 'editar' = text editor (default), 'ensaio' = view + annotate
@@ -599,6 +603,16 @@ export default function SongPage() {
           hover/focus sublinhar só o texto. */}
       <div className={styles.songHeader}>
         <div className={styles.titleRow}>
+          {/* ← volta ao menu de onde se veio (Repertório, setlist ou projeto), a gravar antes */}
+          <button
+            type="button"
+            className={styles.backBtn}
+            onClick={async () => { await save(); navigate(backPath()) }}
+            aria-label="Voltar"
+            title="Voltar"
+          >
+            <IconArrowLeft size={22} />
+          </button>
           <span className={`${styles.sizer} ${styles.titleSizer}`} data-value={title || 'Título da música'}>
             <input
               className={styles.titleInput}

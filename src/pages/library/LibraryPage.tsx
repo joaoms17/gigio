@@ -50,7 +50,7 @@ function Svg({ size = 18, stroke = 2, children }: { size?: number; stroke?: numb
 
 const IconSearch = () => <Svg><circle cx="11" cy="11" r="7" /><path d="M16.5 16.5 21 21" /></Svg>
 const IconChevron = () => <Svg size={16}><path d="m6 9 6 6 6-6" /></Svg>
-const IconPencil = () => <Svg><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></Svg>
+const IconInfo = () => <Svg><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 7.5h.01" /></Svg>
 const IconX = ({ size = 18 }: { size?: number }) => <Svg size={size}><path d="M6 6l12 12M18 6 6 18" /></Svg>
 const IconCheck = ({ size = 14 }: { size?: number }) => <Svg size={size} stroke={3}><path d="M20 6 9 17l-5-5" /></Svg>
 const IconDownload = () => <Svg><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></Svg>
@@ -414,17 +414,18 @@ export default function LibraryPage() {
                       {song.has_sync ? <span className={styles.syncChip}>Sync</span> : '—'}
                     </span>
                   </span>
-                  {/* Só ✎ na linha — eliminar vive no modo "Selecionar" (destrutivo fora da parede de ações) */}
+                  {/* Linha = editar a música (letra); ⓘ = ver os detalhes (tom, duração, notas…).
+                      Eliminar vive no modo "Selecionar" (destrutivo fora da parede de ações) */}
                   {!selecting && (
                     <span className={styles.actions}>
                       <button
                         type="button"
                         className={styles.iconBtn}
-                        onClick={e => { e.stopPropagation(); navigate(`/songs/${song.id}`) }}
-                        title="Editar"
-                        aria-label={`Editar ${song.title}`}
+                        onClick={e => { e.stopPropagation(); navigate(`/songs/${song.id}?tab=details`) }}
+                        title="Ver detalhes"
+                        aria-label={`Ver detalhes de ${song.title}`}
                       >
-                        <IconPencil />
+                        <IconInfo />
                       </button>
                     </span>
                   )}
