@@ -68,6 +68,7 @@ function Ico({ size = 16, sw = 2, children }: { size?: number; sw?: number; chil
 const P = {
   grip: <path d="M5 8h14M5 12h14M5 16h14" />,
   pencil: <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />,
+  info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 7.5h.01" /></>,
   close: <path d="M6 6l12 12M18 6L6 18" />,
   plus: <path d="M12 5v14M5 12h14" />,
   note: <><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></>,
@@ -100,11 +101,13 @@ function SortableSongRow({ ss, index, last, selected, readOnly, onSelect, onEdit
   const style = { transform: CSS.Transform.toString(transform), transition }
   const hasOverrides = !!(ss.performance_key || ss.notes || ss.custom_intro || ss.custom_ending)
   const openOv = (e: MouseEvent) => { e.stopPropagation(); onOverrides(ss) }
-  // Ecrã largo: clique seleciona para pré-visualizar no painel direito.
-  // Ecrã estreito (sem painel): clique abre logo o tom/notas — senão o toque não faz nada.
-  const onRowClick = () => {
+  // Linha = editar a música (letra). ⓘ = detalhes neste concerto (tom, notas, intro/final); no ecrã largo
+  // também seleciona a música para a pré-visualização do painel direito.
+  const onRowClick = () => onEdit(ss.song_id)
+  const openDetails = (e: MouseEvent) => {
+    e.stopPropagation()
     if (window.matchMedia('(min-width: 1024px)').matches) onSelect(ss)
-    else onOverrides(ss)
+    onOverrides(ss)
   }
   const dur = fmtDur(ss.song?.duration_sec)
   return (
@@ -159,18 +162,16 @@ function SortableSongRow({ ss, index, last, selected, readOnly, onSelect, onEdit
       </div>
       {/* Duração: coluna mono à direita em todas as larguras */}
       {dur && <span className={styles.songDur}>{dur}</span>}
-      {/* Telemóvel: ✎ escondido (o toque na linha abre tom/notas, com atalho para a música);
-          pega e ✕ só aparecem no modo "Editar" da lista */}
+      {/* ⓘ sempre à vista (detalhes: tom e notas); pega e ✕ só aparecem no modo "Editar" da lista no telemóvel */}
       <div className={styles.songActions}>
         {/* Sem rede: apagadas como o resto da edição; o toque diz porquê (o title não aparece no iPad) */}
         <button
-          className={`${styles.iconBtn} ${styles.iconBtnEdit} ${readOnly ? styles.isOff : ''}`}
-          onClick={e => { e.stopPropagation(); onEdit(ss.song_id) }}
-          aria-disabled={readOnly || undefined}
-          aria-label="Editar música"
-          title={readOnly ? 'Editar música — precisa de rede' : 'Editar música'}
+          className={styles.iconBtn}
+          onClick={openDetails}
+          aria-label={`Ver detalhes de ${ss.song?.title ?? 'música'} neste concerto`}
+          title="Ver detalhes (tom e notas)"
         >
-          <Ico size={17}>{P.pencil}</Ico>
+          <Ico size={17}>{P.info}</Ico>
         </button>
         <button
           className={`${styles.iconBtn} ${styles.iconBtnDanger} ${readOnly ? styles.isOff : ''}`}

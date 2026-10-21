@@ -925,8 +925,8 @@
 @media (hover: hover) { .iconBtnDanger:hover:not(:disabled) { color: var(--danger); } }
 .iconBtnDanger:active:not(:disabled) { color: var(--danger); }
 
-/* ── Telemóvel: a linha é só  01 · título/artista · 4:02  (toque abre tom/notas).
-   ✎ nunca aparece (atalho no modal); pega + ✕ só no modo "Editar". ── */
+/* ── Telemóvel: a linha é  01 · título/artista · 4:02 · ⓘ  (toque edita a música; ⓘ abre tom/notas).
+   Pega + ✕ só no modo "Editar". ── */
 @media (max-width: 640px) {
   .songRow {
     gap: 0;
@@ -936,7 +936,6 @@
   .songNum { min-width: 26px; font-size: 15px; }
   .songMain { padding: 0 10px 0 8px; }
   .songDur { min-width: 40px; padding-right: 2px; font-size: 13px; }
-  .iconBtnEdit { display: none; }
   .rows:not(.rowsEdit) .dragHandle,
   .rows:not(.rowsEdit) .iconBtnDanger { display: none; }
 
