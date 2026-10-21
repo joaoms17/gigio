@@ -1446,7 +1446,16 @@ try {
     // Outro utilizador entra (com rede) — não vê nada do primeiro
     await netOn(ctx)
     async function login(email) {
-      await page.goto(`${BASE}/auth`, { waitUntil: 'domcontentloaded' })
+      // A app pode já estar a ir para /auth sozinha (sessão terminada): um
+      // goto por cima é interrompido por essa navegação — basta esperar por ela
+      // Entrada limpa em /auth (sem o "voltar para" de um redirecionamento anterior);
+      // se a app interromper o goto com a sua própria ida para /auth, repete-se
+      for (let i = 0; i < 3; i++) {
+        const ok = await page.goto(`${BASE}/auth`, { waitUntil: 'domcontentloaded' }).then(() => true, () => false)
+        if (ok) break
+        await page.waitForTimeout(400)
+      }
+      await page.waitForSelector('#auth-email', { timeout: 8000 })
       await page.fill('#auth-email', email)
       await page.fill('#auth-password', 'segredo123')
       await page.click('button[type="submit"]')

@@ -81,7 +81,11 @@ const ANN_KEY = `gigio_ann_u_u1_${SONG_ID}`
 const FONT_KEY = 'gigio-rehearsal-font-size'
 
 // Cores da paleta do Ensaio (SongPage: ANN_COLORS) — identificam cada traço
-const C = { under: '#f59e0b', bracket: '#2563eb', circle: '#dc2626', long: '#16a34a' }
+// Cores da caneta (tema escuro). Na folha clara o Ensaio grava tons mais
+// fundos da mesma cor: fam() leva-os para estes, para os testes valerem nos dois
+const C = { under: '#ff9a1f', bracket: '#3db8ff', circle: '#ff4a4a', long: '#5ce65c' }
+const PEN_LIGHT_TO_DARK = { '#dc2626': '#ff4a4a', '#e0b400': '#ffe01a', '#22b02e': '#5ce65c', '#ec3c93': '#ff5faf', '#1c96e0': '#3db8ff', '#f07f00': '#ff9a1f' }
+const fam = c => { const k = String(c ?? '').toLowerCase(); return PEN_LIGHT_TO_DARK[k] ?? k }
 // Largura escolhida no Ensaio (px a 1em = em do desenho)
 const W = { under: 4, bracket: 4, circle: 2, long: 4 }
 
@@ -430,8 +434,8 @@ function nextTop(S, row) {
 const EPS = 0.5   // px — arredondamentos (âncoras a 3 casas, d a 2 casas)
 
 function pathByColor(S, label, color) {
-  const ps = S.paths.filter(p => p.color === color)
-  if (!ok(ps.length === 1, `${label}: um caminho ${color}`, { encontrados: ps.length, cores: S.paths.map(p => p.color) })) return null
+  const ps = S.paths.filter(p => fam(p.color) === color)
+  if (!ok(ps.length === 1, `${label}: um caminho ${color}`, { encontrados: ps.length, cores: S.paths.map(p => fam(p.color)) })) return null
   return { ...ps[0], subpaths: parsePath(ps[0].d, S.ctm) }
 }
 
@@ -638,10 +642,12 @@ async function shots(page, name, scrollSel) {
  * caixa quando é redesenhado). Ler com window.__stopFrames().
  */
 async function watchFrames(page, root, ln, color) {
-  await page.evaluate(([root, ln, color]) => {
+  // A mesma cor nos dois temas (ver fam)
+  const colors = [color, ...Object.keys(PEN_LIGHT_TO_DARK).filter(k => PEN_LIGHT_TO_DARK[k] === color)]
+  await page.evaluate(([root, ln, colors]) => {
     const host = document.querySelector(root)
     const svg = host.querySelector('svg')
-    const path = [...svg.querySelectorAll(':scope > path')].find(p => (p.getAttribute('stroke') ?? '').toLowerCase() === color)
+    const path = [...svg.querySelectorAll(':scope > path')].find(p => colors.includes((p.getAttribute('stroke') ?? '').toLowerCase()))
     const log = []
     const snap = ev => {
       const el = host.querySelector(`[data-ln="${ln}"]`)
@@ -665,7 +671,7 @@ async function watchFrames(page, root, ln, color) {
     const tick = () => { if (!alive) return; snap('rAF'); requestAnimationFrame(tick) }
     requestAnimationFrame(tick)
     window.__stopFrames = () => { alive = false; ro.disconnect(); return log }
-  }, [root, ln, color])
+  }, [root, ln, colors])
 }
 
 /** Em todos os fotogramas registados o sublinhado está por baixo do verso (no intervalo) e da mesma largura */
@@ -1192,7 +1198,7 @@ try {
   const P = await payloadOf(page)
   ok(P && P.v === 2 && P.em === 32 && P.w > 0 && P.h > 0 && Array.isArray(P.strokes) && P.strokes.length >= 4,
     'payload v2 com em=32 e a cópia antiga {w,h,strokes} em px', P && { v: P.v, em: P.em, w: P.w, h: P.h, strokes: P.strokes?.length })
-  const byColor = Object.fromEntries((P?.anchored ?? []).map(e => [String(e[1]).toLowerCase(), e]))
+  const byColor = Object.fromEntries((P?.anchored ?? []).map(e => [fam(e[1]), e]))
   ok(byColor[C.under]?.[3] === 0 && byColor[C.bracket]?.[3] === 1 && byColor[C.circle]?.[3] === 0 && byColor[C.long]?.[3] === 0,
     'modos: sublinhados e círculo = texto, chaveta = margem', Object.fromEntries(Object.entries(byColor).map(([k, e]) => [k, e[3]])))
   if (byColor[C.circle]) {
@@ -1327,7 +1333,7 @@ try {
     const done = await dev.page.waitForFunction(k => JSON.parse(localStorage.getItem(k) ?? 'null')?.v === 2, ANN_KEY, { timeout: 5000 }).then(() => true, () => false)
     const p = await payloadOf(dev.page)
     ok(done && p?.anchored?.length === 4, `${tag} Ensaio telemóvel: payload antigo passa a v2`, p && { v: p.v, anchored: p.anchored?.length })
-    const enc = Object.fromEntries((p?.anchored ?? []).map(e => [String(e[1]).toLowerCase(), e]))
+    const enc = Object.fromEntries((p?.anchored ?? []).map(e => [fam(e[1]), e]))
     const want = { [C.under]: [LN_UNDER], [C.bracket]: LN_QUAD, [C.circle]: [LN_CIRCLE], [C.long]: [LN_LONG] }
     const got = Object.fromEntries(Object.entries(enc).map(([c, e]) => [c, { modo: e[3], linhas: [...new Set(anchoredLns(e))] }]))
     ok(Object.entries(want).every(([c, lns]) => enc[c] && anchoredLns(enc[c]).every(l => lns.includes(l))) &&
