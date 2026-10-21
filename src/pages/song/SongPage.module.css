@@ -215,6 +215,23 @@
   gap: 4px;                     /* o \00a0 final do .sizer já dá folga ao lápis */
   min-width: 0;
 }
+/* ← Voltar antes do título: 44 px de toque, encostado à margem */
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  margin-left: -10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+}
+.backBtn:hover, .backBtn:active { background: var(--surface-3); color: var(--text); }
+.backBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .editHint {
   display: inline-flex;
   align-items: center;
