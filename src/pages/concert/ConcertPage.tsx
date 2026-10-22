@@ -305,6 +305,9 @@ export default function ConcertPage() {
   const [started, setStarted] = useState(false)
   const [scrollFollowing, setScrollFollowing] = useState(true)
   const [contentView, setContentView] = useState<ContentView>('lyrics')
+  // Vista que o cantor escolheu: por defeito as anotações do Ensaio; mantém-se
+  // ao trocar de música (cai na letra só nas músicas sem anotações/acordes)
+  const [viewPref, setViewPref] = useState<ContentView>('annotations')
   const [metronomeOn, setMetronomeOn] = useState(false)
   // Há anotações visíveis na cloud para esta música? (por música; só quando a cloud respondeu)
   const [annNet, setAnnNet] = useState<Record<string, boolean>>({})
@@ -733,7 +736,7 @@ export default function ConcertPage() {
     setEditOrder(false)
     setTapMarked(false)
     setScrollFollowing(true)
-    setContentView('lyrics')
+    // A vista escolhida (letra, anotações, acordes) mantém-se ao trocar de música
 
     // Voltou há pouco? Retoma (a tocar: onde a música vai agora)
     const mem = posMemoryRef.current.get(row.id)
@@ -1539,6 +1542,11 @@ export default function ConcertPage() {
     [annCopyRaw, annLyrics],
   )
   const hasAnnotations = annLocal || (currentSong && currentSong.id in annNet ? annNet[currentSong.id] : annCopy)
+  // Aplica a vista escolhida a cada música (e quando as anotações chegam)
+  const viewAvail = viewPref === 'annotations' ? !!hasAnnotations : viewPref === 'chords' ? !!rawChords : true
+  useEffect(() => {
+    setContentView(viewAvail ? viewPref : 'lyrics')
+  }, [currentRowId, viewPref, viewAvail])
   const bpm = currentSong?.bpm ?? null
 
   // Progress bar: song duration, falling back to the last timed line
@@ -1893,7 +1901,7 @@ export default function ConcertPage() {
           {hasAnnotations && (
             <button
               className={`${styles.key} ${contentView === 'annotations' ? styles.keyOn : ''}`}
-              onClick={() => setContentView(v => v === 'annotations' ? 'lyrics' : 'annotations')}
+              onClick={() => { const v = contentView === 'annotations' ? 'lyrics' : 'annotations'; setViewPref(v); setContentView(v) }}
               title="Anotações de ensaio"
               aria-label="Anotações de ensaio"
               aria-pressed={contentView === 'annotations'}
@@ -1902,7 +1910,7 @@ export default function ConcertPage() {
           {rawChords && (
             <button
               className={`${styles.key} ${contentView === 'chords' ? styles.keyOn : ''}`}
-              onClick={() => setContentView(v => v === 'chords' ? 'lyrics' : 'chords')}
+              onClick={() => { const v = contentView === 'chords' ? 'lyrics' : 'chords'; setViewPref(v); setContentView(v) }}
               title="Acordes"
               aria-label="Acordes"
               aria-pressed={contentView === 'chords'}
@@ -2256,6 +2264,17 @@ export default function ConcertPage() {
               <div className={styles.deck}>
                 {hasTransport ? (
                   <div className={styles.transport} role="group" aria-label="Sincronização da letra">
+                    <button
+                      type="button"
+                      className={`${styles.key} ${styles.lineKey}`}
+                      onClick={backToCue}
+                      disabled={!started}
+                      title="Voltar ao início da música"
+                      aria-label="Voltar ao início da música"
+                    >
+                      {ICONS.lineBack}
+                      <span className={styles.lineKeyLabel} aria-hidden="true">Início</span>
+                    </button>
                     <button
                       type="button"
                       className={`${styles.key} ${styles.lineKey}`}
