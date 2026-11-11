@@ -22,7 +22,8 @@ import { useOnline } from '../../hooks/useNetworkStatus'
 import { idbAvailable, idbStatus } from '../../lib/offline/idb'
 import { applyPendingOrder, savedAtLabel, type OfflineConcert } from '../../lib/offline/logic'
 import { getPendingOrder, loadConcert, onOfflineChange, patchConcert, setPendingOrder, storedSavedAt } from '../../lib/offline/store'
-import { fetchConcert, sendOrder } from '../../lib/offline/sync'
+import { fetchConcert, markCopiesStale, sendOrder } from '../../lib/offline/sync'
+import { autoSyncSong } from '../../lib/autoSync'
 import type { Setlist, SetlistSong, Song } from '../../types'
 import styles from './SetlistPage.module.css'
 import { mapLegacyProjectColor } from '../../lib/projectColor'
@@ -79,6 +80,7 @@ const P = {
   download: <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />,
   /* Importar: seta a ENTRAR num documento — não se confunde com o download */
   import: <><path d="M5 10V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-1" /><path d="M14 3v5h5M2 14h9M8 11l3 3-3 3" /></>,
+  sync: <><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16" /><path d="M3 21v-5h5" /><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8" /><path d="M21 3v5h-5" /></>,
   copy: <><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></>,
   flag: <path d="M4 21V4h12l-2 4 2 4H4" />,
   search: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>,
@@ -253,6 +255,8 @@ export default function SetlistPage() {
   // O estado da cópia já foi lido (antes disso a linha fica vazia — sem "ainda não está guardado" por um instante)
   const [storeChecked, setStoreChecked] = useState(false)
   const [savingCopy, setSavingCopy] = useState(false)
+  // Procurar sync online das músicas sem sync: progresso (feitas/total) ou null
+  const [autoSync, setAutoSync] = useState<{ done: number; total: number } | null>(null)
   const online = useOnline()
   // Sem rede: só leitura (o modo concerto e os PDF funcionam; mudar o concerto não)
   const readOnly = showingCopy || !online
@@ -385,6 +389,41 @@ export default function SetlistPage() {
   }, [online])
 
   /** "Guardar para offline": lê tudo da rede já (mesmo que um pedido tenha falhado há pouco) */
+  /** Procura no LRCLIB a sync das músicas do concerto que ainda não a têm */
+  async function syncMissing() {
+    if (autoSync || !user || blocked('Procurar sync precisa de rede')) return
+    const seen = new Set<string>()
+    const pending = songs.map(r => r.song).filter((s): s is Song => {
+      if (!s || s.has_sync || seen.has(s.id)) return false
+      seen.add(s.id)
+      return true
+    })
+    if (!pending.length) { toast('Todas as músicas deste concerto já têm sync.'); return }
+    const ok = await confirmDialog({
+      title: 'Procurar sync em falta',
+      message: `Vou procurar no LRCLIB a sincronização de ${pending.length} ${pending.length === 1 ? 'música' : 'músicas'} sem sync. Só é aplicada quando a letra do resultado corresponde à tua; a letra não muda.`,
+      confirmLabel: 'Procurar',
+      cancelLabel: 'Cancelar',
+    })
+    if (!ok) return
+    let synced = 0, nomatch = 0, failed = 0
+    setAutoSync({ done: 0, total: pending.length })
+    for (const [i, song] of pending.entries()) {
+      const r = await autoSyncSong(song, user.id)
+      if (r === 'synced') synced++
+      else if (r === 'nomatch') nomatch++
+      else failed++
+      setAutoSync({ done: i + 1, total: pending.length })
+    }
+    if (synced) markCopiesStale(user.id)
+    await loadSongs()
+    setAutoSync(null)
+    const parts = [`${synced} de ${pending.length} ${pending.length === 1 ? 'música sincronizada' : 'músicas sincronizadas'}`]
+    if (nomatch) parts.push(`${nomatch} sem resultado que corresponda (sincroniza à mão ou no editor com "Procurar sync online")`)
+    if (failed) parts.push(`${failed} com erro (rede ou permissões)`)
+    toast(parts.join(' · '), { type: synced || !failed ? 'success' : 'error' })
+  }
+
   async function saveForOffline() {
     if (savingCopy || !id || !user) return
     setSavingCopy(true)
@@ -965,6 +1004,12 @@ export default function SetlistPage() {
                 <Ico size={16}>{P.download}</Ico>
                 <span className={styles.toolLabel}>Repertório <span className={styles.toolTag}>PDF</span></span>
               </button>
+              {songs.some(r => r.song && !r.song.has_sync) && (
+                <button className={`${styles.toolBtn} ${readOnly ? styles.isOff : ''}`} onClick={syncMissing} disabled={!!autoSync} aria-disabled={readOnly || undefined} title="Procurar no LRCLIB a sincronização das músicas sem sync">
+                  <Ico size={16}>{P.sync}</Ico>
+                  <span className={styles.toolLabel}>{autoSync ? `${autoSync.done}/${autoSync.total}` : 'Sync'} <span className={styles.toolTag}>{autoSync ? 'A procurar' : 'Em falta'}</span></span>
+                </button>
+              )}
               <button className={`${styles.toolBtn} ${readOnly ? styles.isOff : ''}`} onClick={() => { if (!blocked('Duplicar precisa de rede')) setDuplicating(true) }} aria-disabled={readOnly || undefined} title="Duplicar para outro projeto">
                 <Ico size={16}>{P.copy}</Ico><span className={styles.toolLabel}>Duplicar</span>
               </button>

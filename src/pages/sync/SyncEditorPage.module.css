@@ -907,3 +907,27 @@
   .lineRow { min-height: 52px; }
   .lineNum { font-size: 12px; gap: 5px; }
 }
+
+/* Procurar sync online (LRCLIB) — botão secundário ao lado de Guardar */
+.onlineBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 14px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.onlineBtn:active { background: var(--surface-3); }
+.onlineBtn:disabled { opacity: 0.6; cursor: default; }
+@media (max-width: 600px) {
+  .onlineBtn { min-height: 44px; padding: 0 10px; font-size: 13px; white-space: normal; max-width: 96px; line-height: 1.15; }
+}

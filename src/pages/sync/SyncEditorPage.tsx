@@ -5,7 +5,8 @@ import { useAuth } from '../../hooks/useAuth'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
 import type { LyricLine } from '../../types'
-import { restoreSyncTimes, stageLyricsText } from '../../lib/lyricsTiming'
+import { matchExternalSync, restoreSyncTimes, stageLyricsText } from '../../lib/lyricsTiming'
+import SyncSearchModal from './SyncSearchModal'
 import { patchSongInCopies } from '../../lib/offline/store'
 import { markCopiesStale } from '../../lib/offline/sync'
 import styles from './SyncEditorPage.module.css'
@@ -195,6 +196,7 @@ export default function SyncEditorPage() {
   const [speed, setSpeed] = useState(1)
   const [saving, setSaving] = useState(false)
   const [savedOk, setSavedOk] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const lineRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -344,6 +346,42 @@ export default function SyncEditorPage() {
     setTimeout(() => setSavedOk(false), 2000)
   }
 
+  /** Sync do LRCLIB → tempos das linhas do editor (pelo texto). Fica por guardar. */
+  async function applyOnlineSync(syncLines: LyricLine[]): Promise<boolean> {
+    const cur = linesRef.current
+    // Sem letra escrita: as linhas do sync passam a ser as do editor
+    if (cur.length === 0) {
+      const next = syncLines.filter(l => l.text.trim()).map(l => ({ text: l.text, time_ms: l.time_ms }))
+      if (!next.length) { toast('Este resultado não tem linhas de letra.', { type: 'error' }); return false }
+      setLines(next)
+      setCursor(0)
+      setDirty(true)
+      toast(`${next.length} linhas sincronizadas. Revê e carrega em Guardar.`)
+      return true
+    }
+    const match = matchExternalSync(cur.map(l => l.text), syncLines)
+    if (!match) {
+      toast('A letra deste resultado não corresponde à tua. Experimenta outro resultado.', { type: 'error' })
+      return false
+    }
+    if (cur.some(l => l.time_ms !== null)) {
+      const ok = await confirm({
+        title: 'Substituir tempos?',
+        message: `Os tempos atuais vão ser substituídos pelos do resultado online (${match.matched} de ${cur.length} linhas encontradas). Só fica gravado quando carregares em Guardar.`,
+        confirmLabel: 'Substituir',
+        cancelLabel: 'Cancelar',
+      })
+      if (!ok) return false
+    }
+    setLines(cur.map((l, i) => ({ ...l, time_ms: match.times[i] })))
+    setDirty(true)
+    const missing = cur.length - match.matched
+    toast(missing > 0
+      ? `${match.matched} de ${cur.length} linhas sincronizadas. Marca as restantes e carrega em Guardar.`
+      : `Todas as ${cur.length} linhas sincronizadas. Revê e carrega em Guardar.`)
+    return true
+  }
+
   async function goBack() {
     if (dirty) {
       const ok = await confirm({
@@ -389,6 +427,15 @@ export default function SyncEditorPage() {
             <h1 className={styles.songTitle}>{song?.title ?? '...'}</h1>
             {song?.artist && <span className={styles.songArtist}>{song.artist}</span>}
           </div>
+          <button
+            type="button"
+            className={styles.onlineBtn}
+            onClick={() => setSearchOpen(true)}
+            disabled={loading || !song}
+            title="Procurar sincronização no LRCLIB"
+          >
+            Procurar sync online
+          </button>
           <button
             type="button"
             className={`${styles.saveBtn} ${savedOk ? styles.saveBtnOk : ''}`}
@@ -613,6 +660,14 @@ export default function SyncEditorPage() {
           )}
         </div>
       </div>
+      {searchOpen && song && (
+        <SyncSearchModal
+          title={song.title}
+          artist={song.artist}
+          onPick={applyOnlineSync}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
     </div>
   )
 }
