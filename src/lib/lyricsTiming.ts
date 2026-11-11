@@ -408,6 +408,27 @@ export function restoreSyncTimes(
 }
 
 /**
+ * Sync vinda de fora (LRCLIB) → linhas do editor, SÓ pelo texto: ao contrário
+ * de restoreSyncTimes não há plano B por posição — uma sync de outra música
+ * nunca pode emprestar tempos. null se a cobertura ficar abaixo de MIN_COVERAGE.
+ */
+export function matchExternalSync(
+  lines: readonly string[],
+  syncLines: readonly SyncEntry[] | null | undefined,
+): { times: (number | null)[]; matched: number; coverage: number } | null {
+  const sync = syncLines ?? []
+  const stage = parseStageLines(lines.join('\n'))
+  if (stage.length !== lines.length || sync.length === 0) return null
+  const mapped = mapSyncToLyrics(stage, sync)
+  if (mapped.coverage < MIN_COVERAGE) return null
+  const times: (number | null)[] = new Array(lines.length).fill(null)
+  mapped.lineBySync.forEach((j, k) => {
+    if (j >= 0 && times[j] == null) times[j] = validMs(sync[k]?.time_ms)
+  })
+  return { times, matched: times.filter(t => t != null).length, coverage: mapped.coverage }
+}
+
+/**
  * Plano B para uma sync de outra versão da letra: se o NÚMERO de linhas de
  * letra bate certo, a k-ésima entrada de letra vai para a k-ésima linha de
  * letra (secções, símbolos e vazias ficam sem tempo). Senão, null.
