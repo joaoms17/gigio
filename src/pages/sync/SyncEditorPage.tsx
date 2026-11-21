@@ -31,6 +31,14 @@ function parseTimeStr(val: string): number | null {
   return null
 }
 
+/**
+ * Ficheiros aceites para o áudio do editor. Só "audio/*" deixava ficheiros
+ * cinzentos no seletor do iPhone/iPad (MP3 vindos do WhatsApp, Drive, etc.
+ * sem tipo reconhecido): lista também as extensões e os vídeos (o <audio>
+ * toca a faixa de som de um MP4/MOV).
+ */
+const AUDIO_ACCEPT = 'audio/*,video/*,.mp3,.m4a,.aac,.wav,.aif,.aiff,.ogg,.oga,.opus,.flac,.webm,.mp4,.mov,.caf,.amr'
+
 /** Numeração de setlist: 01, 02… */
 function pad2(n: number) {
   return String(n).padStart(2, '0')
@@ -458,7 +466,7 @@ export default function SyncEditorPage() {
                 <span className={styles.uploadFormats}>MP3 · M4A · WAV · OGG</span>
               </span>
               <span className={styles.uploadCta} aria-hidden="true">Escolher ficheiro</span>
-              <input type="file" accept="audio/*" hidden
+              <input type="file" accept={AUDIO_ACCEPT} hidden
                 onChange={e => { const f = e.target.files?.[0]; if (f) handleAudioFile(f) }} />
             </label>
           </div>
@@ -471,6 +479,7 @@ export default function SyncEditorPage() {
               onPause={() => setPlaying(false)}
               onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime ?? 0)}
               onLoadedMetadata={() => setAudioDur(audioRef.current?.duration ?? 0)}
+              onError={() => toast('Este ficheiro não toca neste aparelho. Experimenta um MP3 ou M4A.', { type: 'error' })}
             />
             <div className={`${styles.bar} ${styles.deckGrid}`}>
               {/* Transporte — botões-tecla */}
@@ -534,7 +543,7 @@ export default function SyncEditorPage() {
 
               <label className={styles.changeAudio} title="Mudar ficheiro" aria-label="Mudar ficheiro de áudio">
                 <IconFolder />
-                <input type="file" accept="audio/*" hidden
+                <input type="file" accept={AUDIO_ACCEPT} hidden
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleAudioFile(f) }} />
               </label>
             </div>
