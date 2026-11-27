@@ -224,9 +224,9 @@ function trackWorkers<T>(create: () => T): { result: T; spawned: Worker[] } {
 export async function recognizeImages(
   images: readonly (Blob | HTMLCanvasElement)[],
   opts: { onProgress?: (p: ImportProgress) => void; signal?: AbortSignal } = {},
-): Promise<{ text: string; heading: string | null }> {
+): Promise<{ text: string; heading: string | null; pages: string[] }> {
   const { onProgress, signal } = opts
-  if (images.length === 0) return { text: '', heading: null }
+  if (images.length === 0) return { text: '', heading: null, pages: [] }
   if (isOffline()) throw new ImportError('offline', OFFLINE_OCR_MESSAGE)
   throwIfAborted(signal)
   const total = images.length
@@ -273,6 +273,8 @@ export async function recognizeImages(
     throwIfAborted(signal)
     watch.reading()
     const screens: string[][] = []
+    /** Texto de cada imagem como o Tesseract o dá (parágrafos separados por linha em branco) */
+    const pages: string[] = []
     let heading: string | null = null
     for (let i = 0; i < total; i++) {
       current.index = i
@@ -286,6 +288,7 @@ export async function recognizeImages(
         throwIfAborted(signal)
         const page = linesFromPage(data)
         screens.push(page.lines)
+        pages.push(typeof data.text === 'string' ? data.text : page.lines.join('\n'))
         heading ??= page.heading
       } finally {
         // Liberta a memória do canvas já (iPad com várias fotos grandes) — também num erro/cancelar
@@ -296,7 +299,7 @@ export async function recognizeImages(
       }
     }
     report('A organizar a lista…', 1)
-    return { text: mergeScreens(screens).join('\n'), heading }
+    return { text: mergeScreens(screens).join('\n'), heading, pages }
   } catch (e) {
     if (signal?.aborted) throw abortError()
     throw toImportError(e)

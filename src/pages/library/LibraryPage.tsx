@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useConfirm } from '../../components/ConfirmDialog'
+import { useToast } from '../../components/Toast'
+import { deleteFailureMessage, deleteSongsChunked } from '../../lib/deleteSongs'
 import { supabase } from '../../lib/supabase'
 import ExportPdfSheet from '../../components/ExportPdfSheet'
 import type { PdfData, PdfKind } from '../../lib/pdfExport'
@@ -63,6 +65,8 @@ export default function LibraryPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const confirmDialog = useConfirm()
+  const toast = useToast()
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
   const [songs, setSongs] = useState<Song[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -105,12 +109,16 @@ export default function LibraryPage() {
 
   /** Which setlists use this song — shown before deleting */
   async function setlistsUsing(songIds: string[]): Promise<string[]> {
-    const { data } = await supabase
-      .from('setlist_songs')
-      .select('setlist:setlists(name)')
-      .in('song_id', songIds)
-    const names = (data ?? []).map((r: any) => r.setlist?.name).filter(Boolean)
-    return [...new Set(names)] as string[]
+    // Por blocos (centenas de ids num só pedido dão um URL comprido demais)
+    const names: string[] = []
+    for (let i = 0; i < songIds.length; i += 50) {
+      const { data } = await supabase
+        .from('setlist_songs')
+        .select('setlist:setlists(name)')
+        .in('song_id', songIds.slice(i, i + 50))
+      names.push(...(data ?? []).map((r: any) => r.setlist?.name).filter(Boolean))
+    }
+    return [...new Set(names)]
   }
 
   function toggleSelect(id: string) {
@@ -149,9 +157,20 @@ export default function LibraryPage() {
         })
     if (!confirmed) return
     setBulkBusy(true)
-    await supabase.from('songs').delete().in('id', ids)
-    setSongs(prev => prev.filter(s => !selection.has(s.id)))
+    setBulkProgress(ids.length > 50 ? { done: 0, total: ids.length } : null)
+    const res = await deleteSongsChunked(ids, { onProgress: (done, total) => { if (total > 50) setBulkProgress({ done, total }) } })
+    // Só saem da lista as que foram mesmo apagadas; as outras ficam selecionadas para tentar de novo
+    const gone = new Set(res.deleted)
+    setSongs(prev => prev.filter(s => !gone.has(s.id)))
     setBulkBusy(false)
+    setBulkProgress(null)
+    const failMsg = deleteFailureMessage(res)
+    if (failMsg) {
+      setSelection(new Set(res.failed))
+      toast(failMsg, { type: 'error' })
+      return
+    }
+    toast(`${res.deleted.length} ${res.deleted.length === 1 ? 'música eliminada' : 'músicas eliminadas'}`, { type: 'success' })
     exitSelectMode()
   }
 
@@ -304,7 +323,11 @@ export default function LibraryPage() {
               <span className={`${styles.check} ${allFilteredSelected ? styles.checkOn : ''}`} aria-hidden="true">
                 {allFilteredSelected && <IconCheck size={13} />}
               </span>
-              <span>{allFilteredSelected ? 'Limpar seleção' : 'Selecionar tudo'}</span>
+              <span>
+                {allFilteredSelected
+                  ? 'Limpar seleção'
+                  : hasFilters ? `Selecionar as ${filtered.length} filtradas` : `Selecionar tudo · ${filtered.length}`}
+              </span>
             </button>
           </div>
         ) : !loading && filtered.length > 0 ? (
@@ -449,7 +472,7 @@ export default function LibraryPage() {
           </span>
           <button type="button" className={styles.bulkDeleteBtn} onClick={bulkDelete} disabled={bulkBusy}>
             <IconTrash />
-            <span>{bulkBusy ? 'A eliminar…' : 'Eliminar'}</span>
+            <span>{bulkBusy ? (bulkProgress ? `A eliminar ${bulkProgress.done}/${bulkProgress.total}…` : 'A eliminar…') : 'Eliminar'}</span>
           </button>
         </div>
       )}

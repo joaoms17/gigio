@@ -5,6 +5,7 @@
 ═══════════════════════════════════════════════════════════════ */
 import type { ImportProgress } from './types'
 import { ImportError, throwIfAborted } from './errors'
+import { detectLyricsPages, textToPages, type PageLines } from './lyricsPages'
 
 export interface SourceText {
   text: string
@@ -14,6 +15,8 @@ export interface SourceText {
   image?: boolean
   /** Título detetado (linha de letra maior no topo do PDF/imagem), para sugerir o nome */
   heading?: string | null
+  /** PDF: as linhas de cada página (para ler como PDF de LETRAS — uma página = uma música) */
+  pages?: PageLines[]
 }
 
 export interface SourceOptions {
@@ -60,24 +63,47 @@ export async function readPdf(file: File, opts: SourceOptions = {}): Promise<Sou
   opts.onProgress?.({ label: 'A ler o PDF…', progress: null })
   const pdf = await import('../pdfSetlist')
   throwIfAborted(opts.signal)
-  const { lines, heading } = await pdf.extractPdfLines(file)
+  const { lines, heading, pageLines, pages: pageCount } = await pdf.extractPdfLines(file, { maxPages: MAX_LYRICS_PAGES })
   throwIfAborted(opts.signal)
   const text = lines.join('\n')
-  if ((text.match(/\p{L}/gu) ?? []).length >= 6) return { text, ocr: false, heading }
-  // PDF digitalizado (só imagem): renderizar e ler com OCR
+  if ((text.match(/\p{L}/gu) ?? []).length >= 6) return { text, ocr: false, heading, pages: pageLines }
+  // PDF digitalizado (só imagem): renderizar e ler com OCR, página a página
   opts.onProgress?.({ label: 'PDF sem texto — a ler como imagem…', progress: null })
-  const canvases = await pdf.renderPdfPages(file, { maxPages: 4, targetWidth: 1700 })
-  try {
-    throwIfAborted(opts.signal)
-    if (canvases.length === 0) throw new ImportError('empty', 'O PDF não tem páginas legíveis.')
-    const { recognizeImages } = await import('./ocr')
-    const r = await recognizeImages(canvases, opts)
-    return { text: r.text, ocr: true, heading: r.heading }
-  } finally {
-    // Páginas até 1700 px de largura (~15 MB cada): libertar já, também num erro/cancelar
-    pdf.releaseCanvases(canvases)
+  const { recognizeImages } = await import('./ocr')
+  const ocrBatch = async (firstPage: number, label?: (i: number, n: number) => string) => {
+    const canvases = await pdf.renderPdfPages(file, { maxPages: OCR_BATCH, targetWidth: 1700, firstPage, signal: opts.signal })
+    try {
+      throwIfAborted(opts.signal)
+      return canvases.length ? await recognizeImages(canvases, {
+        signal: opts.signal,
+        onProgress: label ? p => opts.onProgress?.({ ...p, label: label(firstPage, canvases.length) }) : opts.onProgress,
+      }) : null
+    } finally {
+      // Páginas até 1700 px de largura (~15 MB cada): libertar já, também num erro/cancelar
+      pdf.releaseCanvases(canvases)
+    }
   }
+  // As primeiras 4 páginas, como sempre (lista de títulos)
+  const r = await ocrBatch(1)
+  if (!r) throw new ImportError('empty', 'O PDF não tem páginas legíveis.')
+  const pages: PageLines[] = r.pages.map(t => textToPages(t)[0])
+  // Parece um PDF de LETRAS com mais páginas: ler também as restantes (até ao limite)
+  const total = Math.min(pageCount || (await pdf.countPdfPages(file)), MAX_LYRICS_PAGES)
+  if (total > OCR_BATCH && detectLyricsPages(pages).mode === 'lyrics') {
+    for (let first = OCR_BATCH + 1; first <= total; first += OCR_BATCH) {
+      throwIfAborted(opts.signal)
+      const more = await ocrBatch(first, f => `A ler página ${Math.min(f, total)}–${Math.min(f + OCR_BATCH - 1, total)} de ${total}…`)
+      if (!more) break
+      pages.push(...more.pages.map(t => textToPages(t)[0]))
+    }
+  }
+  return { text: r.text, ocr: true, heading: r.heading, pages }
 }
+
+/** Máximo de páginas lidas num PDF de letras (cada página = uma música) */
+const MAX_LYRICS_PAGES = 60
+/** Páginas digitalizadas lidas por OCR de cada vez (memória no iPad) */
+const OCR_BATCH = 4
 
 /** Uma ou mais imagens (pela ordem) → texto via OCR. */
 export async function readImages(files: readonly Blob[], opts: SourceOptions = {}): Promise<SourceText> {

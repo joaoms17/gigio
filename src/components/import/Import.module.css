@@ -1168,3 +1168,112 @@
   .confirmBtn { margin-left: 0; }
   .zoomOverlay { padding: 56px 8px 8px; }
 }
+
+/* ── PDF de letras: escolher como ler ── */
+.modeChoice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.modeChoiceLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.modeSeg {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-3);
+  border-radius: var(--radius-btn);
+}
+.modeOpt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 56px;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--text2);
+  border: none;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.modeOptOn {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.modeOptTitle {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.modeOptSub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.modeOptTag {
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  border: 1px solid currentColor;
+  color: var(--text2);
+  font-weight: 700;
+}
+.modeOpt:focus-visible { outline-offset: -2px; }
+
+/* Parar pesquisa / Descartar (no resumo) */
+.stopBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-btn);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.stopBtn svg { flex-shrink: 0; }
+
+/* Pré-visualização da letra no seletor */
+.lyricsBox {
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text2);
+  white-space: pre-wrap;
+}
+
+@media (max-width: 640px) {
+  .modeSeg { grid-template-columns: 1fr; }
+}

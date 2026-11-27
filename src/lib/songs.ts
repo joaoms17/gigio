@@ -89,20 +89,22 @@ export async function createSongFromResult(
   return song as Song
 }
 
-/** Cria uma música sem letra (a letra adiciona-se depois na página da música). */
+/** Cria uma música sem letra (a letra adiciona-se depois na página da música) — ou com a letra dada. */
 export async function createEmptySong(
   title: string,
   artist: string,
   owner: SongOwner,
-  opts: { durationSec?: number | null } = {},
+  opts: { durationSec?: number | null; lyrics?: string } = {},
 ): Promise<Song> {
+  // Letra lida de um documento (PDF de letras): fica como original e como editada
+  const lyrics = (opts.lyrics ?? '').replace(/\r/g, '').trim()
   const { data: song, error } = await supabase.from('songs').insert({
     ...baseRow(owner),
     title: title.trim(),
     artist: (artist ?? '').trim(),
-    lyrics: '',
-    original_lyrics: '',
-    edited_lyrics: '',
+    lyrics,
+    original_lyrics: lyrics,
+    edited_lyrics: lyrics,
     source: 'manual',
     source_provider: 'manual',
     has_sync: false,

@@ -11,7 +11,7 @@ import { useEffect, useId, useMemo, useRef, useState, type DragEvent } from 'rea
 import type { SetlistImporter } from './useSetlistImport'
 import { parseSetlistText } from '../../lib/setlistImport/parse'
 import { pad2 } from '../../lib/setlistImport/text'
-import { IconAlert, IconCamera, IconClose, IconPaste, IconPdf, IconText } from './icons'
+import { IconAlert, IconCamera, IconClose, IconPaste, IconPdf, IconStop, IconText } from './icons'
 import styles from './Import.module.css'
 
 /** 'photo' fica por compatibilidade (FOTO já não tem painel: abre o seletor do sistema). */
@@ -170,7 +170,7 @@ export default function ImportSource({ importer, initialPanel = null, initialTex
         >
           <span className={styles.tileIcon}><IconPdf /></span>
           <span className={styles.tileLabel}>PDF</span>
-          <span className={styles.tileSub}>Ficheiro da setlist</span>
+          <span className={styles.tileSub}>Setlist ou letras</span>
         </button>
         <button
           type="button"
@@ -247,7 +247,9 @@ export default function ImportSource({ importer, initialPanel = null, initialTex
           <div className={styles.busyTop}>
             <span className={styles.busyLabel}>{busy.label}</span>
             {pct !== null && <span className={styles.busyPct}>{pct}%</span>}
-            <button type="button" className={styles.btnGhost} onClick={importer.cancelSource}>Cancelar</button>
+            <button type="button" className={styles.btnSecondary} onClick={importer.cancelSource} aria-label="Parar a leitura">
+              <IconStop />Parar
+            </button>
           </div>
           <div className={styles.track}>
             {pct === null

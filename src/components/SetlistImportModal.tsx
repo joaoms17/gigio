@@ -18,7 +18,7 @@ import { useOnline } from './import/useOnline'
 import { insertSetlistSongs, replaceSetlistSongs, toSetlistInserts } from '../lib/setlistImport/commit'
 import { importErrorMessage, isAbort } from '../lib/setlistImport/errors'
 import { pad2 } from '../lib/setlistImport/text'
-import { IconArrowLeft, IconCheck, IconClose, IconRetry } from './import/icons'
+import { IconArrowLeft, IconCheck, IconClose, IconRetry, IconStop } from './import/icons'
 import styles from './SetlistImportModal.module.css'
 
 interface Props {
@@ -110,8 +110,8 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
     if (total > 0) {
       const ok = await confirm({
         title: 'Voltar ao início?',
-        message: 'A lista lida é descartada e podes importar outra.',
-        confirmLabel: 'Voltar',
+        message: 'A lista lida é descartada (nada é criado) e podes importar outra.',
+        confirmLabel: 'Descartar',
       })
       if (!ok) return
     }
@@ -166,6 +166,12 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
     } catch (e) {
       // Cancelada por ter saído da página: nada foi adicionado e não há nada a dizer
       if (isAbort(e) && !mounted.current) return
+      // Parada com o botão "Parar": diz o que ficou criado (a lista fica em revisão)
+      if (isAbort(e)) {
+        const msg = importErrorMessage(e, 'Importação parada — nada foi adicionado ao concerto.')
+        toast(msg, { type: /já tinh/.test(msg) ? 'error' : 'success' })
+        return
+      }
       toast(importErrorMessage(e, 'Não foi possível adicionar as músicas.'), { type: 'error' })
     } finally {
       inFlight.current = false
@@ -276,6 +282,7 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
                 skipExisting={effectiveMode === 'append' && skipExisting}
                 top={modeControls}
                 disabled={working}
+                onDiscard={() => void back()}
               />
             )
             : <ImportSource importer={importer} />}
@@ -283,9 +290,15 @@ export default function SetlistImportModal({ setlistId, projectId, currentPositi
 
         {inReview && (
           <footer className={styles.footer}>
-            <button type="button" className={styles.btnSecondary} onClick={() => void back()} disabled={working}>
-              <IconArrowLeft />Voltar
-            </button>
+            {importer.committing ? (
+              <button type="button" className={styles.btnSecondary} onClick={importer.cancelCommit}>
+                <IconStop />Parar
+              </button>
+            ) : (
+              <button type="button" className={styles.btnSecondary} onClick={() => void back()} disabled={working}>
+                <IconArrowLeft />Voltar
+              </button>
+            )}
             <button
               type="button"
               className={styles.btnPrimary}

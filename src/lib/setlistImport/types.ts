@@ -87,6 +87,13 @@ export interface ImportRow {
   repeat?: boolean
   /** Tom/notas do concerto copiado (guardados mesmo quando não se copiam: o interruptor volta a pô-los) */
   sourceExtra?: SetlistSongExtra
+  /**
+   * Letra lida do documento (PDF de letras: uma página = uma música). Com letra, a linha não
+   * procura online: cria a música com esta letra — ou usa a do repertório, se for escolhida.
+   */
+  lyrics?: string
+  /** Páginas do PDF de onde veio a letra (1-based) */
+  pages?: number[]
 }
 
 /** Estado visível de uma linha na revisão. */
@@ -139,4 +146,6 @@ export interface ImportCommitResult {
   failed: number
   /** Criadas sem letra */
   withoutLyrics: number
+  /** A gravação foi parada a meio (as linhas que faltavam não foram criadas) */
+  cancelled?: boolean
 }
