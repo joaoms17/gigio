@@ -18,10 +18,11 @@ import type { SkippedLine } from '../../lib/setlistImport/parse'
 import { ROW_STATUS_LABEL, isUncertain, medleyPosition, rowStatus } from '../../lib/setlistImport/rows'
 import { resultSourceLabel } from '../../lib/setlistImport/match'
 import { normalizeTitle, pad2 } from '../../lib/setlistImport/text'
+import { lyricsPreview } from '../../lib/setlistImport/lyricsPages'
 import MatchPicker from './MatchPicker'
 import StatusChip from './StatusChip'
 import {
-  IconAlert, IconChevronRight, IconClose, IconDown, IconPlus, IconRetry, IconUp,
+  IconAlert, IconChevronRight, IconClose, IconDown, IconMerge, IconPlus, IconRetry, IconStop, IconUp,
 } from './icons'
 import styles from './Import.module.css'
 
@@ -42,6 +43,8 @@ export interface ImportReviewProps {
    * fica só de leitura e o seletor fecha. Durante `commit()` já fica desativada sozinha.
    */
   disabled?: boolean
+  /** Descartar a lista inteira (volta ao início sem criar nada) — mostra "Descartar" no resumo */
+  onDiscard?: () => void
   className?: string
 }
 
@@ -59,8 +62,36 @@ const SKIP_LABEL: Record<SkippedLine['reason'], string> = {
   other: 'Outro',
 }
 
+const pagesLabel = (pages?: number[]) => (pages?.length
+  ? `${pages.length > 1 ? 'Págs.' : 'Pág.'} ${pages.length > 2 ? `${pages[0]}–${pages[pages.length - 1]}` : pages.join(', ')}`
+  : null)
+
 function rowDetail(row: ImportRow, status: RowStatus): ReactNode {
   const c = row.choice
+  // Música lida de um PDF de letras: artista + primeiros versos (ou "já existe no repertório")
+  if (row.lyrics?.trim() && c?.kind !== 'online') {
+    const pages = pagesLabel(row.pages)
+    if (c?.kind === 'library') {
+      return (
+        <>
+          <span className={cx(styles.rowDetailText, styles.muted)}>
+            Já existe{c.song.artist ? ` · ${c.song.artist}` : ''} — toca para criar nova com esta letra
+          </span>
+          {pages && <span className={styles.monoTag}>{pages}</span>}
+        </>
+      )
+    }
+    const preview = lyricsPreview(row.lyrics)
+    return (
+      <>
+        <span className={styles.rowDetailText}>
+          {row.artist && <>{row.artist}<span className={styles.muted}> · </span></>}
+          <span className={styles.muted}>{preview || 'letra'}</span>
+        </span>
+        {pages && <span className={styles.monoTag}>{pages}</span>}
+      </>
+    )
+  }
   if (c?.kind === 'library') {
     const differs = normalizeTitle(c.song.title) !== normalizeTitle(row.title)
     const confirm = isUncertain(row) ? <span className={cx(styles.monoTag, styles.monoWarn)}>A confirmar</span> : null
@@ -109,7 +140,7 @@ function rowDetail(row: ImportRow, status: RowStatus): ReactNode {
   )
 }
 
-export default function ImportReview({ importer, existingSongIds, skipExisting, hideSummary, hideAddLine, top, disabled: saving, className }: ImportReviewProps) {
+export default function ImportReview({ importer, existingSongIds, skipExisting, hideSummary, hideAddLine, top, disabled: saving, onDiscard, className }: ImportReviewProps) {
   const { rows, counts } = importer
   // A gravar (do contentor ou do próprio commit): nada na lista se mexe
   const committing = importer.committing || !!saving
@@ -233,11 +264,47 @@ export default function ImportReview({ importer, existingSongIds, skipExisting, 
               {loadingLib ? 'A carregar o repertório' : <>A procurar <b>{pad2(resolvedOnline)}/{pad2(needOnline)}</b></>}
             </span>
           )}
+          {counts.searching > 0 && !loadingLib && !committing && (
+            <button type="button" className={styles.stopBtn} onClick={importer.stopSearches}>
+              <IconStop size={14} />Parar pesquisa
+            </button>
+          )}
           {counts.uncertain > 0 && !committing && (
             <button type="button" className={styles.confirmBtn} onClick={openConfirmRun}>
               <b>{pad2(counts.uncertain)}</b> a confirmar<IconChevronRight size={14} />
             </button>
           )}
+          {onDiscard && !committing && (
+            <button type="button" className={styles.stopBtn} onClick={onDiscard}>
+              <IconClose size={14} />Descartar
+            </button>
+          )}
+        </div>
+      )}
+
+      {importer.canChooseMode && !committing && (
+        <div className={styles.modeChoice}>
+          <span className={styles.modeChoiceLabel} aria-hidden="true">Como ler este PDF</span>
+          <div className={styles.modeSeg} role="radiogroup" aria-label="Como ler este PDF">
+            {(['lyrics', 'list'] as const).map(m => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={importer.importMode === m}
+                className={cx(styles.modeOpt, importer.importMode === m && styles.modeOptOn)}
+                onClick={() => importer.setImportMode(m)}
+              >
+                <span className={styles.modeOptTitle}>
+                  {m === 'lyrics' ? 'Cada página é uma música (com letra)' : 'Lista de títulos'}
+                </span>
+                <span className={styles.modeOptSub}>
+                  {m === 'lyrics' ? 'Título no topo, letra por baixo' : 'Uma música por linha'}
+                  {importer.detectedMode === m && <span className={styles.modeOptTag}>Sugerido</span>}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -349,6 +416,18 @@ export default function ImportReview({ importer, existingSongIds, skipExisting, 
                   </span>
                 </button>
                 <div className={styles.rowActions}>
+                  {row.lyrics !== undefined && i > 0 && (
+                    <button
+                      type="button"
+                      className={styles.iconBtn}
+                      onClick={() => importer.mergeWithPrevious(row.id)}
+                      disabled={disabled}
+                      aria-label={`Juntar ${row.title} à música anterior`}
+                      title="Juntar à anterior"
+                    >
+                      <IconMerge />
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={cx(styles.iconBtn, styles.hideOnPhone)}

@@ -773,6 +773,13 @@ export default function NewConcertPage() {
         toast('A criação do concerto foi interrompida — a lista ficou guardada em Novo concerto.', { type: 'error' })
         return
       }
+      if (isAbort(e)) {
+        // Parada com "Parar": o concerto (ainda vazio) sai; diz que músicas já ficaram no repertório
+        const undone = await undoSetlist()
+        const msg = importErrorMessage(e, 'Importação parada.').replace('nada foi adicionado ao concerto', 'o concerto não foi criado')
+        toast(undone ? msg : `${msg} O concerto ficou criado sem músicas.`, { type: /já tinh/.test(msg) || !undone ? 'error' : 'success' })
+        return
+      }
       await failAfterSave(importErrorMessage(e, 'algo correu mal'))
     } finally {
       creatingRef.current = false
@@ -861,6 +868,9 @@ export default function NewConcertPage() {
       sub: creating ? sub : MODE_LABEL[mode],
       progress: creating ? pct : undefined,
       optionalInfo: !creating,
+      secondary: creating && stage === 'songs' && activeImp?.committing ? (
+        <button type="button" className={styles.ghostBtn} onClick={activeImp.cancelCommit}>Parar</button>
+      ) : undefined,
       primary,
       disabled: creating || !userId || !online || !projectReady || libBlocked,
     }
@@ -1009,6 +1019,7 @@ export default function NewConcertPage() {
           copyExtras={copyExtras}
           onCopyExtras={toggleCopyExtras}
           notice={fitNotice}
+          onDiscard={mode === 'import' ? () => void discardImport() : undefined}
         />
       )}
 

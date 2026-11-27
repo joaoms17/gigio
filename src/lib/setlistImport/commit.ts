@@ -17,7 +17,12 @@ import type { CommitProgress, CommittedItem, ImportCommitResult, ImportRow, Setl
 export async function commitRows(
   rows: readonly ImportRow[],
   owner: Pick<SongOwner, 'ownerId' | 'projectId'>,
-  opts: { concurrency?: number; onProgress?: (p: CommitProgress) => void } = {},
+  opts: {
+    concurrency?: number
+    onProgress?: (p: CommitProgress) => void
+    /** Parar: não começa músicas novas (as que já estão a ser gravadas acabam); as que faltam ficam sem songId */
+    signal?: AbortSignal
+  } = {},
 ): Promise<CommittedItem[]> {
   const total = rows.length
   const items: CommittedItem[] = new Array(total)
@@ -39,8 +44,9 @@ export async function commitRows(
         const song = await createSongFromResult(c.result, songOwner)
         return { title: song.title, songId: song.id, created: true, hasLyrics: !!song.lyrics?.trim() }
       }
-      const song = await createEmptySong(row.title, row.artist, songOwner, { durationSec: row.durationSec })
-      return { songId: song.id, created: true, hasLyrics: false }
+      const lyrics = row.lyrics?.trim() ? row.lyrics : undefined
+      const song = await createEmptySong(row.title, row.artist, songOwner, { durationSec: row.durationSec, lyrics })
+      return { songId: song.id, created: true, hasLyrics: !!lyrics }
     } catch (e) {
       return { songId: null, created: false, hasLyrics: false, error: importErrorMessage(e, 'Não foi possível criar a música.') }
     }
@@ -65,6 +71,7 @@ export async function commitRows(
   let next = 0
   const workers = Array.from({ length: Math.min(opts.concurrency ?? 3, jobs.length) }, async () => {
     while (next < jobs.length) {
+      if (opts.signal?.aborted) return
       const idx = jobs[next++]
       const first = rows[idx[0]]
       tick(first.title)
@@ -89,13 +96,35 @@ export async function commitRows(
     }
   })
   await Promise.all(workers)
+  // Parado a meio: as linhas que não chegaram a ser gravadas ficam marcadas (nunca `undefined`)
+  for (let i = 0; i < total; i++) {
+    if (!items[i]) {
+      const row = rows[i]
+      items[i] = { rowId: row.id, title: row.title, songId: null, created: false, hasLyrics: false, error: 'Cancelado', setlist: setlistFieldsFor(row) }
+    }
+  }
   return items
 }
 
+/**
+ * Frase para quando se parou a gravação: o que ficou criado no repertório (nada entra no
+ * concerto). Ex.: "Importação parada — nada foi adicionado ao concerto. 2 músicas novas já
+ * tinham sido criadas no repertório: “A”, “B”."
+ */
+export function cancelSummary(items: readonly CommittedItem[]): string {
+  const created = items.filter(i => i.created)
+  const head = 'Importação parada — nada foi adicionado ao concerto.'
+  if (created.length === 0) return `${head} Nenhuma música foi criada.`
+  const names = created.slice(0, 3).map(i => `“${i.title}”`).join(', ')
+  const n = created.length
+  return `${head} ${n} ${n === 1 ? 'música nova já tinha sido criada' : 'músicas novas já tinham sido criadas'} no repertório: ${names}${n > 3 ? '…' : ''}`
+}
+
 /** Resumo do resultado (contagens + ids pela ordem). */
-export function summarizeCommit(items: CommittedItem[]): ImportCommitResult {
+export function summarizeCommit(items: CommittedItem[], cancelled = false): ImportCommitResult {
   const ok = items.filter(i => i.songId)
   return {
+    ...(cancelled ? { cancelled: true } : {}),
     items,
     songIds: ok.map(i => i.songId as string),
     created: items.filter(i => i.created).length,

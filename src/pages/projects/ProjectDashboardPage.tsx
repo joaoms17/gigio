@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Breadcrumbs from '../../components/Breadcrumbs'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { useToast } from '../../components/Toast'
+import { deleteFailureMessage, deleteSongsChunked } from '../../lib/deleteSongs'
 import { supabase } from '../../lib/supabase'
 import ExportPdfSheet from '../../components/ExportPdfSheet'
 import type { PdfData, PdfKind } from '../../lib/pdfExport'
@@ -867,9 +868,11 @@ export default function ProjectDashboardPage() {
   async function deleteSong(songId: string, title: string) {
     if (!await confirmDialog({ title: 'Remover música', message: `Remover "${title}" do repertório?`, confirmLabel: 'Remover', danger: true })) return
     setDeletingSong(songId)
-    const { error } = await supabase.from('songs').delete().eq('id', songId)
+    // select('id'): uma recusa da RLS não dá erro — apaga 0 linhas (e a música voltava ao recarregar)
+    const res = await deleteSongsChunked([songId])
     setDeletingSong(null)
-    if (error) { toast('Erro ao remover a música: ' + error.message, { type: 'error' }); return }
+    const failMsg = deleteFailureMessage(res)
+    if (failMsg) { toast(failMsg, { type: 'error' }); return }
     setSongs(prev => prev.filter(s => s.id !== songId))
   }
 

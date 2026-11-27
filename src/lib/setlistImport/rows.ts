@@ -3,6 +3,7 @@
    repertório, estado visível, contagens. PURO.
 ═══════════════════════════════════════════════════════════════ */
 import type { SetlistTextEntry } from './parse'
+import type { LyricsSong } from './lyricsPages'
 import { AUTO_PICK_SCORE, CONFIDENT_SCORE, libraryMatchForResult, type RankedResult, type SongQuery } from './match'
 import { normalizeTitle } from './text'
 import type { ImportCounts, ImportRow, LibrarySong, RowChoice, RowStatus, SetlistSongExtra } from './types'
@@ -43,6 +44,39 @@ export function entriesToRows(entries: readonly SetlistTextEntry[]): ImportRow[]
     }
   }
   return rows
+}
+
+/** Músicas lidas de um PDF de letras → linhas (com a letra; não procuram online). */
+export function lyricsToRows(songs: readonly LyricsSong[]): ImportRow[] {
+  return songs.map((s, i) => ({
+    id: newRowId(),
+    raw: s.title,
+    title: s.title,
+    artist: s.artist,
+    choice: null,
+    search: idleSearch(),
+    order: i,
+    lyrics: s.lyrics,
+    pages: s.pages,
+  }))
+}
+
+/** Junta a linha `id` (letra) à anterior: a letra continua; a linha sai. */
+export function mergeIntoPrevious(rows: readonly ImportRow[], id: string): ImportRow[] {
+  const i = rows.findIndex(r => r.id === id)
+  if (i <= 0) return rows.slice()
+  const prev = rows[i - 1]
+  const row = rows[i]
+  // A 1.ª linha da página juntada era lida como título: volta a ser verso
+  const head = [row.title, row.artist].filter(Boolean).join(' – ')
+  const parts = [prev.lyrics ?? '', [head, row.lyrics ?? ''].filter(Boolean).join('\n')].filter(s => s.trim())
+  const merged: ImportRow = {
+    ...prev,
+    lyrics: parts.join('\n\n'),
+    pages: [...(prev.pages ?? []), ...(row.pages ?? [])].filter((p, k, a) => a.indexOf(p) === k),
+    songId: undefined,
+  }
+  return [...rows.slice(0, i - 1), merged, ...rows.slice(i + 1)]
 }
 
 /** Músicas escolhidas do repertório / copiadas de um concerto → linhas já resolvidas. */
@@ -106,6 +140,8 @@ export function autoChoiceFor(results: readonly RankedResult[], library: readonl
 export function newSongKey(row: ImportRow): string | null {
   const c = row.choice
   if (c?.kind === 'library') return null
+  // Letra lida do documento: cada linha é a sua música (duas páginas com o mesmo título podem ter letras diferentes)
+  if (row.lyrics?.trim() && c?.kind !== 'online') return `row:${row.id}`
   if (c?.kind === 'online') return `online:${c.result.source}:${c.result.external_id}`
   const title = normalizeTitle(row.title)
   return title ? `empty:${title}::${normalizeTitle(row.artist)}` : `row:${row.id}`
@@ -128,6 +164,8 @@ export function rowStatus(row: ImportRow, libraryLoading = false): RowStatus {
   const c = row.choice
   if (c?.kind === 'library') return 'library'
   if (c?.kind === 'online') return 'online'
+  // Letra do PDF: nova com letra (não depende da pesquisa)
+  if (row.lyrics?.trim()) return libraryLoading && !c ? 'searching' : 'online'
   if (c?.kind === 'empty') return 'empty'
   if (libraryLoading) return 'searching'
   switch (row.search.state) {

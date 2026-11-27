@@ -12,13 +12,15 @@ import {
 } from '../../lib/setlistImport/parse'
 import { matchLibrary, rankResults, searchQueryFor, type RankedResult } from '../../lib/setlistImport/match'
 import {
-  autoChoiceFor, countRows, entriesToRows, insertIndexFor, markRepeats, preferLibrary, rowQuery, songsToRows,
+  autoChoiceFor, countRows, entriesToRows, insertIndexFor, lyricsToRows, markRepeats, mergeIntoPrevious, preferLibrary,
+  rowQuery, songsToRows,
 } from '../../lib/setlistImport/rows'
+import { detectLyricsPages, parseLyricsPages, type ImportMode, type PageLines } from '../../lib/setlistImport/lyricsPages'
 import { createResolver, type OnlineOutcome, type Resolver } from '../../lib/setlistImport/resolve'
 import {
   fileBaseName, fileKind, readImages, readPdf, readTextFile, sourcePreview, type SourceText,
 } from '../../lib/setlistImport/sources'
-import { commitRows, summarizeCommit } from '../../lib/setlistImport/commit'
+import { cancelSummary, commitRows, summarizeCommit } from '../../lib/setlistImport/commit'
 import { ImportError, abortError, humanizeError, importErrorMessage, isAbort } from '../../lib/setlistImport/errors'
 import type {
   CommitProgress, ImportCommitResult, ImportCounts, ImportProgress, ImportRow, ImportSourceKind,
@@ -86,6 +88,18 @@ export interface SetlistImporter {
   /** Cancela a leitura em curso (PDF/OCR) */
   cancelSource(): void
 
+  /* ── PDF de letras ── */
+  /** Como a lista está a ser lida: 'list' = uma linha por título; 'lyrics' = cada página uma música (com letra) */
+  importMode: ImportMode
+  /** O que a leitura automática achou do documento */
+  detectedMode: ImportMode
+  /** Há páginas de um PDF para escolher entre os dois modos */
+  canChooseMode: boolean
+  /** Lê de novo a mesma fonte no outro modo (as edições da revisão perdem-se) */
+  setImportMode(mode: ImportMode): void
+  /** Junta a música (página) à anterior: a letra continua, a linha sai */
+  mergeWithPrevious(id: string): void
+
   /* ── Repertório ── */
   library: LibrarySong[]
   libraryLoading: boolean
@@ -125,6 +139,8 @@ export interface SetlistImporter {
   retry(id: string): void
   /** Repete todas as pesquisas que falharam por rede */
   retryOffline(): void
+  /** Para as pesquisas online em curso (as linhas sem escolha ficam "sem letra") */
+  stopSearches(): void
   /** Pesquisa online com texto livre (seletor de correspondência) */
   searchRow(id: string, query: string): void
   /** Acrescenta linhas escritas à mão (passam pelo parser). Devolve quantas entraram */
@@ -141,6 +157,12 @@ export interface SetlistImporter {
    * com `toSetlistInserts(result)`. Repetir depois de uma falha não duplica músicas.
    */
   commit(): Promise<ImportCommitResult>
+  /**
+   * Para a gravação: à espera das pesquisas → nada é criado; a criar músicas → não começa mais
+   * nenhuma. `commit()` rejeita então com um ImportError 'aborted' cuja mensagem diz o que ficou
+   * criado (as linhas guardam essas músicas: gravar de novo não as duplica).
+   */
+  cancelCommit(): void
 
   /* ── Rascunho ── */
   snapshot(): ImporterSnapshot
@@ -190,6 +212,10 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
   const [parsed, setParsed] = useState<{ text: string; opts: ParseOptions } | null>(null)
   const [suggestion, setSuggestion] = useState<ImportSuggestion | null>(null)
   const [previews, setPreviews] = useState<string[]>([])
+  const [pdfPages, setPdfPages] = useState<PageLines[] | null>(null)
+  const [importMode, setMode] = useState<ImportMode>('list')
+  const [detectedMode, setDetectedMode] = useState<ImportMode>('list')
+  const commitCtrl = useRef<AbortController | null>(null)
 
   // Repertório: carregado por chave (projeto ou pessoal); "a carregar" = chave diferente
   const libKey = !ready ? '' : projectId ? `p:${projectId}` : userId ? `u:${userId}` : ''
@@ -263,6 +289,8 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
   const queueSearch = useCallback((id: string, custom?: string) => {
     const row = rowsRef.current.find(r => r.id === id)
     if (!row) return
+    // Letra lida do PDF: não procura online (só uma pesquisa pedida à mão no seletor)
+    if (row.lyrics?.trim() && !custom?.trim()) return
     const query = (custom?.trim() || searchQueryFor(rowQuery(row))).trim()
     if (!query) return
     patchRow(id, r => ({ ...r, search: { state: 'queued', query, results: [], custom: !!custom?.trim() } }))
@@ -413,6 +441,17 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     return true
   }, [ingest])
 
+  /** Páginas de um PDF de letras → uma linha por música (com a letra). false = nenhuma música */
+  const ingestLyrics = useCallback((pages: readonly PageLines[], info: ImportSourceInfo): boolean => {
+    const songs = parseLyricsPages(pages).filter(s => s.title.trim())
+    if (songs.length === 0) return false
+    setSkipped([])
+    setSuggestion(null)
+    ingest(lyricsToRows(songs), info)
+    setMode('lyrics')
+    return true
+  }, [ingest])
+
   const runSource = useCallback(async (
     kind: 'pdf' | 'image' | 'text',
     fileName: string | null,
@@ -428,10 +467,22 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     setError(null)
     setBusy({ label: kind === 'pdf' ? 'A ler o PDF…' : kind === 'image' ? 'A preparar a imagem…' : 'A ler…', progress: null })
     try {
-      const { text, ocr, image, heading } = await read(ctrl.signal, p => { if (live()) setBusy(p) })
+      const { text, ocr, image, heading, pages } = await read(ctrl.signal, p => { if (live()) setBusy(p) })
       // Cancelada, outra lista entrou entretanto, ou a gravação já começou: não mexe na lista em revisão
       if (!live() || committingRef.current) return false
-      const ok = ingestText(text, { ocr, image }, meta => ({ kind, name: pickName(meta, heading, fileName), meta }))
+      const detected: ImportMode = pages?.length ? detectLyricsPages(pages).mode : 'list'
+      setPdfPages(pages?.length ? pages : null)
+      setDetectedMode(detected)
+      let ok = false
+      if (detected === 'lyrics' && pages) {
+        // PDF de letras: o título grande do topo é o da 1.ª música, não o do concerto
+        ok = ingestLyrics(pages, { kind, name: fileName })
+        if (ok) setParsed({ text, opts: { ocr, image } })
+      }
+      if (!ok) {
+        ok = ingestText(text, { ocr, image }, meta => ({ kind, name: pickName(meta, heading, fileName), meta }))
+        if (ok) setMode('list')
+      }
       if (!ok) { setError(EMPTY_MESSAGES[kind]); return false }
       // Miniatura da fonte para a revisão (em segundo plano)
       replacePreviews([])
@@ -455,7 +506,7 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
         setBusy(null)
       }
     }
-  }, [ingestText, replacePreviews])
+  }, [ingestText, ingestLyrics, replacePreviews])
 
   /** A lista vai ser substituída por outra via: a leitura em curso (e a sua miniatura) deixa de contar. */
   const supersedeSource = useCallback(() => {
@@ -478,6 +529,9 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     if (!ok) { setError(EMPTY_MESSAGES.text); return false }
     supersedeSource()
     replacePreviews([])
+    setPdfPages(null)
+    setMode('list')
+    setDetectedMode('list')
     return true
   }, [ingestText, replacePreviews, supersedeSource])
 
@@ -500,6 +554,9 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     setSkipped([])
     setSuggestion(null)
     replacePreviews([])
+    setPdfPages(null)
+    setMode('list')
+    setDetectedMode('list')
     ingest(songsToRows(items), info ?? { kind: 'library', name: null })
   }, [ingest, replacePreviews, supersedeSource])
 
@@ -670,6 +727,37 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     updateRows(prev => prev.map(r => (r.sourceExtra ? { ...r, extra: on ? r.sourceExtra : undefined } : r)))
   }, [updateRows])
 
+  const setImportMode = useCallback((next: ImportMode) => {
+    if (committingRef.current || next === importMode) return
+    if (next === 'lyrics') {
+      if (!pdfPages || !ingestLyrics(pdfPages, { kind: source?.kind ?? 'pdf', name: source?.name ?? null })) {
+        setError('Não encontrei músicas com letra neste PDF.')
+      }
+      return
+    }
+    if (!parsed) return
+    const info = source ?? { kind: 'pdf' as const, name: null }
+    if (ingestText(parsed.text, parsed.opts, meta => ({ ...info, meta: { ...meta, ...info.meta } }))) setMode('list')
+    else setError(EMPTY_MESSAGES.pdf)
+  }, [importMode, pdfPages, parsed, source, ingestLyrics, ingestText])
+
+  const mergeWithPrevious = useCallback((id: string) => {
+    if (committingRef.current) return
+    resolver.cancel(id)
+    setLastRemoved(null)
+    updateRows(prev => mergeIntoPrevious(prev, id))
+  }, [resolver, updateRows])
+
+  const stopSearches = useCallback(() => {
+    resolver.cancelAll()
+    updateRows(prev => prev.map(r => (r.search.state === 'queued' || r.search.state === 'searching'
+      ? { ...r, search: { ...r.search, state: 'idle' } } : r)))
+  }, [resolver, updateRows])
+
+  const cancelCommit = useCallback(() => {
+    commitCtrl.current?.abort()
+  }, [])
+
   const reset = useCallback(() => {
     supersedeSource()
     resolver.cancelAll()
@@ -681,6 +769,9 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     setParsed(null)
     setSuggestion(null)
     replacePreviews([])
+    setPdfPages(null)
+    setMode('list')
+    setDetectedMode('list')
     setPhase('source')
   }, [resolver, setRows, replacePreviews, supersedeSource])
 
@@ -705,6 +796,8 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     setLastRemoved(null)
     setError(null)
     replacePreviews([])
+    setPdfPages(null)
+    setMode(snap.rows.some(r => r.lyrics) ? 'lyrics' : 'list')
     setPhase(snap.rows.length ? 'review' : 'source')
     if (libReady()) applyLibrary(libRef.current.songs)
   }, [resolver, setRows, replacePreviews, applyLibrary, libReady, supersedeSource])
@@ -715,13 +808,16 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     if (committingRef.current) throw new ImportError('unreadable', 'A gravação já está a decorrer.')
     committingRef.current = true
     setCommitting(true)
+    const ctrl = new AbortController()
+    commitCtrl.current = ctrl
+    const stopped = () => disposedRef.current || ctrl.signal.aborted
     try {
       // 1. O repertório tem de estar carregado (senão tudo seria criado em duplicado)
       if (!libReady()) {
         setCommitProgress({ phase: 'resolving', done: 0, total: rowsRef.current.length, current: 'A carregar o repertório…' })
         const t0 = Date.now()
         while (!libReady()) {
-          if (disposedRef.current) throw abortError()
+          if (stopped()) throw new ImportError('aborted', cancelSummary([]))
           const err = libErrRef.current
           if (err && err.key === libKeyRef.current) throw new ImportError('offline', `Não foi possível carregar o repertório — ${err.message}`)
           if (!libKeyRef.current || Date.now() - t0 > LIBRARY_WAIT_MS) {
@@ -738,10 +834,13 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
         const pendingNow = () => rowsRef.current.filter(r => r.search.state === 'queued' || r.search.state === 'searching').length
         const tick = setInterval(() => setCommitProgress({ phase: 'resolving', done: total - pendingNow(), total, current: 'A procurar letras…' }), 250)
         setCommitProgress({ phase: 'resolving', done: total - pendingNow(), total, current: 'A procurar letras…' })
-        await Promise.race([resolver.idle(), new Promise(r => setTimeout(r, RESOLVE_WAIT_MS))])
+        const onAbort = new Promise(r => ctrl.signal.addEventListener('abort', r, { once: true }))
+        await Promise.race([resolver.idle(), onAbort, new Promise(r => setTimeout(r, RESOLVE_WAIT_MS))])
         clearInterval(tick)
         // Saiu da página entretanto (as pesquisas foram canceladas): não criar tudo "sem letra"
         if (disposedRef.current) throw abortError()
+        // Parou à espera das pesquisas: nada foi criado (as pesquisas continuam para a revisão)
+        if (ctrl.signal.aborted) throw new ImportError('aborted', cancelSummary([]))
         if (resolver.size > 0) {
           // Demorou demais: as que faltam ficam sem letra
           resolver.cancelAll()
@@ -750,9 +849,10 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
         }
       }
       if (disposedRef.current) throw abortError()
+      if (ctrl.signal.aborted) throw new ImportError('aborted', cancelSummary([]))
       const current = rowsRef.current
       const owner = { ownerId: userId, projectId: projectId ?? null }
-      const items = await commitRows(current, owner, { onProgress: setCommitProgress })
+      const items = await commitRows(current, owner, { onProgress: setCommitProgress, signal: ctrl.signal })
       // Cada linha guarda a sua música (repetir não duplica) e o projeto onde foi criada — só se a
       // linha não mudou entretanto (senão a música já não é a que a linha pede)
       const before = new Map(current.map(r => [r.id, r]))
@@ -765,8 +865,11 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
         if (r.songId === songId && r.songProject === owner.projectId) return r
         return { ...r, songId, songProject: owner.projectId }
       }))
+      // Parado a meio: as criadas ficam no repertório (e nas linhas); nada entra no concerto
+      if (ctrl.signal.aborted && !disposedRef.current) throw new ImportError('aborted', cancelSummary(items))
       return summarizeCommit(items)
     } finally {
+      if (commitCtrl.current === ctrl) commitCtrl.current = null
       committingRef.current = false
       setCommitting(false)
       setCommitProgress(null)
@@ -780,6 +883,7 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     clearError: useCallback(() => setError(null), []),
     draftText, setDraftText,
     importFiles, importPdf, importImages, importText, loadSongs, cancelSource,
+    importMode, detectedMode, canChooseMode: !!pdfPages && !!parsed, setImportMode, mergeWithPrevious,
     library: lib.key === libKey ? lib.songs : [],
     libraryLoading,
     libraryError: libFailed ? libErr!.message : null,
@@ -792,8 +896,8 @@ export function useSetlistImport({ projectId, ready = true, autoResolve = true }
     rename, swapTitleArtist, remove,
     lastRemoved: lastRemoved?.row ?? null,
     undoRemove, move, moveTo, chooseLibrary, chooseOnline, chooseEmpty, confirmChoice,
-    retry, retryOffline, searchRow, addLines, setExtrasEnabled,
-    committing, commitProgress, commit,
+    retry, retryOffline, stopSearches, searchRow, addLines, setExtrasEnabled,
+    committing, commitProgress, commit, cancelCommit,
     snapshot, restore,
     reset,
   }

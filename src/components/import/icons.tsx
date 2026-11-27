@@ -58,3 +58,9 @@ export const IconPaste = ({ size = 18 }: P) => (
     <path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3" />
   </Svg>
 )
+/** Juntar à anterior (duas linhas que se unem numa) */
+export const IconMerge = ({ size = 20 }: P) => (
+  <Svg size={size}><path d="M7 4v5a5 5 0 0 0 5 5h0a5 5 0 0 0 5-5V4M12 14v6M9 17l3 3 3-3" /></Svg>
+)
+/** Parar (quadrado) */
+export const IconStop = ({ size = 18 }: P) => <Svg size={size}><rect x="6" y="6" width="12" height="12" rx="2" /></Svg>

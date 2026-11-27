@@ -12,7 +12,7 @@ import { rankLibrary, resultSourceLabel, CONFIDENT_SCORE, type RankedResult } fr
 import { isUncertain, rowStatus } from '../../lib/setlistImport/rows'
 import { normalizeTitle, pad2 } from '../../lib/setlistImport/text'
 import {
-  IconCheck, IconClose, IconDown, IconEmpty, IconRetry, IconSearch, IconSwap, IconTrash, IconUp,
+  IconCheck, IconClose, IconDown, IconEmpty, IconMerge, IconRetry, IconSearch, IconSwap, IconTrash, IconUp,
 } from './icons'
 import styles from './Import.module.css'
 
@@ -104,7 +104,10 @@ export default function MatchPicker({ importer, row, index, total, remaining = 0
   const isLibrary = (s: LibrarySong) => choice?.kind === 'library' && choice.song.id === s.id
   const isOnline = (r: RankedResult) => choice?.kind === 'online'
     && choice.result.external_id === r.result.external_id && choice.result.source === r.result.source
-  const emptySelected = choice?.kind === 'empty' || (!choice && (status === 'empty' || status === 'offline'))
+  /** Música lida de um PDF de letras: cria-se com esta letra (sem pesquisa online) */
+  const hasLyrics = !!row.lyrics?.trim()
+  const emptySelected = choice?.kind === 'empty' || (!choice && (hasLyrics || status === 'empty' || status === 'offline'))
+  function mergeUp() { importer.mergeWithPrevious(row.id); onClose(true) }
 
   return (
     <div className={styles.pickerOverlay} onClick={() => onClose(false)}>
@@ -170,7 +173,7 @@ export default function MatchPicker({ importer, row, index, total, remaining = 0
               </div>
               <div className={styles.fieldActions}>
                 <button type="submit" className={styles.btnSecondary} disabled={!title.trim() || (!changed && searching)}>
-                  <IconSearch />{changed ? 'Guardar e procurar' : 'Procurar de novo'}
+                  {hasLyrics ? <><IconCheck />Guardar nome</> : <><IconSearch />{changed ? 'Guardar e procurar' : 'Procurar de novo'}</>}
                 </button>
                 {row.artist && !changed && (
                   <button type="button" className={styles.btnGhost} onClick={() => importer.swapTitleArtist(row.id)}>
@@ -216,8 +219,8 @@ export default function MatchPicker({ importer, row, index, total, remaining = 0
             )}
           </section>
 
-          {/* ── Online ── */}
-          <section className={styles.section}>
+          {/* ── Online (não numa música que já traz a letra do PDF) ── */}
+          {!hasLyrics && <section className={styles.section}>
             <div className={styles.sectionHead}>
               <span className={styles.sectionLabel}>
                 Online · LRCLIB / Genius{online.state === 'done' && onlineOptions.length > 0 ? ` · ${pad2(onlineOptions.length)}` : ''}
@@ -267,7 +270,7 @@ export default function MatchPicker({ importer, row, index, total, remaining = 0
                 </button>
               </div>
             )}
-          </section>
+          </section>}
 
           {/* ── Sem letra ── */}
           <section className={styles.section}>
@@ -276,14 +279,32 @@ export default function MatchPicker({ importer, row, index, total, remaining = 0
                 <button type="button" className={cx(styles.opt, emptySelected && styles.optOn)} onClick={pickEmpty} aria-pressed={emptySelected}>
                   <span className={styles.optIcon}><IconEmpty /></span>
                   <span className={styles.optBody}>
-                    <span className={styles.optTitle}>Criar sem letra</span>
-                    <span className={styles.optMeta}>Nova música “{row.title}” — a letra adiciona-se depois</span>
+                    <span className={styles.optTitle}>{hasLyrics ? 'Criar nova com esta letra' : 'Criar sem letra'}</span>
+                    <span className={styles.optMeta}>
+                      {hasLyrics ? `Nova música “${row.title}” com a letra do PDF` : `Nova música “${row.title}” — a letra adiciona-se depois`}
+                    </span>
                   </span>
                   {emptySelected && <span className={styles.optCheck}><IconCheck /></span>}
                 </button>
               </li>
             </ul>
           </section>
+
+          {hasLyrics && (
+            <section className={styles.section}>
+              <div className={styles.sectionHead}>
+                <span className={styles.sectionLabel}>Letra lida{row.pages?.length ? ` · pág. ${row.pages.join(', ')}` : ''}</span>
+              </div>
+              <pre className={styles.lyricsBox}>{row.lyrics}</pre>
+              {index > 0 && (
+                <div className={styles.fieldActions}>
+                  <button type="button" className={styles.btnSecondary} onClick={mergeUp}>
+                    <IconMerge />Juntar à música anterior
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
         </div>
 
         <footer className={styles.pickerFoot}>

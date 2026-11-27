@@ -9,6 +9,7 @@ import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.js?url'
 import { isSectionHeader, parseSetlistText } from './setlistImport/parse'
 import { arrangeColumns, type Cell, type CellRow } from './setlistImport/layout'
 import { ImportError } from './setlistImport/errors'
+import type { PageLines } from './setlistImport/lyricsPages'
 
 export { normalizeTitle } from './setlistImport/text'
 
@@ -75,12 +76,42 @@ const letterCount = (s: string) => (s.match(/\p{L}/gu) ?? []).length
  * sets LADO A LADO sai coluna a coluna (esquerda inteira, depois direita).
  * `heading`: a linha de letra bem maior no topo da 1.ª página (nome sugerido; não é música).
  */
-export function extractPdfLines(file: Blob, opts: { maxPages?: number } = {}): Promise<{ lines: string[]; pages: number; heading: string | null }> {
+export interface PdfLines {
+  lines: string[]
+  pages: number
+  heading: string | null
+  /**
+   * O texto de cada página tal como está (de cima para baixo, sem colunas), com linhas em
+   * branco onde há um espaço maior entre linhas e o tamanho da letra — para PDFs de LETRAS
+   * (uma página = uma música).
+   */
+  pageLines: PageLines[]
+}
+
+export function extractPdfLines(file: Blob, opts: { maxPages?: number } = {}): Promise<PdfLines> {
   return withPdf(file, pdf => readLines(pdf, opts))
 }
 
-async function readLines(pdf: PdfDocument, opts: { maxPages?: number }): Promise<{ lines: string[]; pages: number; heading: string | null }> {
+/** Linhas de uma página com brancos nos saltos maiores (estrofes) e o tamanho da letra. */
+function pageLinesOf(rows: { y: number; h: number; text: string }[]): PageLines {
+  const gaps: number[] = []
+  for (let i = 1; i < rows.length; i++) gaps.push(rows[i - 1].y - rows[i].y)
+  const step = median(gaps.filter(g => g > 0))
+  const out: PageLines = []
+  rows.forEach((r, i) => {
+    if (i > 0 && step > 0) {
+      const gap = rows[i - 1].y - r.y
+      // Espaço bem maior que o normal entre linhas (ou maior que a própria letra × 2) = linha em branco
+      if (gap > Math.max(step * 1.5, Math.min(rows[i - 1].h, r.h) * 2.1)) out.push({ text: '' })
+    }
+    out.push({ text: r.text, size: Math.round(r.h * 10) / 10 })
+  })
+  return out
+}
+
+async function readLines(pdf: PdfDocument, opts: { maxPages?: number }): Promise<PdfLines> {
   const lines: string[] = []
+  const pageLines: PageLines[] = []
   let heading: string | null = null
   const pages = Math.min(pdf.numPages, opts.maxPages ?? 30)
   for (let p = 1; p <= pages; p++) {
@@ -101,6 +132,18 @@ async function readLines(pdf: PdfDocument, opts: { maxPages?: number }): Promise
       else rows.push({ y: b.y, h: b.h, bits: [b] })
     }
     rows.sort((a, b) => b.y - a.y)
+    // A página como texto corrido (letras): itens da mesma linha juntos por ordem horizontal
+    pageLines.push(pageLinesOf(rows.map(r => {
+      const sorted = [...r.bits].sort((a, b) => a.x - b.x)
+      let text = ''
+      let end: number | null = null
+      for (const b of sorted) {
+        if (end !== null && b.x - end > r.h * 0.12 && !/\s$/.test(text) && !/^\s/.test(b.text)) text += ' '
+        text += b.text
+        end = b.x + b.w
+      }
+      return { y: r.y, h: r.h, text: text.replace(/\s{2,}/g, ' ').trim() }
+    }).filter(r => r.text)))
     const cellRows: (CellRow & { h: number })[] = []
     for (const r of rows) {
       r.bits.sort((a, b) => a.x - b.x)
@@ -133,19 +176,34 @@ async function readLines(pdf: PdfDocument, opts: { maxPages?: number }): Promise
         cellRows.splice(idx, 1)
       }
     }
-    lines.push(...arrangeColumns(cellRows, Math.max(6, med * 1.2)).lines)
+    // Lista de títulos: as primeiras 30 páginas, como sempre
+    if (p <= 30) lines.push(...arrangeColumns(cellRows, Math.max(6, med * 1.2)).lines)
     page.cleanup?.()
   }
-  return { lines, pages: pdf.numPages, heading }
+  return { lines, pages: pdf.numPages, heading, pageLines }
+}
+
+/** Número de páginas do PDF (0 se não abrir). */
+export async function countPdfPages(file: Blob): Promise<number> {
+  try {
+    return await withPdf(file, async pdf => pdf.numPages)
+  } catch {
+    return 0
+  }
 }
 
 /** Renderiza as primeiras páginas em canvas (para OCR de PDFs digitalizados, sem texto). */
-export function renderPdfPages(file: Blob, opts: { maxPages?: number; targetWidth?: number } = {}): Promise<HTMLCanvasElement[]> {
+export function renderPdfPages(
+  file: Blob,
+  opts: { maxPages?: number; targetWidth?: number; firstPage?: number; signal?: AbortSignal } = {},
+): Promise<HTMLCanvasElement[]> {
   return withPdf(file, async pdf => {
     const out: HTMLCanvasElement[] = []
     try {
-      const pages = Math.min(pdf.numPages, opts.maxPages ?? 4)
-      for (let p = 1; p <= pages; p++) {
+      const first = Math.max(1, opts.firstPage ?? 1)
+      const last = Math.min(pdf.numPages, first - 1 + (opts.maxPages ?? 4))
+      for (let p = first; p <= last; p++) {
+        if (opts.signal?.aborted) break
         const page = await pdf.getPage(p)
         const base = page.getViewport({ scale: 1 })
         const scale = Math.min(4, (opts.targetWidth ?? 1700) / base.width)

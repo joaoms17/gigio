@@ -19,7 +19,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
 const ts = require(join(root, 'node_modules/typescript'))
 
-const MODULES = ['text', 'parse', 'match', 'layout', 'errors', 'rows', 'sources', 'resolve', 'commit', 'ocr']
+const MODULES = ['text', 'parse', 'match', 'layout', 'errors', 'rows', 'sources', 'resolve', 'commit', 'ocr', 'lyricsPages']
 const out = mkdtempSync(join(tmpdir(), 'setlist-parse-'))
 for (const name of MODULES) {
   const src = readFileSync(join(root, 'src/lib/setlistImport', `${name}.ts`), 'utf8')
@@ -32,6 +32,14 @@ for (const name of MODULES) {
   // ocr.ts: tesseract.js simulado
   js = js.replace(/import\('tesseract\.js'\)/g, "import('./stub-tesseract.mjs')")
   writeFileSync(join(out, `${name}.mjs`), js)
+}
+// deleteSongs.ts (src/lib): eliminar em blocos, com o Supabase simulado
+{
+  const src = readFileSync(join(root, 'src/lib/deleteSongs.ts'), 'utf8')
+  const js = ts.transpileModule(src, {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, verbatimModuleSyntax: true },
+  }).outputText.replace(/from\s+'\.\/supabase'/g, "from './stub-supabase.mjs'")
+  writeFileSync(join(out, 'deleteSongs.mjs'), js)
 }
 writeFileSync(join(out, 'stub-supabase.mjs'), 'export const supabase = { from: t => globalThis.__fakeDb.from(t) }\n')
 writeFileSync(join(out, 'stub-tesseract.mjs'), 'export const createWorker = (...a) => globalThis.__fakeTesseract.createWorker(...a)\n')
@@ -50,6 +58,8 @@ const errors = await import(pathToFileURL(join(out, 'errors.mjs')).href)
 const resolveMod = await import(pathToFileURL(join(out, 'resolve.mjs')).href)
 const commitMod = await import(pathToFileURL(join(out, 'commit.mjs')).href)
 const ocrMod = await import(pathToFileURL(join(out, 'ocr.mjs')).href)
+const lyricsMod = await import(pathToFileURL(join(out, 'lyricsPages.mjs')).href)
+const deleteMod = await import(pathToFileURL(join(out, 'deleteSongs.mjs')).href)
 // Apagar a pasta temporária só no fim: o ocr.ts importa o tesseract (simulado) dinamicamente, a meio dos testes
 process.on('exit', () => rmSync(out, { recursive: true, force: true }))
 
@@ -809,6 +819,168 @@ function fakeDb(initial, faults = {}) {
   eq([r2.code, terminated], ['aborted', ['tesseract-worker-2']], 'OCR — cancelar a meio do download termina o worker')
   eq(globalThis.Worker === FakeWorker, true, 'OCR — o construtor Worker global é reposto')
   globalThis.Worker = prevWorker
+}
+
+/* ═══ L. PDF de LETRAS: cada página é uma música ═══ */
+{
+  const { parseLyricsPages, detectLyricsPages, textToPages, isSectionMarker, isPageNumber, lyricsPreview } = lyricsMod
+  // Letras inventadas (nunca letras reais)
+  const P1 = `Maré de Setembro
+Rui Calado
+
+[Verso 1]
+Acordei com o mar a bater na janela,
+o café já frio e a rua tão bela
+as gaivotas a rir do meu velho chapéu
+e eu a contar barcos a subir para o céu
+
+[Refrão]
+Ó maré de setembro, leva-me contigo
+que eu levo a guitarra e um velho amigo
+Ó maré de setembro, não me deixes cá
+que o verão foi curto e a saudade já está
+
+1`
+  const P2 = `Luzes da Ribeira – Ana Prata
+Na ponte de ferro a cidade acendeu,
+cada janela um bocado de céu
+e os teus olhos a dizer que sim
+mesmo quando a noite não tem fim
+
+[Refrão]
+Luzes da Ribeira, guardem o meu lugar
+que amanhã eu volto para te cantar
+2`
+  const P3 = `e quando o rio parar de correr
+eu fico aqui só para te ver
+[Final]
+Luzes da Ribeira, luzes de alguém
+que me esperam sempre, como mais ninguém`
+  const P4 = `Canção do Eléctrico 28
+por Os Bilhetes Perdidos
+
+Sobe a colina a ranger devagar,
+leva turistas e a dona Amélia a ralhar
+tlim tlim na curva da Graça
+e o miúdo a acenar da praça`
+
+  const pages = textToPages([P1, P2, P3, P4].join('\f'))
+  eq(detectLyricsPages(pages).mode, 'lyrics', 'Letras — deteção automática: PDF de letras')
+  const songs = parseLyricsPages(pages)
+  eq(songs.map(s => s.title), ['Maré de Setembro', 'Luzes da Ribeira', 'Canção do Eléctrico 28'], 'Letras — um título por página (pág. 3 continua a 2)')
+  eq(songs.map(s => s.artist), ['Rui Calado', 'Ana Prata', 'Os Bilhetes Perdidos'], 'Letras — artista (2.ª linha curta, "Título – Artista", "por …")')
+  eq(songs.map(s => s.pages), [[1], [2, 3], [4]], 'Letras — páginas de cada música')
+  eq(songs[0].lyrics.split('\n').slice(0, 3), ['[Verso 1]', 'Acordei com o mar a bater na janela,', 'o café já frio e a rua tão bela'], 'Letras — [Secção] e versos preservados')
+  eq(songs[0].lyrics.includes('\n\n[Refrão]\n'), true, 'Letras — linha em branco entre estrofes preservada')
+  eq(/\n1$/.test(songs[0].lyrics) || songs[0].lyrics.endsWith('\n'), false, 'Letras — número de página no rodapé não entra')
+  eq(songs[1].lyrics.includes('2\n') || songs[1].lyrics.split('\n').includes('2'), false, 'Letras — número de página (2) não entra')
+  eq(songs[1].lyrics.split('\n').slice(-2), ['Luzes da Ribeira, luzes de alguém', 'que me esperam sempre, como mais ninguém'], 'Letras — página de continuação junta à anterior')
+  eq(lyricsPreview(songs[0].lyrics), 'Acordei com o mar a bater na janela, / o café já frio e a rua tão bela', 'Letras — pré-visualização sem marcas')
+
+  // Uma lista de títulos continua a ser lista
+  const list = textToPages(`SETLIST SÁBADO
+1. Wonderwall
+2. Menino do Bairro Negro
+3. Creep
+4. Zombie
+5. Mr. Brightside
+6. Grândola
+7. Sweet Child O' Mine`)
+  eq(detectLyricsPages(list).mode, 'list', 'Letras — lista numerada fica lista')
+  const list2 = textToPages(['Wonderwall – Oasis', 'Creep – Radiohead', 'Zombie – The Cranberries', 'Valerie – Amy Winehouse', 'Hallelujah', 'Mr. Brightside', 'Sweet Caroline', 'Dancing Queen', 'Superstition', 'September'].join('\n'))
+  eq(detectLyricsPages(list2).mode, 'list', 'Letras — lista "Título – Artista" fica lista')
+
+  // Tamanhos de letra (PDF): título grande; duas músicas na mesma página; página sem título grande continua
+  const big = (text) => ({ text, size: 18 })
+  const body = (text) => ({ text, size: 11 })
+  const sized = [
+    [big('Fado da Esquina'), body(''), body('Na esquina do bairro há uma voz a cantar,'), body('que conta as pedras da calçada devagar'),
+      body(''), big('Vira do Quintal'), body('Roda roda no quintal da avó Rosa,'), body('a saia a rodar e a tarde tão vaidosa')],
+    [body('E se a lua descer até ao telhado'), body('dançamos os dois até ficar cansado')],
+  ]
+  const s2 = parseLyricsPages(sized)
+  eq(s2.map(s => [s.title, s.pages]), [['Fado da Esquina', [1]], ['Vira do Quintal', [1, 2]]], 'Letras — blocos com título grande; página sem título continua')
+  eq(s2[1].lyrics.split('\n').length, 5, 'Letras — continuação separada por linha em branco')
+
+  // "Título (cont.)" repetido no topo da página seguinte
+  const cont = textToPages(`Noite Longa
+Fica comigo até a noite acabar,
+que a rua está fria e não há onde ir
+e o rádio ainda tem uma canção para dar\fNoite Longa (cont.)
+Fica comigo, fica até o sol subir
+que eu conto estrelas para não dormir`)
+  const s3 = parseLyricsPages(cont)
+  eq([s3.length, s3[0].pages, s3[0].lyrics.includes('(cont.)')], [1, [1, 2], false], 'Letras — "(cont.)" junta e o cabeçalho repetido sai')
+
+  eq([isSectionMarker('[Refrão]'), isSectionMarker('Refrão:'), isSectionMarker('(Ponte)'), isSectionMarker('Ponte de ferro')], [true, true, true, false], 'Letras — marcas de secção')
+  eq([isPageNumber('3'), isPageNumber('- 3 -'), isPageNumber('Página 3'), isPageNumber('3/12'), isPageNumber('28 de Abril')], [true, true, true, true, false], 'Letras — números de página')
+
+  // Linhas: com letra não procuram online, contam como "nova · letra", e juntam-se à anterior
+  const rows = rowsMod.lyricsToRows(songs)
+  eq(rows.map(r => rowsMod.rowStatus(r)), ['online', 'online', 'online'], 'Letras — estado "Nova · letra"')
+  eq(rowsMod.rowStatus(rows[0], true), 'searching', 'Letras — a carregar o repertório')
+  const merged = rowsMod.mergeIntoPrevious(rows, rows[2].id)
+  eq([merged.length, merged[1].pages, merged[1].lyrics.includes('Canção do Eléctrico 28 – Os Bilhetes Perdidos\nSobe a colina')], [2, [2, 3, 4], true], 'Letras — juntar à anterior (o título volta a ser verso)')
+  eq(rowsMod.mergeIntoPrevious(rows, rows[0].id).length, 3, 'Letras — a 1.ª não se junta')
+  eq(rowsMod.newSongKey(rows[0]) === rowsMod.newSongKey({ ...rows[0], id: 'outra' }), false, 'Letras — duas páginas com o mesmo título não partilham a música')
+
+  // Gravar: cria COM letra; repertório reutiliza; parar a meio não cria mais
+  const created = []
+  globalThis.__fakeSongs = {
+    async createEmptySong(title, artist, owner, opts) {
+      created.push({ title, artist, lyrics: opts?.lyrics ?? null })
+      const id = `new-${created.length}`
+      await new Promise(r => setTimeout(r, 5))
+      return { id, title }
+    },
+    async createSongFromResult() { throw new Error('não devia procurar online') },
+  }
+  const libRow = { ...rows[1], choice: { kind: 'library', song: { id: 'lib-1', title: 'Luzes da Ribeira', artist: 'Ana Prata' }, auto: true } }
+  const items = await commitMod.commitRows([rows[0], libRow, rows[2]], { ownerId: 'u1', projectId: 'band-A' })
+  eq(items.map(i => [i.songId, i.created, i.hasLyrics]), [['new-1', true, true], ['lib-1', false, true], ['new-2', true, true]], 'Letras — gravar pela ordem; repertório reutilizado')
+  eq(created.map(c => [c.title, c.artist, c.lyrics?.startsWith('[Verso 1]') || c.lyrics?.startsWith('Sobe a colina')]), [['Maré de Setembro', 'Rui Calado', true], ['Canção do Eléctrico 28', 'Os Bilhetes Perdidos', true]], 'Letras — músicas criadas com a letra')
+
+  created.length = 0
+  const many = Array.from({ length: 9 }, (_, k) => ({ ...rows[0], id: `m${k}`, title: `Canção ${k}` }))
+  const ctrl = new AbortController()
+  const pending = commitMod.commitRows(many, { ownerId: 'u1', projectId: null }, {
+    signal: ctrl.signal, concurrency: 1,
+    onProgress: p => { if (p.done === 2) ctrl.abort() },
+  })
+  const stopped = await pending
+  const ok = stopped.filter(i => i.songId)
+  eq([created.length, ok.length, stopped.length, stopped.filter(i => i.error === 'Cancelado').length], [2, 2, 9, 7], 'Parar a gravação: não cria mais músicas, as que faltam ficam "Cancelado"')
+  eq(commitMod.cancelSummary(stopped), 'Importação parada — nada foi adicionado ao concerto. 2 músicas novas já tinham sido criadas no repertório: “Canção 0”, “Canção 1”', 'Parar a gravação: mensagem diz o que foi criado')
+  eq(commitMod.cancelSummary([]), 'Importação parada — nada foi adicionado ao concerto. Nenhuma música foi criada.', 'Parar antes de criar: nada criado')
+  eq(commitMod.summarizeCommit(stopped, true).cancelled, true, 'Parar a gravação: resumo marcado')
+}
+
+/* ═══ D. Eliminar músicas em blocos, com verificação ═══ */
+{
+  const calls = []
+  const client = (denied = new Set(), failChunk = -1) => ({
+    from: () => ({
+      delete: () => ({
+        in: (_c, ids) => ({
+          select: async () => {
+            calls.push(ids.length)
+            if (calls.length - 1 === failChunk) return { data: null, error: { message: 'URI too long' } }
+            return { data: ids.filter(id => !denied.has(id)).map(id => ({ id })), error: null }
+          },
+        }),
+      }),
+    }),
+  })
+  const ids = Array.from({ length: 230 }, (_, k) => `s${k}`)
+  const r1 = await deleteMod.deleteSongsChunked(ids, { client: client() })
+  eq([calls, r1.deleted.length, r1.failed.length, r1.error], [[50, 50, 50, 50, 30], 230, 0, null], 'Eliminar — 230 ids em blocos de 50')
+  eq(deleteMod.deleteFailureMessage(r1), null, 'Eliminar — tudo apagado: sem aviso')
+  calls.length = 0
+  const r2 = await deleteMod.deleteSongsChunked(ids, { client: client(new Set(['s3', 's60']), 2) })
+  eq([r2.deleted.length, r2.failed.length, r2.failed.includes('s3'), r2.failed.includes('s100'), r2.error], [178, 52, true, true, 'URI too long'], 'Eliminar — erro num bloco e RLS (0 linhas) contam como falhadas')
+  eq(deleteMod.deleteFailureMessage(r2), '178 eliminadas, mas 52 não foram — URI too long. Tenta de novo.', 'Eliminar — aviso com contagens')
+  const r3 = await deleteMod.deleteSongsChunked(['a'], { client: client(new Set(['a'])) })
+  eq(deleteMod.deleteFailureMessage(r3), 'A música não foi eliminada — sem permissão (podem ser de outro membro do projeto). Tenta de novo.', 'Eliminar — recusa silenciosa da RLS')
 }
 
 /* ── resultado ── */

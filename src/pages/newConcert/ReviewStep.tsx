@@ -38,11 +38,13 @@ export interface ReviewStepProps {
   onCopyExtras?: (on: boolean) => void
   /** Aviso por cima da lista (ex.: "15 de 18 estão no repertório de Banda B") */
   notice?: ReactNode
+  /** Descartar a lista importada (volta ao início sem criar nada) */
+  onDiscard?: () => void
 }
 
 export default function ReviewStep({
   mode, importer, sourceText, crossNote, lineupNote, name, onName, namePlaceholder, nameRef,
-  date, onDate, venue, onVenue, disabled, isPersonal, copyExtras, onCopyExtras, notice,
+  date, onDate, venue, onVenue, disabled, isPersonal, copyExtras, onCopyExtras, notice, onDiscard,
 }: ReviewStepProps) {
   const uid = useId()
   const count = mode === 'empty' ? 0 : (importer?.rows.length ?? 0)
@@ -102,7 +104,7 @@ export default function ReviewStep({
           </label>
         )}
 
-        {mode === 'import' && importer && <ImportReview importer={importer} disabled={disabled} />}
+        {mode === 'import' && importer && <ImportReview importer={importer} disabled={disabled} onDiscard={onDiscard} />}
         {(mode === 'copy' || mode === 'library') && importer && (
           <SongListReview importer={importer} showStatus={!!crossNote} disabled={disabled} />
         )}
